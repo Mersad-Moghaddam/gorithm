@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gorithm - See Go Algorithms Think</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/wasm_exec.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">Gorithm</div>
+      <div class="tagline">Interactive Go Algorithm Engine</div>
+    </div>
+    <div class="header-links">
+      <a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" class="btn" style="text-decoration:none;">GitHub</a>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <!-- Left Sidebar: Algorithm List -->
+    <aside class="sidebar" id="sidebar">
+      <div id="algo-categories">
+        <!-- Rendered by Go/WASM -->
+        <div style="padding: 12px; color: var(--text-muted); font-size: 13px;">Loading algorithms...</div>
+      </div>
+    </aside>
+
+    <!-- Center Pane: Visualizer & Controls -->
+    <main class="center-pane">
+      <div class="viz-header">
+        <div>
+          <h1 class="viz-title" id="viz-title">Select Algorithm</h1>
+          <div class="tagline" id="viz-category">Interactive visualization</div>
+        </div>
+        <div class="viz-complexity" id="viz-complexity">Time: O(1) | Space: O(1)</div>
+      </div>
+
+      <div class="stage-wrapper">
+        <svg id="svg-stage" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid meet">
+          <!-- Rendered dynamically by Go/WASM -->
+        </svg>
+      </div>
+
+      <div class="control-dock">
+        <div class="timeline-row">
+          <input type="range" id="scrubber" class="scrubber" min="0" max="0" value="0">
+          <span class="step-counter" id="step-counter">Step: 0 / 0</span>
+        </div>
+        <div class="action-row">
+          <div class="button-group">
+            <button class="btn" id="btn-reset">Reset</button>
+            <button class="btn" id="btn-prev">Prev</button>
+            <button class="btn btn-primary" id="btn-play">Play</button>
+            <button class="btn" id="btn-next">Next</button>
+          </div>
+          <div class="speed-control">
+            <label for="speed-select">Speed:</label>
+            <select id="speed-select" class="btn" style="padding: 4px 8px;">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1.0x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2.0x</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Pane: Source Code & Documentation -->
+    <aside class="right-pane">
+      <div class="tab-nav">
+        <button class="tab-btn active" id="tab-code-btn">Code</button>
+        <button class="tab-btn" id="tab-doc-btn">Learn</button>
+      </div>
+
+      <!-- Code tab -->
+      <div class="tab-content" id="tab-code">
+        <div class="metrics-box">
+          <div class="metric-item">
+            <div class="metric-val" id="metric-comps">0</div>
+            <div class="metric-label">Compares</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-val" id="metric-swaps">0</div>
+            <div class="metric-label">Swaps</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-val" id="metric-ops">0</div>
+            <div class="metric-label">Ops</div>
+          </div>
+        </div>
+        <div class="step-explanation" id="step-explanation">
+          Execution ready. Click Play or Next.
+        </div>
+        <div class="code-view" id="code-container">
+          <!-- Lines rendered by Go/WASM -->
+        </div>
+      </div>
+
+      <!-- Learn/Documentation tab -->
+      <div class="tab-content" id="tab-doc" style="display: none;">
+        <div class="doc-section">
+          <h4>Overview</h4>
+          <p id="doc-summary"></p>
+        </div>
+        <div class="doc-section">
+          <h4>How It Works</h4>
+          <p id="doc-how"></p>
+        </div>
+        <div class="doc-section">
+          <h4>Key Concepts</h4>
+          <div id="doc-concepts"></div>
+        </div>
+        <div class="doc-section">
+          <h4>Complexity</h4>
+          <p id="doc-complexity-detail"></p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const go = new Go();
+    WebAssembly.instantiateStreaming(fetch("/static/app.wasm"), go.importObject)
+      .then(result => {
+        go.run(result.instance);
+      })
+      .catch(err => {
+        console.error("Failed to load WebAssembly:", err);
+        document.getElementById("viz-title").innerText = "WebAssembly Loading Error";
+      });
+  </script>
+</body>
+</html>
