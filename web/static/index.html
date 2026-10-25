@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#060911">
   <title>Gorithm — Interactive Algorithm Studio</title>
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Chivo:ital,wght@0,300..900;1,300..900&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="/static/wasm_exec.js"></script>
 </head>
 <body>
@@ -62,13 +63,13 @@
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" id="algo-search" class="search-input" placeholder="Filter 20 algorithms..." autocomplete="off">
+        <input type="text" id="algo-search" class="search-input" placeholder="Filter 40 algorithms…" aria-label="Filter algorithms" autocomplete="off">
       </div>
 
       <div class="deck-scroll" id="algo-categories">
         <div class="loading-state">
           <div class="spinner"></div>
-          <span>Loading Go algorithms...</span>
+          <span>Loading Go algorithms…</span>
         </div>
       </div>
     </aside>
@@ -81,7 +82,7 @@
           <h1 class="hud-title" id="viz-title">Select Algorithm</h1>
         </div>
         <div class="hud-right">
-          <button class="hud-action-btn" id="btn-shuffle" title="Shuffle / Randomize Input">
+          <button class="hud-action-btn" id="btn-shuffle" title="Shuffle / Randomize Input" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="16 3 21 3 21 8"></polyline>
               <line x1="4" y1="20" x2="21" y2="3"></line>
@@ -91,7 +92,7 @@
             </svg>
             <span>Shuffle</span>
           </button>
-          <button class="hud-action-btn" id="btn-custom-input" title="Custom Input Dialog">
+          <button class="hud-action-btn" id="btn-custom-input" title="Custom Input Dialog" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 20h9"></path>
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
@@ -114,13 +115,13 @@
         <div class="dock-capsule">
           <div class="dock-scrubber-row">
             <span class="scrub-label">Progress</span>
-            <input type="range" id="scrubber" class="dock-scrubber" min="0" max="0" value="0">
+            <input type="range" id="scrubber" class="dock-scrubber" min="0" max="0" value="0" aria-label="Step timeline">
             <span class="step-counter" id="step-counter">Step 0 of 0</span>
           </div>
 
           <div class="dock-actions-row">
             <div class="dock-btn-group">
-              <button class="dock-btn" id="btn-reset" title="Restart (R)">
+              <button class="dock-btn" id="btn-reset" title="Restart (R)" type="button">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                   <path d="M3 3v5h5"></path>
@@ -128,7 +129,7 @@
                 <span>Reset</span>
               </button>
 
-              <button class="dock-btn" id="btn-prev" title="Previous Step (Left Arrow)">
+              <button class="dock-btn" id="btn-prev" title="Previous Step (Left Arrow)" type="button">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="19 20 9 12 19 4 19 20"></polygon>
                   <line x1="5" y1="19" x2="5" y2="5"></line>
@@ -136,14 +137,16 @@
                 <span>Prev</span>
               </button>
 
-              <button class="dock-btn dock-btn-primary" id="btn-play" title="Play / Pause (Space)">
-                <svg class="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-                <span>Play</span>
+              <button class="dock-btn dock-btn-primary" id="btn-play" title="Play / Pause (Space)" type="button">
+                <span id="btn-play-icon">
+                  <svg class="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </span>
+                <span id="btn-play-label">Play</span>
               </button>
 
-              <button class="dock-btn" id="btn-next" title="Next Step (Right Arrow)">
+              <button class="dock-btn" id="btn-next" title="Next Step (Right Arrow)" type="button">
                 <span>Next</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="5 4 15 12 5 20 5 4"></polygon>
@@ -154,7 +157,7 @@
 
             <div class="dock-speed-group">
               <span class="speed-label">Speed</span>
-              <select id="speed-select" class="speed-dropdown">
+              <select id="speed-select" class="speed-dropdown" aria-label="Playback speed">
                 <option value="0.25">0.25x (Study)</option>
                 <option value="0.5">0.5x (Slow)</option>
                 <option value="1" selected>1.0x (Normal)</option>
@@ -271,11 +274,12 @@
         </div>
         <button class="modal-close" id="btn-modal-close" aria-label="Close dialog">&times;</button>
       </div>
-      <p class="modal-desc">Provide your own JSON array or values to observe the algorithm solve your specific test case:</p>
-      <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]">
+      <p class="modal-desc">Provide your own JSON dataset to observe the algorithm solve your specific test case:</p>
+      <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]" aria-label="Custom dataset input">
+      <div id="modal-error" class="modal-error" style="display: none;"></div>
       <div class="modal-foot">
-        <button class="dock-btn" id="btn-modal-cancel">Cancel</button>
-        <button class="dock-btn dock-btn-primary" id="btn-modal-apply">Apply &amp; Visualize</button>
+        <button class="dock-btn" id="btn-modal-cancel" type="button">Cancel</button>
+        <button class="dock-btn dock-btn-primary" id="btn-modal-apply" type="button">Apply &amp; Visualize</button>
       </div>
     </div>
   </div>

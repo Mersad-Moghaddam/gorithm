@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -218,24 +219,35 @@ func bindControls(doc js.Value, player *Player) {
 		return nil
 	}))
 
-	// Search filter
+	// Search filter with category visibility update
 	searchInput := doc.Call("getElementById", "algo-search")
 	if !searchInput.IsNull() && !searchInput.IsUndefined() {
 		searchInput.Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
 			query := strings.ToLower(strings.TrimSpace(this.Get("value").String()))
-			btns := doc.Call("querySelectorAll", ".algo-btn")
-			for i := 0; i < btns.Length(); i++ {
-				btn := btns.Index(i)
-				nameEl := btn.Call("querySelector", ".algo-name")
-				name := ""
-				if !nameEl.IsNull() && !nameEl.IsUndefined() {
-					name = strings.ToLower(nameEl.Get("innerText").String())
+			groups := doc.Call("querySelectorAll", ".category-group")
+			for g := 0; g < groups.Length(); g++ {
+				grp := groups.Index(g)
+				btns := grp.Call("querySelectorAll", ".algo-btn")
+				visibleCount := 0
+				for b := 0; b < btns.Length(); b++ {
+					btn := btns.Index(b)
+					nameEl := btn.Call("querySelector", ".algo-name")
+					name := ""
+					if !nameEl.IsNull() && !nameEl.IsUndefined() {
+						name = strings.ToLower(nameEl.Get("innerText").String())
+					}
+					id := strings.ToLower(btn.Get("dataset").Get("id").String())
+					if query == "" || strings.Contains(name, query) || strings.Contains(id, query) {
+						btn.Get("style").Set("display", "flex")
+						visibleCount++
+					} else {
+						btn.Get("style").Set("display", "none")
+					}
 				}
-				id := strings.ToLower(btn.Get("dataset").Get("id").String())
-				if query == "" || strings.Contains(name, query) || strings.Contains(id, query) {
-					btn.Get("style").Set("display", "flex")
+				if visibleCount > 0 {
+					grp.Get("style").Set("display", "block")
 				} else {
-					btn.Get("style").Set("display", "none")
+					grp.Get("style").Set("display", "none")
 				}
 			}
 			return nil
@@ -270,17 +282,29 @@ func bindControls(doc js.Value, player *Player) {
 	cancelBtn := doc.Call("getElementById", "btn-modal-cancel")
 	applyBtn := doc.Call("getElementById", "btn-modal-apply")
 	inputField := doc.Call("getElementById", "custom-input-val")
+	errBox := doc.Call("getElementById", "modal-error")
 
-	if !customBtn.IsNull() && !customBtn.IsUndefined() {
-		customBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-			modal.Get("style").Set("display", "flex")
-			return nil
-		}))
-	}
 	closeModal := func() {
 		if !modal.IsNull() && !modal.IsUndefined() {
 			modal.Get("style").Set("display", "none")
 		}
+		if !errBox.IsNull() && !errBox.IsUndefined() {
+			errBox.Get("style").Set("display", "none")
+		}
+	}
+
+	if !customBtn.IsNull() && !customBtn.IsUndefined() {
+		customBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			if player.lesson != nil {
+				inputField.Set("value", player.lesson.Meta().DefaultInput)
+			}
+			if !errBox.IsNull() && !errBox.IsUndefined() {
+				errBox.Get("style").Set("display", "none")
+			}
+			modal.Get("style").Set("display", "flex")
+			inputField.Call("focus")
+			return nil
+		}))
 	}
 	if !closeBtn.IsNull() && !closeBtn.IsUndefined() {
 		closeBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -294,12 +318,51 @@ func bindControls(doc js.Value, player *Player) {
 			return nil
 		}))
 	}
+	if !modal.IsNull() && !modal.IsUndefined() {
+		modal.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			if len(args) > 0 && args[0].Get("target").Equal(modal) {
+				closeModal()
+			}
+			return nil
+		}))
+	}
+
+	applyCustomInput := func() {
+		val := strings.TrimSpace(inputField.Get("value").String())
+		if val != "" && player.lesson != nil {
+			var dummy any
+			if err := json.Unmarshal([]byte(val), &dummy); err != nil {
+				if !errBox.IsNull() && !errBox.IsUndefined() {
+					errBox.Set("innerText", fmt.Sprintf("Invalid JSON: %v", err))
+					errBox.Get("style").Set("display", "block")
+				}
+				return
+			}
+			closeModal()
+			player.LoadLessonWithInput(player.lesson, []byte(val))
+		} else {
+			closeModal()
+		}
+	}
+
 	if !applyBtn.IsNull() && !applyBtn.IsUndefined() {
 		applyBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-			val := inputField.Get("value").String()
-			closeModal()
-			if strings.TrimSpace(val) != "" && player.lesson != nil {
-				player.LoadLessonWithInput(player.lesson, []byte(val))
+			applyCustomInput()
+			return nil
+		}))
+	}
+
+	if !inputField.IsNull() && !inputField.IsUndefined() {
+		inputField.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) any {
+			if len(args) > 0 {
+				key := args[0].Get("key").String()
+				if key == "Enter" {
+					args[0].Call("preventDefault")
+					applyCustomInput()
+				} else if key == "Escape" {
+					args[0].Call("preventDefault")
+					closeModal()
+				}
 			}
 			return nil
 		}))
@@ -309,7 +372,14 @@ func bindControls(doc js.Value, player *Player) {
 	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) any {
 		if len(args) > 0 {
 			key := args[0].Get("code").String()
+			// Don't trigger shortcuts if typing inside an input
+			activeTag := doc.Get("activeElement").Get("tagName").String()
+			if activeTag == "INPUT" || activeTag == "TEXTAREA" || activeTag == "SELECT" {
+				return nil
+			}
 			switch key {
+			case "Escape":
+				closeModal()
 			case "Space":
 				args[0].Call("preventDefault")
 				player.TogglePlay()
@@ -319,6 +389,9 @@ func bindControls(doc js.Value, player *Player) {
 			case "ArrowLeft":
 				args[0].Call("preventDefault")
 				player.Prev()
+			case "KeyR":
+				args[0].Call("preventDefault")
+				player.Reset()
 			}
 		}
 		return nil

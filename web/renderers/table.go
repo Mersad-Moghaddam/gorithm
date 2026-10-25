@@ -44,6 +44,9 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 	if avail := (float64(width) - startX - 30.0) / float64(numCols); avail < cellW {
 		cellW = avail
 	}
+	if availH := (float64(height) - startY - 30.0) / float64(numRows); availH < cellH {
+		cellH = availH
+	}
 
 	var sb strings.Builder
 
@@ -104,7 +107,7 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.5" %s style="transition: all 0.25s ease;" />`,
+			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.5" %s style="transition: fill 0.2s ease, stroke 0.2s ease;" />`,
 			x, y, cellW-4, cellH-4, fillColor, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(

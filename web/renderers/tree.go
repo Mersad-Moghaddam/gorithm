@@ -108,7 +108,7 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 			displayText = n.Label
 		}
 		sb.WriteString(fmt.Sprintf(
-			`<circle cx="%.1f" cy="%.1f" r="22" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" />`,
+			`<circle cx="%.1f" cy="%.1f" r="22" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: fill 0.25s ease, stroke 0.25s ease;" />`,
 			n.X, n.Y, fillRef, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(

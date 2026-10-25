@@ -75,7 +75,7 @@ func RenderHanoiSVG(step trace.Step, width, height int) string {
 
 			color := colors[(diskSize-1)%len(colors)]
 			sb.WriteString(fmt.Sprintf(
-				`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="7" fill="%s" stroke="#ffffff" stroke-width="1" stroke-opacity="0.4" style="transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" />`,
+				`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="7" fill="%s" stroke="#ffffff" stroke-width="1" stroke-opacity="0.4" style="transition: x 0.25s ease, y 0.25s ease, width 0.25s ease;" />`,
 				x, y, diskW, diskHeight-4, color,
 			))
 			sb.WriteString(fmt.Sprintf(

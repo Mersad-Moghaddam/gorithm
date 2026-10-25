@@ -3,6 +3,8 @@
    ========================================================================== */
 
 :root {
+  color-scheme: dark;
+
   /* Cosmic Dark Palette */
   --bg-deep: #060911;
   --bg-surface: #0c111d;
@@ -34,7 +36,7 @@
   --code-line-active-border: #38bdf8;
 
   /* Typography */
-  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Chivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Fira Code", ui-monospace, Menlo, Monaco, Consolas, monospace;
 
   /* Shadow & Glow */
@@ -60,6 +62,20 @@ body {
   overflow-y: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-deep), 0 0 0 4px var(--accent-cyan);
+}
+
+.telemetry-num,
+.step-counter,
+.algo-complexity-tag,
+.complexity-chip,
+.metric-val,
+.line-num {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ==========================================================================
@@ -116,9 +132,7 @@ body {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #ffffff 40%, var(--accent-cyan));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #ffffff;
 }
 
 .brand-badge {
@@ -178,7 +192,7 @@ body {
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .github-link:hover {
@@ -236,7 +250,7 @@ body {
   font-size: 13px;
   font-family: var(--font-sans);
   outline: none;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .search-input:focus {
@@ -308,7 +322,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: all 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
   text-align: left;
 }
 
@@ -434,7 +448,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .hud-action-btn:hover {
@@ -454,7 +468,37 @@ body {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-subtle);
   color: var(--text-body);
-  transition: all 0.25s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.action-init {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+.action-set {
+  background: rgba(20, 184, 166, 0.15);
+  border-color: #14b8a6;
+  color: #99f6e4;
+}
+
+.action-highlight {
+  background: rgba(192, 132, 252, 0.15);
+  border-color: var(--accent-purple);
+  color: #f3e8ff;
+}
+
+.action-push {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: var(--accent-amber);
+  color: #fef08a;
+}
+
+.action-pop {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: var(--accent-rose);
+  color: #fecdd3;
 }
 
 .action-compare {
@@ -627,7 +671,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .dock-btn:hover {
@@ -678,7 +722,7 @@ body {
   border-radius: 8px;
   outline: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .speed-dropdown:focus {
@@ -719,7 +763,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .tab-pill:hover {
@@ -785,9 +829,9 @@ body {
 
 /* Step Narration */
 .step-narration {
-  background: rgba(16, 185, 129, 0.06);
-  border-left: 3px solid var(--accent-emerald);
-  border-radius: 0 10px 10px 0;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 10px;
   padding: 12px 14px;
 }
 
@@ -912,7 +956,7 @@ body {
 .code-line {
   display: flex;
   padding: 3px 12px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease, border-left-color 0.2s ease, color 0.2s ease;
   border-left: 3px solid transparent;
 }
 
@@ -1097,6 +1141,7 @@ body {
   justify-content: center;
   z-index: 1000;
   padding: 20px;
+  overscroll-behavior: contain;
 }
 
 .modal-dialog {
@@ -1110,6 +1155,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overscroll-behavior: contain;
 }
 
 .modal-head {
@@ -1166,10 +1212,33 @@ body {
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
 
+.modal-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid var(--accent-rose);
+  color: #fca5a5;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
 .modal-foot {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .pulse-dot {
+    animation: none !important;
+  }
 }

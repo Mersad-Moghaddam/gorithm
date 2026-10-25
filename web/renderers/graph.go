@@ -16,10 +16,11 @@ type GraphNode struct {
 }
 
 type GraphEdge struct {
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Weight int    `json:"weight,omitempty"`
-	Active bool   `json:"active"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Weight   int    `json:"weight,omitempty"`
+	Active   bool   `json:"active"`
+	Directed bool   `json:"directed,omitempty"`
 }
 
 type GraphState struct {
@@ -69,6 +70,12 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 			<stop offset="0%" stop-color="#c084fc" />
 			<stop offset="100%" stop-color="#7e22ce" />
 		</linearGradient>
+		<marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+			<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#64748b" />
+		</marker>
+		<marker id="arrow-active" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+			<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#38bdf8" />
+		</marker>
 	</defs>`)
 
 	// Render Edges
@@ -82,6 +89,14 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 		edgeColor := "#334155"
 		strokeW := 2.0
 		filterStr := ""
+		markerStr := ""
+		if e.Directed {
+			if e.Active {
+				markerStr = `marker-end="url(#arrow-active)"`
+			} else {
+				markerStr = `marker-end="url(#arrow)"`
+			}
+		}
 		if e.Active {
 			edgeColor = "#38bdf8"
 			strokeW = 3.5
@@ -89,8 +104,8 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			`<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.1f" %s stroke-linecap="round" style="transition: all 0.3s ease;" />`,
-			from.X, from.Y, to.X, to.Y, edgeColor, strokeW, filterStr,
+			`<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="%.1f" %s %s stroke-linecap="round" style="transition: stroke 0.25s ease, stroke-width 0.25s ease;" />`,
+			from.X, from.Y, to.X, to.Y, edgeColor, strokeW, filterStr, markerStr,
 		))
 
 		if e.Weight != 0 {
@@ -138,7 +153,7 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			`<circle cx="%.1f" cy="%.1f" r="23" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" />`,
+			`<circle cx="%.1f" cy="%.1f" r="23" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: fill 0.25s ease, stroke 0.25s ease;" />`,
 			n.X, n.Y, fillRef, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(

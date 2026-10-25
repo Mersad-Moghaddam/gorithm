@@ -136,7 +136,7 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 
 		// Bar container with smooth transitions
 		sb.WriteString(fmt.Sprintf(
-			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.5" %s style="transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" />`,
+			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.5" %s style="transition: height 0.25s ease, y 0.25s ease, fill 0.2s ease, stroke 0.2s ease;" />`,
 			x, y, actualBarW, barH, fillRef, strokeColor, filterStr,
 		))
 

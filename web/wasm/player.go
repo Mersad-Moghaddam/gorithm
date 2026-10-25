@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"syscall/js"
@@ -62,13 +63,103 @@ func (p *Player) Shuffle() {
 	if l == nil {
 		return
 	}
-	// Generate random dataset for interactive user play
-	vals := make([]int, 6)
-	for i := range vals {
-		vals[i] = 10 + int((time.Now().UnixNano()+int64(i*37))%85)
+	shuffled := generateShuffledInput(l.Meta())
+	p.LoadLessonWithInput(l, shuffled)
+}
+
+func generateShuffledInput(m catalog.Meta) []byte {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	switch m.ID {
+	case "bubble", "selection", "insertion", "merge", "quick", "heap", "countingsort", "radixsort", "bucketsort":
+		length := 6 + r.Intn(3)
+		arr := make([]int, length)
+		for i := range arr {
+			arr[i] = 10 + r.Intn(88)
+		}
+		data, _ := json.Marshal(arr)
+		return data
+
+	case "linearsearch":
+		arr := make([]int, 7)
+		for i := range arr {
+			arr[i] = 10 + r.Intn(85)
+		}
+		target := arr[r.Intn(len(arr))]
+		if r.Float64() < 0.25 {
+			target = 99
+		}
+		data, _ := json.Marshal(map[string]any{"array": arr, "target": target})
+		return data
+
+	case "binarysearch":
+		arr := make([]int, 8)
+		cur := 5 + r.Intn(10)
+		for i := range arr {
+			arr[i] = cur
+			cur += 4 + r.Intn(12)
+		}
+		target := arr[r.Intn(len(arr))]
+		data, _ := json.Marshal(map[string]any{"array": arr, "target": target})
+		return data
+
+	case "bst", "avl":
+		length := 6 + r.Intn(2)
+		used := make(map[int]bool)
+		arr := make([]int, 0, length)
+		for len(arr) < length {
+			v := 10 + r.Intn(85)
+			if !used[v] {
+				used[v] = true
+				arr = append(arr, v)
+			}
+		}
+		if m.ID == "bst" {
+			data, _ := json.Marshal(map[string]any{
+				"initial": arr,
+				"ops": []map[string]any{
+					{"type": "insert", "value": 10 + r.Intn(85)},
+					{"type": "search", "value": arr[r.Intn(len(arr))]},
+				},
+			})
+			return data
+		}
+		data, _ := json.Marshal(arr)
+		return data
+
+	case "hanoitower":
+		disks := 3 + r.Intn(2)
+		data, _ := json.Marshal(disks)
+		return data
+
+	case "fibonacci":
+		n := 5 + r.Intn(5)
+		data, _ := json.Marshal(map[string]any{"n": n})
+		return data
+
+	case "nqueens":
+		n := 4 + r.Intn(2)
+		data, _ := json.Marshal(map[string]any{"n": n})
+		return data
+
+	case "coinchange":
+		amount := 8 + r.Intn(8)
+		data, _ := json.Marshal(map[string]any{"coins": []int{1, 2, 5}, "amount": amount})
+		return data
+
+	case "kmeans":
+		pts := make([]map[string]int, 12)
+		for i := range pts {
+			pts[i] = map[string]int{
+				"x": 120 + r.Intn(560),
+				"y": 100 + r.Intn(280),
+			}
+		}
+		data, _ := json.Marshal(map[string]any{"k": 3, "points": pts})
+		return data
+
+	default:
+		return []byte(m.DefaultInput)
 	}
-	data, _ := json.Marshal(vals)
-	p.LoadLessonWithInput(l, data)
 }
 
 func (p *Player) renderLessonShell() {
@@ -217,7 +308,7 @@ func (p *Player) Play() {
 		return
 	}
 	p.playing = true
-	p.doc.Call("getElementById", "btn-play").Set("innerText", "Pause")
+	p.updatePlayButtonUI(true)
 	p.stopChannel = make(chan struct{})
 
 	go func() {
@@ -240,10 +331,13 @@ func (p *Player) Play() {
 				interval := time.Duration(float64(500*time.Millisecond) / sp)
 				time.Sleep(interval)
 
-				js.Global().Call("requestAnimationFrame", js.FuncOf(func(this js.Value, args []js.Value) any {
+				var cb js.Func
+				cb = js.FuncOf(func(this js.Value, args []js.Value) any {
 					p.Next()
+					cb.Release()
 					return nil
-				}))
+				})
+				js.Global().Call("requestAnimationFrame", cb)
 			}
 		}
 	}()
@@ -254,10 +348,38 @@ func (p *Player) Pause() {
 		return
 	}
 	p.playing = false
-	p.doc.Call("getElementById", "btn-play").Set("innerText", "Play")
+	p.updatePlayButtonUI(false)
 	if p.stopChannel != nil {
 		close(p.stopChannel)
 		p.stopChannel = nil
+	}
+}
+
+func (p *Player) updatePlayButtonUI(playing bool) {
+	labelEl := p.doc.Call("getElementById", "btn-play-label")
+	iconEl := p.doc.Call("getElementById", "btn-play-icon")
+	if !labelEl.IsNull() && !labelEl.IsUndefined() {
+		if playing {
+			labelEl.Set("innerText", "Pause")
+		} else {
+			labelEl.Set("innerText", "Play")
+		}
+	} else {
+		btn := p.doc.Call("getElementById", "btn-play")
+		if !btn.IsNull() && !btn.IsUndefined() {
+			if playing {
+				btn.Set("innerText", "Pause")
+			} else {
+				btn.Set("innerText", "Play")
+			}
+		}
+	}
+	if !iconEl.IsNull() && !iconEl.IsUndefined() {
+		if playing {
+			iconEl.Set("innerHTML", `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>`)
+		} else {
+			iconEl.Set("innerHTML", `<svg class="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`)
+		}
 	}
 }
 
