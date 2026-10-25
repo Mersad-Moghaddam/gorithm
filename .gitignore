@@ -1,0 +1,13 @@
+# Binaries
+bin/
+dist/
+*.wasm
+
+# OS and Editors
+.DS_Store
+.vscode/
+.idea/
+
+# Testing
+*.out
+*.test
