@@ -8,9 +8,12 @@ import (
 	"strings"
 	"syscall/js"
 
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/binarysearch"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/bubble"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/heap"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/insertion"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/kmp"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/linearsearch"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/merge"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/quick"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/selection"
