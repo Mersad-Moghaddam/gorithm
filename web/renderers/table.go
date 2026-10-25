@@ -23,7 +23,11 @@ type TableState struct {
 func RenderTableSVG(step trace.Step, width, height int) string {
 	state, ok := step.State.(TableState)
 	if !ok {
-		return `<text x="50%" y="50%" fill="#8b949e" text-anchor="middle">No table state</text>`
+		if m, isMap := step.State.(map[string]any); isMap {
+			state = parseTableState(m)
+		} else {
+			return `<text x="50%" y="50%" fill="#8b949e" text-anchor="middle">No table state</text>`
+		}
 	}
 
 	numRows := len(state.RowHeaders)
@@ -36,6 +40,10 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 	cellH := 36.0
 	startX := 90.0
 	startY := 50.0
+
+	if avail := (float64(width) - startX - 20.0) / float64(numCols); avail < cellW {
+		cellW = avail
+	}
 
 	var sb strings.Builder
 
@@ -92,4 +100,43 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 	}
 
 	return sb.String()
+}
+
+func parseTableState(m map[string]any) TableState {
+	var state TableState
+	if rowHeaders, ok := m["rowHeaders"].([]any); ok {
+		for _, rh := range rowHeaders {
+			if s, ok := rh.(string); ok {
+				state.RowHeaders = append(state.RowHeaders, s)
+			}
+		}
+	}
+	if colHeaders, ok := m["colHeaders"].([]any); ok {
+		for _, ch := range colHeaders {
+			if s, ok := ch.(string); ok {
+				state.ColHeaders = append(state.ColHeaders, s)
+			}
+		}
+	}
+	if rawCells, ok := m["cells"].([]any); ok {
+		for _, item := range rawCells {
+			if cm, ok := item.(map[string]any); ok {
+				var cell TableCell
+				if r, ok := cm["row"].(float64); ok {
+					cell.Row = int(r)
+				}
+				if c, ok := cm["col"].(float64); ok {
+					cell.Col = int(c)
+				}
+				if v, ok := cm["value"].(string); ok {
+					cell.Value = v
+				}
+				if st, ok := cm["state"].(string); ok {
+					cell.State = st
+				}
+				state.Cells = append(state.Cells, cell)
+			}
+		}
+	}
+	return state
 }
