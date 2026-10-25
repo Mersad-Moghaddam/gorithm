@@ -76,13 +76,25 @@ func renderSidebar(doc js.Value, player *Player) {
 		if len(items) == 0 {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf(`<div class="category-title">%s</div>`, string(cat)))
+		sb.WriteString(fmt.Sprintf(
+			`<div class="category-group">
+				<div class="category-header">
+					<span class="category-title">%s</span>
+					<span class="category-count">%d</span>
+				</div>
+				<div class="category-items">`,
+			string(cat), len(items),
+		))
 		for _, m := range items {
 			sb.WriteString(fmt.Sprintf(
-				`<button class="algo-btn" id="btn-algo-%s" data-id="%s">%s</button>`,
-				m.ID, m.ID, m.Name,
+				`<button class="algo-btn" id="btn-algo-%s" data-id="%s">
+					<span class="algo-name">%s</span>
+					<span class="algo-complexity-tag">%s</span>
+				</button>`,
+				m.ID, m.ID, m.Name, m.Documentation.TimeComplexity,
 			))
 		}
+		sb.WriteString(`</div></div>`)
 	}
 
 	container := doc.Call("getElementById", "algo-categories")
@@ -97,6 +109,10 @@ func renderSidebar(doc js.Value, player *Player) {
 				if l, ok := catalog.Get(id); ok {
 					player.LoadLesson(l)
 					markActiveButton(doc, id)
+					sidebar := doc.Call("getElementById", "sidebar")
+					if !sidebar.IsNull() && !sidebar.IsUndefined() {
+						sidebar.Get("classList").Call("remove", "open")
+					}
 				}
 				return nil
 			}))
@@ -179,6 +195,42 @@ func bindControls(doc js.Value, player *Player) {
 		codeTab.Get("style").Set("display", "none")
 		return nil
 	}))
+
+	// Search filter
+	searchInput := doc.Call("getElementById", "algo-search")
+	if !searchInput.IsNull() && !searchInput.IsUndefined() {
+		searchInput.Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
+			query := strings.ToLower(strings.TrimSpace(this.Get("value").String()))
+			btns := doc.Call("querySelectorAll", ".algo-btn")
+			for i := 0; i < btns.Length(); i++ {
+				btn := btns.Index(i)
+				nameEl := btn.Call("querySelector", ".algo-name")
+				name := ""
+				if !nameEl.IsNull() && !nameEl.IsUndefined() {
+					name = strings.ToLower(nameEl.Get("innerText").String())
+				}
+				id := strings.ToLower(btn.Get("dataset").Get("id").String())
+				if query == "" || strings.Contains(name, query) || strings.Contains(id, query) {
+					btn.Get("style").Set("display", "flex")
+				} else {
+					btn.Get("style").Set("display", "none")
+				}
+			}
+			return nil
+		}))
+	}
+
+	// Mobile Menu Button
+	menuBtn := doc.Call("getElementById", "mobile-menu-btn")
+	if !menuBtn.IsNull() && !menuBtn.IsUndefined() {
+		menuBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			sidebar := doc.Call("getElementById", "sidebar")
+			if !sidebar.IsNull() && !sidebar.IsUndefined() {
+				sidebar.Get("classList").Call("toggle", "open")
+			}
+			return nil
+		}))
+	}
 
 	// Keyboard controls
 	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) any {

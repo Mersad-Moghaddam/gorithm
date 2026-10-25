@@ -23,7 +23,7 @@ type TreeState struct {
 func RenderTreeSVG(step trace.Step, width, height int) string {
 	state, ok := step.State.(TreeState)
 	if !ok {
-		return `<text x="50%" y="50%" fill="#8b949e" text-anchor="middle">No tree state</text>`
+		return `<text x="50%" y="50%" fill="#64748b" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle">No tree state available</text>`
 	}
 
 	nodeMap := make(map[string]TreeNode)
@@ -33,13 +33,45 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 
 	var sb strings.Builder
 
-	// Edges to parents
+	// Defs
+	sb.WriteString(`<defs>
+		<filter id="tree-glow" x="-40%" y="-40%" width="180%" height="180%">
+			<feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+			<feMerge>
+				<feMergeNode in="blur" />
+				<feMergeNode in="SourceGraphic" />
+			</feMerge>
+		</filter>
+		<linearGradient id="tree-grad-node" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#1e293b" />
+			<stop offset="100%" stop-color="#0f172a" />
+		</linearGradient>
+		<linearGradient id="tree-grad-active" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#38bdf8" />
+			<stop offset="100%" stop-color="#0369a1" />
+		</linearGradient>
+		<linearGradient id="tree-grad-match" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#4ade80" />
+			<stop offset="100%" stop-color="#15803d" />
+		</linearGradient>
+		<linearGradient id="tree-grad-insert" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#c084fc" />
+			<stop offset="100%" stop-color="#7e22ce" />
+		</linearGradient>
+		<linearGradient id="tree-grad-delete" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#f87171" />
+			<stop offset="100%" stop-color="#b91c1c" />
+		</linearGradient>
+	</defs>`)
+
+	// Smooth curved organic branch connectors
 	for _, n := range state.Nodes {
 		if n.ParentID != "" {
 			if parent, exists := nodeMap[n.ParentID]; exists {
+				midY := (parent.Y + n.Y) / 2
 				sb.WriteString(fmt.Sprintf(
-					`<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#2d333b" stroke-width="2" />`,
-					parent.X, parent.Y, n.X, n.Y,
+					`<path d="M %.1f %.1f C %.1f %.1f, %.1f %.1f, %.1f %.1f" fill="none" stroke="#334155" stroke-width="2.5" stroke-linecap="round" />`,
+					parent.X, parent.Y, parent.X, midY, n.X, midY, n.X, n.Y,
 				))
 			}
 		}
@@ -47,30 +79,35 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 
 	// Nodes
 	for _, n := range state.Nodes {
-		fillColor := "#1f242c"
-		strokeColor := "#444c56"
+		fillRef := "url(#tree-grad-node)"
+		strokeColor := "#475569"
+		filterStr := ""
 
 		switch n.State {
 		case "active":
-			fillColor = "#3b82f6"
-			strokeColor = "#93c5fd"
+			fillRef = "url(#tree-grad-active)"
+			strokeColor = "#bae6fd"
+			filterStr = `filter="url(#tree-glow)"`
 		case "matched":
-			fillColor = "#22c55e"
-			strokeColor = "#86efac"
+			fillRef = "url(#tree-grad-match)"
+			strokeColor = "#bbf7d0"
+			filterStr = `filter="url(#tree-glow)"`
 		case "inserted":
-			fillColor = "#a855f7"
-			strokeColor = "#d8b4fe"
+			fillRef = "url(#tree-grad-insert)"
+			strokeColor = "#f3e8ff"
+			filterStr = `filter="url(#tree-glow)"`
 		case "deleted":
-			fillColor = "#ef4444"
-			strokeColor = "#fca5a5"
+			fillRef = "url(#tree-grad-delete)"
+			strokeColor = "#fecaca"
+			filterStr = `filter="url(#tree-glow)"`
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			`<circle cx="%.1f" cy="%.1f" r="20" fill="%s" stroke="%s" stroke-width="2" style="transition: all 0.25s ease;" />`,
-			n.X, n.Y, fillColor, strokeColor,
+			`<circle cx="%.1f" cy="%.1f" r="22" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" />`,
+			n.X, n.Y, fillRef, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="#f0f6fc" font-size="12" font-family="ui-monospace, monospace" font-weight="600" text-anchor="middle" dy="4">%d</text>`,
+			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="13" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle" dy="5">%d</text>`,
 			n.X, n.Y, n.Val,
 		))
 	}

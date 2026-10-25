@@ -8,10 +8,10 @@ import (
 )
 
 type TableCell struct {
-	Row     int    `json:"row"`
-	Col     int    `json:"col"`
-	Value   string `json:"value"`
-	State   string `json:"state"` // "normal", "active", "computed", "source"
+	Row   int    `json:"row"`
+	Col   int    `json:"col"`
+	Value string `json:"value"`
+	State string `json:"state"` // "normal", "active", "computed", "source"
 }
 
 type TableState struct {
@@ -26,33 +26,44 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		if m, isMap := step.State.(map[string]any); isMap {
 			state = parseTableState(m)
 		} else {
-			return `<text x="50%" y="50%" fill="#8b949e" text-anchor="middle">No table state</text>`
+			return `<text x="50%" y="50%" fill="#64748b" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle">No table state available</text>`
 		}
 	}
 
 	numRows := len(state.RowHeaders)
 	numCols := len(state.ColHeaders)
 	if numRows == 0 || numCols == 0 {
-		return `<text x="50%" y="50%" fill="#8b949e" text-anchor="middle">Empty table</text>`
+		return `<text x="50%" y="50%" fill="#64748b" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle">Empty table</text>`
 	}
 
-	cellW := 52.0
-	cellH := 36.0
-	startX := 90.0
-	startY := 50.0
+	cellW := 54.0
+	cellH := 38.0
+	startX := 100.0
+	startY := 60.0
 
-	if avail := (float64(width) - startX - 20.0) / float64(numCols); avail < cellW {
+	if avail := (float64(width) - startX - 30.0) / float64(numCols); avail < cellW {
 		cellW = avail
 	}
 
 	var sb strings.Builder
 
+	// Defs for table styling
+	sb.WriteString(`<defs>
+		<filter id="cell-glow" x="-30%" y="-30%" width="160%" height="160%">
+			<feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+			<feMerge>
+				<feMergeNode in="blur" />
+				<feMergeNode in="SourceGraphic" />
+			</feMerge>
+		</filter>
+	</defs>`)
+
 	// Column Headers
 	for c, header := range state.ColHeaders {
 		x := startX + float64(c)*cellW
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="#8b949e" font-size="12" font-family="ui-monospace, monospace" font-weight="600" text-anchor="middle">%s</text>`,
-			x+cellW/2, startY-12, header,
+			`<text x="%.1f" y="%.1f" fill="#94a3b8" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%s</text>`,
+			x+cellW/2, startY-14, header,
 		))
 	}
 
@@ -60,8 +71,8 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 	for r, header := range state.RowHeaders {
 		y := startY + float64(r)*cellH
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="#8b949e" font-size="12" font-family="ui-monospace, monospace" font-weight="600" text-anchor="end">%s</text>`,
-			startX-12, y+cellH/2+4, header,
+			`<text x="%.1f" y="%.1f" fill="#94a3b8" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="end">%s</text>`,
+			startX-14, y+cellH/2+4, header,
 		))
 	}
 
@@ -70,32 +81,35 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		x := startX + float64(cell.Col)*cellW
 		y := startY + float64(cell.Row)*cellH
 
-		fillColor := "#161b22"
-		strokeColor := "#2d333b"
-		textColor := "#f0f6fc"
+		fillColor := "#0f172a"
+		strokeColor := "#1e293b"
+		textColor := "#cbd5e1"
+		filterStr := ""
 
 		switch cell.State {
 		case "active":
-			fillColor = "#1e3a5f"
+			fillColor = "#0284c7"
 			strokeColor = "#38bdf8"
-			textColor = "#7dd3fc"
+			textColor = "#ffffff"
+			filterStr = `filter="url(#cell-glow)"`
 		case "computed":
-			fillColor = "#14532d"
-			strokeColor = "#22c55e"
-			textColor = "#86efac"
+			fillColor = "#15803d"
+			strokeColor = "#4ade80"
+			textColor = "#ffffff"
 		case "source":
-			fillColor = "#581c87"
-			strokeColor = "#a855f7"
-			textColor = "#d8b4fe"
+			fillColor = "#7e22ce"
+			strokeColor = "#c084fc"
+			textColor = "#ffffff"
+			filterStr = `filter="url(#cell-glow)"`
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="3" fill="%s" stroke="%s" stroke-width="1.5" />`,
-			x, y, cellW-2, cellH-2, fillColor, strokeColor,
+			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.5" %s style="transition: all 0.25s ease;" />`,
+			x, y, cellW-4, cellH-4, fillColor, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="%s" font-size="12" font-family="ui-monospace, monospace" font-weight="600" text-anchor="middle">%s</text>`,
-			x+(cellW-2)/2, y+(cellH-2)/2+4, textColor, cell.Value,
+			`<text x="%.1f" y="%.1f" fill="%s" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%s</text>`,
+			x+(cellW-4)/2, y+(cellH-4)/2+4, textColor, cell.Value,
 		))
 	}
 

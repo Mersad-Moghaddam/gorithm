@@ -3,120 +3,239 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gorithm - See Go Algorithms Think</title>
+  <title>Gorithm — Interactive Algorithm Studio</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="/static/wasm_exec.js"></script>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <div class="brand-logo">Gorithm</div>
-      <div class="tagline">Interactive Go Algorithm Engine</div>
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle algorithms menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <span class="brand-title">Gorithm</span>
+          <span class="brand-badge">GO • WASM</span>
+        </div>
+      </div>
     </div>
-    <div class="header-links">
-      <a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" class="btn" style="text-decoration:none;">GitHub</a>
+
+    <div class="header-center">
+      <div class="live-pill">
+        <span class="pulse-dot"></span>
+        <span class="live-text">Deterministic Engine: Online</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" rel="noopener noreferrer" class="github-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
     </div>
   </header>
 
-  <div class="app-container">
-    <!-- Left Sidebar: Algorithm List -->
-    <aside class="sidebar" id="sidebar">
-      <div id="algo-categories">
-        <!-- Rendered by Go/WASM -->
-        <div style="padding: 12px; color: var(--text-muted); font-size: 13px;">Loading algorithms...</div>
+  <div class="studio-layout">
+    <!-- Left Navigation: Searchable Algorithm Deck -->
+    <aside class="sidebar-deck" id="sidebar">
+      <div class="search-wrapper">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="algo-search" class="search-input" placeholder="Filter 20 algorithms..." autocomplete="off">
+      </div>
+
+      <div class="deck-scroll" id="algo-categories">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <span>Loading Go algorithms...</span>
+        </div>
       </div>
     </aside>
 
-    <!-- Center Pane: Visualizer & Controls -->
-    <main class="center-pane">
-      <div class="viz-header">
-        <div>
-          <h1 class="viz-title" id="viz-title">Select Algorithm</h1>
-          <div class="tagline" id="viz-category">Interactive visualization</div>
+    <!-- Center Pane: Visualizer Canvas & Floating Dock -->
+    <main class="visualizer-stage">
+      <div class="stage-hud">
+        <div class="hud-left">
+          <div class="hud-tag" id="viz-category">Algorithm Group</div>
+          <h1 class="hud-title" id="viz-title">Select Algorithm</h1>
         </div>
-        <div class="viz-complexity" id="viz-complexity">Time: O(1) | Space: O(1)</div>
+        <div class="hud-right">
+          <div class="action-pill" id="viz-action">READY</div>
+          <div class="complexity-chip" id="viz-complexity">Time: O(1) • Space: O(1)</div>
+        </div>
       </div>
 
-      <div class="stage-wrapper">
+      <div class="canvas-viewport">
         <svg id="svg-stage" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid meet">
           <!-- Rendered dynamically by Go/WASM -->
         </svg>
       </div>
 
-      <div class="control-dock">
-        <div class="timeline-row">
-          <input type="range" id="scrubber" class="scrubber" min="0" max="0" value="0">
-          <span class="step-counter" id="step-counter">Step: 0 / 0</span>
-        </div>
-        <div class="action-row">
-          <div class="button-group">
-            <button class="btn" id="btn-reset">Reset</button>
-            <button class="btn" id="btn-prev">Prev</button>
-            <button class="btn btn-primary" id="btn-play">Play</button>
-            <button class="btn" id="btn-next">Next</button>
+      <!-- Floating Glass Control Capsule -->
+      <div class="dock-container">
+        <div class="dock-capsule">
+          <div class="dock-scrubber-row">
+            <span class="scrub-label">Progress</span>
+            <input type="range" id="scrubber" class="dock-scrubber" min="0" max="0" value="0">
+            <span class="step-counter" id="step-counter">Step 0 of 0</span>
           </div>
-          <div class="speed-control">
-            <label for="speed-select">Speed:</label>
-            <select id="speed-select" class="btn" style="padding: 4px 8px;">
-              <option value="0.25">0.25x</option>
-              <option value="0.5">0.5x</option>
-              <option value="1" selected>1.0x</option>
-              <option value="1.5">1.5x</option>
-              <option value="2">2.0x</option>
-            </select>
+
+          <div class="dock-actions-row">
+            <div class="dock-btn-group">
+              <button class="dock-btn" id="btn-reset" title="Restart (R)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+                <span>Reset</span>
+              </button>
+
+              <button class="dock-btn" id="btn-prev" title="Previous Step (Left Arrow)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                  <line x1="5" y1="19" x2="5" y2="5"></line>
+                </svg>
+                <span>Prev</span>
+              </button>
+
+              <button class="dock-btn dock-btn-primary" id="btn-play" title="Play / Pause (Space)">
+                <svg class="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Play</span>
+              </button>
+
+              <button class="dock-btn" id="btn-next" title="Next Step (Right Arrow)">
+                <span>Next</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                  <line x1="19" y1="5" x2="19" y2="19"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div class="dock-speed-group">
+              <span class="speed-label">Speed</span>
+              <select id="speed-select" class="speed-dropdown">
+                <option value="0.25">0.25x (Study)</option>
+                <option value="0.5">0.5x (Slow)</option>
+                <option value="1" selected>1.0x (Normal)</option>
+                <option value="1.5">1.5x (Fast)</option>
+                <option value="2">2.0x (Hyper)</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
     </main>
 
-    <!-- Right Pane: Source Code & Documentation -->
-    <aside class="right-pane">
-      <div class="tab-nav">
-        <button class="tab-btn active" id="tab-code-btn">Code</button>
-        <button class="tab-btn" id="tab-doc-btn">Learn</button>
+    <!-- Right Inspector: Code Stream & Masterclass Learn -->
+    <aside class="inspector-deck">
+      <div class="inspector-tabs">
+        <button class="tab-pill active" id="tab-code-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+          <span>Code Stream</span>
+        </button>
+        <button class="tab-pill" id="tab-doc-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+          <span>Learn</span>
+        </button>
       </div>
 
-      <!-- Code tab -->
-      <div class="tab-content" id="tab-code">
-        <div class="metrics-box">
-          <div class="metric-item">
-            <div class="metric-val" id="metric-comps">0</div>
-            <div class="metric-label">Compares</div>
+      <!-- Tab 1: Code Stream -->
+      <div class="inspector-body" id="tab-code">
+        <!-- Live Metrics Grid -->
+        <div class="telemetry-grid">
+          <div class="telemetry-card">
+            <span class="telemetry-num" id="metric-comps">0</span>
+            <span class="telemetry-tag">Comparisons</span>
           </div>
-          <div class="metric-item">
-            <div class="metric-val" id="metric-swaps">0</div>
-            <div class="metric-label">Swaps</div>
+          <div class="telemetry-card">
+            <span class="telemetry-num" id="metric-swaps">0</span>
+            <span class="telemetry-tag">Swaps</span>
           </div>
-          <div class="metric-item">
-            <div class="metric-val" id="metric-ops">0</div>
-            <div class="metric-label">Ops</div>
+          <div class="telemetry-card">
+            <span class="telemetry-num" id="metric-ops">0</span>
+            <span class="telemetry-tag">Operations</span>
           </div>
         </div>
-        <div class="step-explanation" id="step-explanation">
-          Execution ready. Click Play or Next.
+
+        <!-- Live Step Explanation Box -->
+        <div class="step-narration">
+          <div class="narration-header">
+            <span class="narration-indicator"></span>
+            <span class="narration-title">Execution Step</span>
+          </div>
+          <p id="step-explanation" class="narration-text">Select an algorithm to begin.</p>
         </div>
-        <div class="code-view" id="code-container">
-          <!-- Lines rendered by Go/WASM -->
+
+        <!-- Live Variables Deck -->
+        <div class="variables-section">
+          <span class="section-micro-label">Memory Snapshot</span>
+          <div class="variables-deck" id="step-variables">
+            <span class="var-empty">No active local variables</span>
+          </div>
+        </div>
+
+        <!-- Go Source Code Stream -->
+        <div class="code-stream-wrapper">
+          <div class="code-stream-header">
+            <span class="file-name">algorithm.go</span>
+            <span class="go-tag">Go 1.24</span>
+          </div>
+          <div class="code-container" id="code-container">
+            <!-- Rendered by Go/WASM -->
+          </div>
         </div>
       </div>
 
-      <!-- Learn/Documentation tab -->
-      <div class="tab-content" id="tab-doc" style="display: none;">
-        <div class="doc-section">
-          <h4>Overview</h4>
-          <p id="doc-summary"></p>
+      <!-- Tab 2: Masterclass Documentation -->
+      <div class="inspector-body" id="tab-doc" style="display: none;">
+        <div class="doc-card">
+          <h3 class="doc-heading">Overview</h3>
+          <p id="doc-summary" class="doc-body"></p>
         </div>
-        <div class="doc-section">
-          <h4>How It Works</h4>
-          <p id="doc-how"></p>
+
+        <div class="doc-card">
+          <h3 class="doc-heading">How It Works</h3>
+          <p id="doc-how" class="doc-body"></p>
         </div>
-        <div class="doc-section">
-          <h4>Key Concepts</h4>
-          <div id="doc-concepts"></div>
+
+        <div class="doc-card">
+          <h3 class="doc-heading">Key Invariants</h3>
+          <div id="doc-concepts" class="concepts-cloud"></div>
         </div>
-        <div class="doc-section">
-          <h4>Complexity</h4>
-          <p id="doc-complexity-detail"></p>
+
+        <div class="doc-card">
+          <h3 class="doc-heading">Computational Complexity</h3>
+          <pre id="doc-complexity-detail" class="doc-code-block"></pre>
         </div>
       </div>
     </aside>
@@ -130,7 +249,8 @@
       })
       .catch(err => {
         console.error("Failed to load WebAssembly:", err);
-        document.getElementById("viz-title").innerText = "WebAssembly Loading Error";
+        const title = document.getElementById("viz-title");
+        if (title) title.innerText = "WebAssembly Loading Failed";
       });
   </script>
 </body>

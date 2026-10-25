@@ -126,7 +126,7 @@ func (p *Player) RenderStep(idx int) {
 	}
 	p.doc.Call("getElementById", "svg-stage").Set("innerHTML", svgContent)
 
-	// 2. Update line highlight
+	// 2. Update line highlight & auto-scroll
 	allLines := p.doc.Call("querySelectorAll", ".code-line")
 	for i := 0; i < allLines.Length(); i++ {
 		allLines.Index(i).Get("classList").Call("remove", "active")
@@ -135,17 +135,35 @@ func (p *Player) RenderStep(idx int) {
 		activeEl := p.doc.Call("getElementById", "line-"+step.LineID)
 		if !activeEl.IsNull() && !activeEl.IsUndefined() {
 			activeEl.Get("classList").Call("add", "active")
+			activeEl.Call("scrollIntoView", map[string]any{"block": "nearest", "behavior": "smooth"})
 		}
 	}
 
 	// 3. Update scrubber & step counter
 	p.doc.Call("getElementById", "scrubber").Set("value", idx)
-	p.doc.Call("getElementById", "step-counter").Set("innerText", fmt.Sprintf("Step: %d / %d", idx+1, len(p.steps)))
+	p.doc.Call("getElementById", "step-counter").Set("innerText", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
 
-	// 4. Update Explanation
+	// 4. Update Action Pill
+	actionEl := p.doc.Call("getElementById", "viz-action")
+	if !actionEl.IsNull() && !actionEl.IsUndefined() {
+		actionEl.Set("innerText", strings.ToUpper(string(step.Action)))
+		actionEl.Set("className", fmt.Sprintf("action-pill action-%s", step.Action))
+	}
+
+	// 5. Update Live Variables Pill Deck
+	varsEl := p.doc.Call("getElementById", "step-variables")
+	if !varsEl.IsNull() && !varsEl.IsUndefined() {
+		var varsHTML strings.Builder
+		for k, v := range step.Variables {
+			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%v</span></span>`, k, v))
+		}
+		varsEl.Set("innerHTML", varsHTML.String())
+	}
+
+	// 6. Update Explanation
 	p.doc.Call("getElementById", "step-explanation").Set("innerText", step.Explanation)
 
-	// 5. Update Metrics
+	// 7. Update Metrics
 	p.doc.Call("getElementById", "metric-comps").Set("innerText", fmt.Sprintf("%d", step.Metrics.Comparisons))
 	p.doc.Call("getElementById", "metric-swaps").Set("innerText", fmt.Sprintf("%d", step.Metrics.Swaps))
 	p.doc.Call("getElementById", "metric-ops").Set("innerText", fmt.Sprintf("%d", step.Metrics.Operations))
