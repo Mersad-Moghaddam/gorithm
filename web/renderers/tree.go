@@ -10,6 +10,7 @@ import (
 type TreeNode struct {
 	ID       string  `json:"id"`
 	Val      int     `json:"val"`
+	Label    string  `json:"label,omitempty"`
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 	ParentID string  `json:"parentId"`
@@ -102,13 +103,17 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 			filterStr = `filter="url(#tree-glow)"`
 		}
 
+		displayText := fmt.Sprintf("%d", n.Val)
+		if n.Label != "" {
+			displayText = n.Label
+		}
 		sb.WriteString(fmt.Sprintf(
 			`<circle cx="%.1f" cy="%.1f" r="22" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" />`,
 			n.X, n.Y, fillRef, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="13" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle" dy="5">%d</text>`,
-			n.X, n.Y, n.Val,
+			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="13" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle" dy="5">%s</text>`,
+			n.X, n.Y, displayText,
 		))
 	}
 

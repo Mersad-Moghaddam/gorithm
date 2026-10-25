@@ -81,6 +81,23 @@
           <h1 class="hud-title" id="viz-title">Select Algorithm</h1>
         </div>
         <div class="hud-right">
+          <button class="hud-action-btn" id="btn-shuffle" title="Shuffle / Randomize Input">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 3 21 3 21 8"></polyline>
+              <line x1="4" y1="20" x2="21" y2="3"></line>
+              <polyline points="21 16 21 21 16 21"></polyline>
+              <line x1="15" y1="15" x2="21" y2="21"></line>
+              <line x1="4" y1="4" x2="9" y2="9"></line>
+            </svg>
+            <span>Shuffle</span>
+          </button>
+          <button class="hud-action-btn" id="btn-custom-input" title="Custom Input Dialog">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            <span>Custom Data</span>
+          </button>
           <div class="action-pill" id="viz-action">READY</div>
           <div class="complexity-chip" id="viz-complexity">Time: O(1) • Space: O(1)</div>
         </div>
@@ -239,6 +256,28 @@
         </div>
       </div>
     </aside>
+  </div>
+
+  <!-- Interactive Input Lab Modal -->
+  <div class="modal-backdrop" id="custom-modal" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-head">
+        <div class="modal-title-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+          <span class="modal-title">Custom Dataset Lab</span>
+        </div>
+        <button class="modal-close" id="btn-modal-close" aria-label="Close dialog">&times;</button>
+      </div>
+      <p class="modal-desc">Provide your own JSON array or values to observe the algorithm solve your specific test case:</p>
+      <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]">
+      <div class="modal-foot">
+        <button class="dock-btn" id="btn-modal-cancel">Cancel</button>
+        <button class="dock-btn dock-btn-primary" id="btn-modal-apply">Apply &amp; Visualize</button>
+      </div>
+    </div>
   </div>
 
   <script>

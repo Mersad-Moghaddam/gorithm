@@ -93,13 +93,17 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 			from.X, from.Y, to.X, to.Y, edgeColor, strokeW, filterStr,
 		))
 
-		if e.Weight > 0 {
+		if e.Weight != 0 {
 			midX := (from.X + to.X) / 2
 			midY := (from.Y + to.Y) / 2
+			pillWidth := 22.0
+			if e.Weight < 0 || e.Weight >= 10 || e.Weight <= -10 {
+				pillWidth = 26.0
+			}
 			// Pill backdrop for weight
 			sb.WriteString(fmt.Sprintf(
-				`<rect x="%.1f" y="%.1f" width="22" height="16" rx="8" fill="#090d16" stroke="#334155" stroke-width="1" />`,
-				midX-11, midY-8,
+				`<rect x="%.1f" y="%.1f" width="%.1f" height="16" rx="8" fill="#090d16" stroke="#334155" stroke-width="1" />`,
+				midX-(pillWidth/2), midY-8, pillWidth,
 			))
 			sb.WriteString(fmt.Sprintf(
 				`<text x="%.1f" y="%.1f" fill="#94a3b8" font-size="10" font-family="ui-monospace, monospace" font-weight="700" text-anchor="middle" dy="4">%d</text>`,

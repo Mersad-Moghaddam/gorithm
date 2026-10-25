@@ -56,7 +56,8 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -194,8 +195,8 @@ body {
   flex: 1;
   display: grid;
   grid-template-columns: 280px 1fr 390px;
-  height: calc(100vh - 64px);
-  overflow: hidden;
+  min-height: calc(100vh - 64px);
+  overflow: visible;
 }
 
 /* ==========================================================================
@@ -384,7 +385,8 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .stage-hud {
@@ -418,6 +420,28 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.hud-action-btn {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-body);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.hud-action-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-pure);
+  border-color: var(--border-medium);
+  transform: translateY(-1px);
 }
 
 .action-pill {
@@ -474,9 +498,10 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  padding-bottom: 110px; /* Space for floating dock */
-  overflow: hidden;
+  padding-bottom: 120px; /* Space for floating dock */
+  overflow: visible;
   position: relative;
+  min-height: 420px;
 }
 
 #svg-stage {
@@ -917,6 +942,14 @@ body {
   white-space: pre;
 }
 
+/* Go Syntax Highlighting Tokens */
+.syn-kw { color: #f43f5e; font-weight: 700; }
+.syn-type { color: #38bdf8; font-weight: 600; }
+.syn-fn { color: #fbbf24; font-weight: 600; }
+.syn-num { color: #34d399; font-weight: 500; }
+.syn-str { color: #a7f3d0; }
+.syn-comment { color: #64748b; font-style: italic; }
+
 /* Documentation Cards */
 .doc-card {
   background: var(--bg-surface-elevated);
@@ -972,15 +1005,16 @@ body {
    Responsive Breakpoints
    ========================================================================== */
 
-@media (max-width: 1200px) {
-  .studio-layout {
-    grid-template-columns: 240px 1fr 340px;
+@media (max-width: 1024px) {
+  body {
+    overflow-y: auto !important;
   }
-}
 
-@media (max-width: 960px) {
   .studio-layout {
-    grid-template-columns: 1fr 340px;
+    grid-template-columns: 1fr;
+    height: auto !important;
+    min-height: auto;
+    overflow: visible !important;
   }
 
   .mobile-menu-btn {
@@ -992,23 +1026,34 @@ body {
     top: 64px;
     bottom: 0;
     left: 0;
-    width: 280px;
+    width: 300px;
+    height: calc(100vh - 64px);
     z-index: 100;
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.6);
   }
 
   .sidebar-deck.open {
     transform: translateX(0);
   }
+
+  .visualizer-stage {
+    min-height: 540px;
+    height: auto;
+    overflow: visible;
+  }
+
+  .inspector-deck {
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+    height: auto;
+    min-height: 520px;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 768px) {
-  body {
-    overflow: auto;
-  }
-
   .app-header {
     padding: 0 16px;
   }
@@ -1017,22 +1062,13 @@ body {
     display: none;
   }
 
-  .studio-layout {
-    grid-template-columns: 1fr;
-    height: auto;
-    overflow: visible;
-  }
-
-  .visualizer-stage {
-    min-height: 480px;
-  }
-
   .canvas-viewport {
-    padding-bottom: 140px;
+    padding: 16px 12px 140px 12px;
   }
 
   .dock-capsule {
-    max-width: 95%;
+    max-width: 96%;
+    padding: 12px 14px;
   }
 
   .dock-actions-row {
@@ -1048,10 +1084,92 @@ body {
   .dock-speed-group {
     justify-content: center;
   }
+}
 
-  .inspector-deck {
-    border-left: none;
-    border-top: 1px solid var(--border-subtle);
-    min-height: 450px;
-  }
+/* Interactive Modal Backdrop */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 17, 0.75);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-dialog {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  padding: 24px;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.8), 0 0 24px rgba(56, 189, 248, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-pure);
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--text-pure);
+}
+
+.modal-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.modal-input {
+  background: var(--code-bg);
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+}
+
+.modal-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
 }

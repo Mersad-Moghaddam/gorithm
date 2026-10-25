@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -33,22 +34,41 @@ func NewPlayer(doc js.Value) *Player {
 }
 
 func (p *Player) LoadLesson(l catalog.Lesson) {
+	p.LoadLessonWithInput(l, nil)
+}
+
+func (p *Player) LoadLessonWithInput(l catalog.Lesson, input []byte) {
 	p.Pause()
 
 	p.mu.Lock()
 	p.lesson = l
-	steps, err := l.Build(nil)
+	steps, err := l.Build(input)
 	if err != nil {
 		fmt.Printf("Error building lesson: %v\n", err)
-		p.steps = nil
-	} else {
-		p.steps = steps
+		steps, _ = l.Build(nil)
 	}
+	p.steps = steps
 	p.stepIdx = 0
 	p.mu.Unlock()
 
 	p.renderLessonShell()
 	p.RenderStep(0)
+}
+
+func (p *Player) Shuffle() {
+	p.mu.Lock()
+	l := p.lesson
+	p.mu.Unlock()
+	if l == nil {
+		return
+	}
+	// Generate random dataset for interactive user play
+	vals := make([]int, 6)
+	for i := range vals {
+		vals[i] = 10 + int((time.Now().UnixNano()+int64(i*37))%85)
+	}
+	data, _ := json.Marshal(vals)
+	p.LoadLessonWithInput(l, data)
 }
 
 func (p *Player) renderLessonShell() {
@@ -73,12 +93,12 @@ func (p *Player) renderLessonShell() {
 	}
 	p.doc.Call("getElementById", "doc-concepts").Set("innerHTML", conceptsHTML.String())
 
-	// Code container
+	// Code container with syntax highlighting
 	var codeHTML strings.Builder
 	for _, line := range p.lesson.Source() {
 		codeHTML.WriteString(fmt.Sprintf(
 			`<div class="code-line" id="line-%s"><span class="line-num">%d</span><span class="line-text">%s</span></div>`,
-			line.ID, line.Number, escapeHTML(line.Code),
+			line.ID, line.Number, renderers.HighlightGoCode(line.Code),
 		))
 	}
 	p.doc.Call("getElementById", "code-container").Set("innerHTML", codeHTML.String())

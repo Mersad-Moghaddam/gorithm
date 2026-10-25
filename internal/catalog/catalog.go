@@ -11,18 +11,21 @@ import (
 type Category string
 
 const (
-	CategorySorting   Category = "Sorting"
-	CategorySearching Category = "Search & Strings"
-	CategoryGraphs    Category = "Graphs"
-	CategoryTrees     Category = "Trees"
-	CategoryRecursion Category = "Recursion"
-	CategoryDP        Category = "Dynamic Programming"
+	CategoryAI           Category = "Artificial Intelligence"
+	CategorySorting      Category = "Sorting"
+	CategorySearching    Category = "Search & Strings"
+	CategoryGraphs       Category = "Graphs"
+	CategoryTrees        Category = "Trees & Data Structures"
+	CategoryBacktracking Category = "Backtracking & Games"
+	CategoryDP           Category = "Dynamic Programming"
+	CategoryRecursion    Category = "Recursion"
 )
 
 type Documentation struct {
 	Summary         string   `json:"summary"`
 	TimeComplexity  string   `json:"timeComplexity"`
 	SpaceComplexity string   `json:"spaceComplexity"`
+	Difficulty      string   `json:"difficulty"`
 	KeyConcepts     []string `json:"keyConcepts"`
 	HowItWorks      string   `json:"howItWorks"`
 }

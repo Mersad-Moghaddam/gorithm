@@ -9,25 +9,45 @@ import (
 	"syscall/js"
 
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/astar"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/avl"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/bellmanford"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/bfs"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/binarysearch"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/bst"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/bubble"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/bucketsort"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/coinchange"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/countingsort"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/dfs"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/dijkstra"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/fibonacci"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/floydwarshall"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/genetic"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/gradientdescent"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/heap"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/hanoitower"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/insertion"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/kmeans"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/kmp"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/knapsack"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/kosaraju"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/kruskal"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/lcs"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/linearsearch"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/merge"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/minimax"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/nqueens"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/perceptron"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/prim"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/qlearning"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/quick"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/radixsort"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/segmenttree"
 	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/selection"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/sudoku"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/toposort"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/trie"
+	_ "github.com/Mersad-Moghaddam/gorithm/internal/algorithms/unionfind"
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 )
 
@@ -58,12 +78,14 @@ func renderSidebar(doc js.Value, player *Player) {
 	metas := catalog.List()
 	categories := make(map[catalog.Category][]catalog.Meta)
 	catOrder := []catalog.Category{
+		catalog.CategoryAI,
 		catalog.CategorySorting,
 		catalog.CategorySearching,
 		catalog.CategoryGraphs,
 		catalog.CategoryTrees,
-		catalog.CategoryRecursion,
+		catalog.CategoryBacktracking,
 		catalog.CategoryDP,
+		catalog.CategoryRecursion,
 	}
 
 	for _, m := range metas {
@@ -227,6 +249,57 @@ func bindControls(doc js.Value, player *Player) {
 			sidebar := doc.Call("getElementById", "sidebar")
 			if !sidebar.IsNull() && !sidebar.IsUndefined() {
 				sidebar.Get("classList").Call("toggle", "open")
+			}
+			return nil
+		}))
+	}
+
+	// User Interaction: Shuffle
+	shuffleBtn := doc.Call("getElementById", "btn-shuffle")
+	if !shuffleBtn.IsNull() && !shuffleBtn.IsUndefined() {
+		shuffleBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			player.Shuffle()
+			return nil
+		}))
+	}
+
+	// User Interaction: Custom Input Modal
+	modal := doc.Call("getElementById", "custom-modal")
+	customBtn := doc.Call("getElementById", "btn-custom-input")
+	closeBtn := doc.Call("getElementById", "btn-modal-close")
+	cancelBtn := doc.Call("getElementById", "btn-modal-cancel")
+	applyBtn := doc.Call("getElementById", "btn-modal-apply")
+	inputField := doc.Call("getElementById", "custom-input-val")
+
+	if !customBtn.IsNull() && !customBtn.IsUndefined() {
+		customBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			modal.Get("style").Set("display", "flex")
+			return nil
+		}))
+	}
+	closeModal := func() {
+		if !modal.IsNull() && !modal.IsUndefined() {
+			modal.Get("style").Set("display", "none")
+		}
+	}
+	if !closeBtn.IsNull() && !closeBtn.IsUndefined() {
+		closeBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			closeModal()
+			return nil
+		}))
+	}
+	if !cancelBtn.IsNull() && !cancelBtn.IsUndefined() {
+		cancelBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			closeModal()
+			return nil
+		}))
+	}
+	if !applyBtn.IsNull() && !applyBtn.IsUndefined() {
+		applyBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			val := inputField.Get("value").String()
+			closeModal()
+			if strings.TrimSpace(val) != "" && player.lesson != nil {
+				player.LoadLessonWithInput(player.lesson, []byte(val))
 			}
 			return nil
 		}))
