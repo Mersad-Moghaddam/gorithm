@@ -19,8 +19,8 @@
   /* Typographic Colors */
   --text-pure: #f8fafc;
   --text-body: #cbd5e1;
-  --text-muted: #8492a6;
-  --text-faint: #475569;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
 
   /* Vibrant Accents */
   --accent-cyan: #38bdf8;
@@ -209,8 +209,9 @@ body {
   flex: 1;
   display: grid;
   grid-template-columns: 280px 1fr 390px;
+  height: calc(100vh - 64px);
   min-height: calc(100vh - 64px);
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* ==========================================================================
@@ -287,6 +288,36 @@ body {
   justify-content: space-between;
   padding: 6px 10px;
   margin-bottom: 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.category-header:hover {
+  background-color: var(--bg-surface-hover);
+}
+
+.category-header:hover .category-title {
+  color: var(--text-pure);
+}
+
+.category-header .chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text-muted);
+}
+
+.category-group.collapsed .category-header .chevron,
+.category-header.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.category-group.open .category-header .chevron,
+.category-header.open .chevron {
+  transform: rotate(90deg);
 }
 
 .category-title {
@@ -536,6 +567,34 @@ body {
   border-radius: 6px;
 }
 
+.stage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px 28px;
+  gap: 16px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(6, 9, 17, 0.2);
+}
+
+.legend-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-text {
+  color: var(--text-muted);
+}
+
 .canvas-viewport {
   flex: 1;
   display: flex;
@@ -570,12 +629,15 @@ body {
   padding: 0 24px;
   pointer-events: none;
   z-index: 30;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dock-capsule {
   pointer-events: auto;
   background: rgba(18, 25, 42, 0.85);
   backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 18px;
   padding: 14px 20px;
@@ -697,6 +759,18 @@ body {
   background: linear-gradient(135deg, #0369a1, #1d4ed8);
   box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
   transform: translateY(-1px);
+}
+
+.kbd-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-medium);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-muted);
+  margin-left: 4px;
 }
 
 .dock-speed-group {
@@ -918,6 +992,9 @@ body {
   background: var(--code-bg);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  max-height: 380px;
   overflow: hidden;
   box-shadow: var(--shadow-card);
 }
@@ -950,7 +1027,11 @@ body {
   font-size: 12px;
   line-height: 1.65;
   padding: 8px 0;
+  overflow-y: auto;
   overflow-x: auto;
+  flex: 1;
+  min-height: 180px;
+  max-height: 340px;
 }
 
 .code-line {
@@ -1130,6 +1211,16 @@ body {
   }
 }
 
+/* Mobile Navigation Backdrop */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 17, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 95;
+}
+
 /* Interactive Modal Backdrop */
 .modal-backdrop {
   position: fixed;
@@ -1193,6 +1284,44 @@ body {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.preset-chip {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.preset-chip:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-medium);
+  color: var(--text-pure);
+}
+
+.preset-chip:active {
+  background: var(--bg-surface-elevated);
+  border-color: var(--accent-cyan);
 }
 
 .modal-input {

@@ -93,20 +93,31 @@ func renderSidebar(doc js.Value, player *Player) {
 		categories[m.Category] = append(categories[m.Category], m)
 	}
 
+	var activeCat catalog.Category
+	if player.lesson != nil {
+		activeCat = player.lesson.Meta().Category
+	} else if len(metas) > 0 {
+		activeCat = metas[0].Category
+	}
+
 	var sb strings.Builder
 	for _, cat := range catOrder {
 		items := categories[cat]
 		if len(items) == 0 {
 			continue
 		}
+		itemsDisplay := "none"
+		if cat == activeCat {
+			itemsDisplay = "flex"
+		}
 		sb.WriteString(fmt.Sprintf(
-			`<div class="category-group">
-				<div class="category-header">
+			`<div class="category-group" data-category="%s">
+				<div class="category-header" style="cursor: pointer;">
 					<span class="category-title">%s</span>
 					<span class="category-count">%d</span>
 				</div>
-				<div class="category-items">`,
-			string(cat), len(items),
+				<div class="category-items" style="display: %s;">`,
+			string(cat), string(cat), len(items), itemsDisplay,
 		))
 		for _, m := range items {
 			sb.WriteString(fmt.Sprintf(
@@ -123,6 +134,26 @@ func renderSidebar(doc js.Value, player *Player) {
 	container := doc.Call("getElementById", "algo-categories")
 	container.Set("innerHTML", sb.String())
 
+	// Attach click listeners to category headers for accordion toggling
+	headers := container.Call("querySelectorAll", ".category-header")
+	for i := 0; i < headers.Length(); i++ {
+		headers.Index(i).Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			parent := this.Get("parentElement")
+			if !parent.IsNull() && !parent.IsUndefined() {
+				itemsEl := parent.Call("querySelector", ".category-items")
+				if !itemsEl.IsNull() && !itemsEl.IsUndefined() {
+					disp := itemsEl.Get("style").Get("display").String()
+					if disp == "none" {
+						itemsEl.Get("style").Set("display", "flex")
+					} else {
+						itemsEl.Get("style").Set("display", "none")
+					}
+				}
+			}
+			return nil
+		}))
+	}
+
 	// Attach click listeners to algorithm buttons
 	for _, m := range metas {
 		id := m.ID
@@ -135,6 +166,10 @@ func renderSidebar(doc js.Value, player *Player) {
 					sidebar := doc.Call("getElementById", "sidebar")
 					if !sidebar.IsNull() && !sidebar.IsUndefined() {
 						sidebar.Get("classList").Call("remove", "open")
+					}
+					backdrop := doc.Call("getElementById", "drawer-backdrop")
+					if !backdrop.IsNull() && !backdrop.IsUndefined() {
+						backdrop.Get("style").Set("display", "none")
 					}
 				}
 				return nil
@@ -151,6 +186,13 @@ func markActiveButton(doc js.Value, activeID string) {
 	activeBtn := doc.Call("getElementById", "btn-algo-"+activeID)
 	if !activeBtn.IsNull() && !activeBtn.IsUndefined() {
 		activeBtn.Get("classList").Call("add", "active")
+		parentGroup := activeBtn.Call("closest", ".category-group")
+		if !parentGroup.IsNull() && !parentGroup.IsUndefined() {
+			items := parentGroup.Call("querySelector", ".category-items")
+			if !items.IsNull() && !items.IsUndefined() {
+				items.Get("style").Set("display", "flex")
+			}
+		}
 	}
 }
 
@@ -188,14 +230,25 @@ func bindControls(doc js.Value, player *Player) {
 		return nil
 	}))
 
-	// Scrubber Input
-	doc.Call("getElementById", "scrubber").Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
-		val := this.Get("value").String()
-		if idx, err := strconv.Atoi(val); err == nil {
-			player.Seek(idx)
-		}
-		return nil
-	}))
+	// Scrubber Input & Contention Fix
+	scrubber := doc.Call("getElementById", "scrubber")
+	if !scrubber.IsNull() && !scrubber.IsUndefined() {
+		scrubber.Call("addEventListener", "mousedown", js.FuncOf(func(this js.Value, args []js.Value) any {
+			player.Pause()
+			return nil
+		}))
+		scrubber.Call("addEventListener", "touchstart", js.FuncOf(func(this js.Value, args []js.Value) any {
+			player.Pause()
+			return nil
+		}))
+		scrubber.Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
+			val := this.Get("value").String()
+			if idx, err := strconv.Atoi(val); err == nil {
+				player.Seek(idx)
+			}
+			return nil
+		}))
+	}
 
 	// Tabs: Code vs Learn
 	codeTabBtn := doc.Call("getElementById", "tab-code-btn")
@@ -246,6 +299,12 @@ func bindControls(doc js.Value, player *Player) {
 				}
 				if visibleCount > 0 {
 					grp.Get("style").Set("display", "block")
+					if query != "" {
+						itemsEl := grp.Call("querySelector", ".category-items")
+						if !itemsEl.IsNull() && !itemsEl.IsUndefined() {
+							itemsEl.Get("style").Set("display", "flex")
+						}
+					}
 				} else {
 					grp.Get("style").Set("display", "none")
 				}
@@ -254,13 +313,39 @@ func bindControls(doc js.Value, player *Player) {
 		}))
 	}
 
-	// Mobile Menu Button
+	// Mobile Menu Button & Drawer Backdrop
+	sidebar := doc.Call("getElementById", "sidebar")
+	backdrop := doc.Call("getElementById", "drawer-backdrop")
 	menuBtn := doc.Call("getElementById", "mobile-menu-btn")
+
+	closeSidebar := func() {
+		if !sidebar.IsNull() && !sidebar.IsUndefined() {
+			sidebar.Get("classList").Call("remove", "open")
+		}
+		if !backdrop.IsNull() && !backdrop.IsUndefined() {
+			backdrop.Get("style").Set("display", "none")
+		}
+	}
+
+	if !backdrop.IsNull() && !backdrop.IsUndefined() {
+		backdrop.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			closeSidebar()
+			return nil
+		}))
+	}
+
 	if !menuBtn.IsNull() && !menuBtn.IsUndefined() {
 		menuBtn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-			sidebar := doc.Call("getElementById", "sidebar")
 			if !sidebar.IsNull() && !sidebar.IsUndefined() {
-				sidebar.Get("classList").Call("toggle", "open")
+				isOpen := sidebar.Get("classList").Call("contains", "open").Bool()
+				if isOpen {
+					closeSidebar()
+				} else {
+					sidebar.Get("classList").Call("add", "open")
+					if !backdrop.IsNull() && !backdrop.IsUndefined() {
+						backdrop.Get("style").Set("display", "block")
+					}
+				}
 			}
 			return nil
 		}))
@@ -368,6 +453,24 @@ func bindControls(doc js.Value, player *Player) {
 		}))
 	}
 
+	// Preset Chips
+	presetChips := doc.Call("querySelectorAll", ".preset-chip")
+	for i := 0; i < presetChips.Length(); i++ {
+		chip := presetChips.Index(i)
+		chip.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+			preset := this.Get("dataset").Get("preset").String()
+			algoID := ""
+			if player.lesson != nil {
+				algoID = player.lesson.Meta().ID
+			}
+			val := getPresetInput(preset, algoID)
+			if val != "" && !inputField.IsNull() && !inputField.IsUndefined() {
+				inputField.Set("value", val)
+			}
+			return nil
+		}))
+	}
+
 	// Keyboard controls
 	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) any {
 		if len(args) > 0 {
@@ -396,4 +499,68 @@ func bindControls(doc js.Value, player *Player) {
 		}
 		return nil
 	}))
+}
+
+func getPresetInput(preset string, id string) string {
+	switch preset {
+	case "worst":
+		switch id {
+		case "linearsearch":
+			return `{"array": [90, 80, 70, 60, 50, 40, 30], "target": 99}`
+		case "binarysearch":
+			return `{"array": [5, 10, 15, 20, 25, 30, 35, 40], "target": 99}`
+		case "bst":
+			return `{"initial": [10, 20, 30, 40, 50, 60], "ops": [{"type": "search", "value": 60}]}`
+		case "hanoitower":
+			return "5"
+		case "fibonacci":
+			return `{"n": 12}`
+		case "nqueens":
+			return `{"n": 8}`
+		case "coinchange":
+			return `{"coins": [1, 5, 10, 25], "amount": 37}`
+		default:
+			return "[95, 82, 70, 58, 44, 31, 18, 5]"
+		}
+	case "sorted":
+		switch id {
+		case "linearsearch":
+			return `{"array": [10, 20, 30, 40, 50, 60, 70], "target": 10}`
+		case "binarysearch":
+			return `{"array": [10, 20, 30, 40, 50, 60, 70], "target": 40}`
+		case "bst":
+			return `{"initial": [40, 20, 60, 10, 30, 50, 70], "ops": [{"type": "search", "value": 40}]}`
+		case "hanoitower":
+			return "3"
+		case "fibonacci":
+			return `{"n": 6}`
+		case "nqueens":
+			return `{"n": 4}`
+		case "coinchange":
+			return `{"coins": [1, 2, 5], "amount": 6}`
+		default:
+			return "[10, 20, 25, 30, 40, 50, 65, 80]"
+		}
+	case "small":
+		switch id {
+		case "linearsearch":
+			return `{"array": [42, 17, 88], "target": 17}`
+		case "binarysearch":
+			return `{"array": [17, 42, 88], "target": 42}`
+		case "bst":
+			return `{"initial": [20, 10, 30], "ops": [{"type": "search", "value": 10}]}`
+		case "hanoitower":
+			return "2"
+		case "fibonacci":
+			return `{"n": 3}`
+		case "nqueens":
+			return `{"n": 4}`
+		case "coinchange":
+			return `{"coins": [1, 2], "amount": 3}`
+		default:
+			return "[42, 17, 88]"
+		}
+	default:
+		return ""
+	}
 }

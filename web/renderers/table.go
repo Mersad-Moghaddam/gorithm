@@ -48,6 +48,14 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		cellH = availH
 	}
 
+	fontSize := 12.0
+	if cellW < 36.0 || cellH < 28.0 {
+		fontSize = 10.0
+	}
+	if cellW < 26.0 || cellH < 22.0 {
+		fontSize = 8.5
+	}
+
 	var sb strings.Builder
 
 	// Defs for table styling
@@ -111,8 +119,8 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 			x, y, cellW-4, cellH-4, fillColor, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="%s" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%s</text>`,
-			x+(cellW-4)/2, y+(cellH-4)/2+4, textColor, cell.Value,
+			`<text x="%.1f" y="%.1f" fill="%s" font-size="%.1f" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%s</text>`,
+			x+(cellW-4)/2, y+(cellH-4)/2+4, textColor, fontSize, cell.Value,
 		))
 	}
 

@@ -32,6 +32,43 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 		nodeMap[n.ID] = n
 	}
 
+	treeDepth := 0
+	for _, n := range state.Nodes {
+		d := 0
+		curr := n
+		for curr.ParentID != "" {
+			parent, exists := nodeMap[curr.ParentID]
+			if !exists {
+				break
+			}
+			d++
+			curr = parent
+			if d > len(state.Nodes) {
+				break
+			}
+		}
+		if d > treeDepth {
+			treeDepth = d
+		}
+	}
+	uniqueY := make(map[float64]struct{})
+	for _, n := range state.Nodes {
+		uniqueY[n.Y] = struct{}{}
+	}
+	if len(uniqueY) > 0 && len(uniqueY)-1 > treeDepth {
+		treeDepth = len(uniqueY) - 1
+	}
+
+	r := 22.0
+	fontSize := 13.0
+	if treeDepth >= 5 {
+		r = 13.0
+		fontSize = 8.5
+	} else if len(state.Nodes) > 15 || treeDepth >= 4 {
+		r = 16.0
+		fontSize = 10.0
+	}
+
 	var sb strings.Builder
 
 	// Defs
@@ -108,12 +145,12 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 			displayText = n.Label
 		}
 		sb.WriteString(fmt.Sprintf(
-			`<circle cx="%.1f" cy="%.1f" r="22" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: fill 0.25s ease, stroke 0.25s ease;" />`,
-			n.X, n.Y, fillRef, strokeColor, filterStr,
+			`<circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s" stroke="%s" stroke-width="2.5" %s style="transition: fill 0.25s ease, stroke 0.25s ease;" />`,
+			n.X, n.Y, r, fillRef, strokeColor, filterStr,
 		))
 		sb.WriteString(fmt.Sprintf(
-			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="13" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle" dy="5">%s</text>`,
-			n.X, n.Y, displayText,
+			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="%.1f" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle" dy="5">%s</text>`,
+			n.X, n.Y, fontSize, displayText,
 		))
 	}
 

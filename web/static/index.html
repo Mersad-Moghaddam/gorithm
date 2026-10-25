@@ -74,6 +74,8 @@
       </div>
     </aside>
 
+    <div class="drawer-backdrop" id="drawer-backdrop" style="display: none;"></div>
+
     <!-- Center Pane: Visualizer Canvas & Floating Dock -->
     <main class="visualizer-stage">
       <div class="stage-hud">
@@ -104,6 +106,8 @@
         </div>
       </div>
 
+      <div class="stage-legend" id="stage-legend"></div>
+
       <div class="canvas-viewport">
         <svg id="svg-stage" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid meet">
           <!-- Rendered dynamically by Go/WASM -->
@@ -127,6 +131,7 @@
                   <path d="M3 3v5h5"></path>
                 </svg>
                 <span>Reset</span>
+                <span class="kbd-badge">R</span>
               </button>
 
               <button class="dock-btn" id="btn-prev" title="Previous Step (Left Arrow)" type="button">
@@ -135,6 +140,7 @@
                   <line x1="5" y1="19" x2="5" y2="5"></line>
                 </svg>
                 <span>Prev</span>
+                <span class="kbd-badge">←</span>
               </button>
 
               <button class="dock-btn dock-btn-primary" id="btn-play" title="Play / Pause (Space)" type="button">
@@ -144,10 +150,12 @@
                   </svg>
                 </span>
                 <span id="btn-play-label">Play</span>
+                <span class="kbd-badge">Space</span>
               </button>
 
               <button class="dock-btn" id="btn-next" title="Next Step (Right Arrow)" type="button">
                 <span>Next</span>
+                <span class="kbd-badge">→</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polygon points="5 4 15 12 5 20 5 4"></polygon>
                   <line x1="19" y1="5" x2="19" y2="19"></line>
@@ -275,6 +283,12 @@
         <button class="modal-close" id="btn-modal-close" aria-label="Close dialog">&times;</button>
       </div>
       <p class="modal-desc">Provide your own JSON dataset to observe the algorithm solve your specific test case:</p>
+      <div class="preset-row">
+        <span class="preset-label">Quick Presets:</span>
+        <button class="preset-chip" type="button" data-preset="worst">Reversed (Worst)</button>
+        <button class="preset-chip" type="button" data-preset="sorted">Nearly Sorted</button>
+        <button class="preset-chip" type="button" data-preset="small">Small Edge</button>
+      </div>
       <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]" aria-label="Custom dataset input">
       <div id="modal-error" class="modal-error" style="display: none;"></div>
       <div class="modal-foot">

@@ -202,6 +202,94 @@ func (p *Player) renderLessonShell() {
 	}
 	scrubber.Set("max", maxSteps)
 	scrubber.Set("value", 0)
+
+	// Stage legend
+	p.renderLegend(meta.Category)
+}
+
+type legendEntry struct {
+	label string
+	color string
+}
+
+func (p *Player) renderLegend(cat catalog.Category) {
+	legendEl := p.doc.Call("getElementById", "stage-legend")
+	if legendEl.IsNull() || legendEl.IsUndefined() {
+		return
+	}
+
+	var items []legendEntry
+	switch cat {
+	case catalog.CategorySorting:
+		items = []legendEntry{
+			{"Comparing", "#fde047"},
+			{"Swapped", "#f87171"},
+			{"Sorted", "#4ade80"},
+			{"Pivot", "#c084fc"},
+		}
+	case catalog.CategoryGraphs:
+		items = []legendEntry{
+			{"Visiting", "#38bdf8"},
+			{"Visited", "#4ade80"},
+			{"Queued", "#fde047"},
+			{"Shortest Path", "#c084fc"},
+		}
+	case catalog.CategoryTrees:
+		items = []legendEntry{
+			{"Active", "#38bdf8"},
+			{"Matched", "#4ade80"},
+			{"Inserted", "#c084fc"},
+			{"Deleted", "#f87171"},
+		}
+	case catalog.CategoryDP:
+		items = []legendEntry{
+			{"Active", "#38bdf8"},
+			{"Computed", "#4ade80"},
+			{"Source Reference", "#c084fc"},
+		}
+	case catalog.CategoryAI:
+		items = []legendEntry{
+			{"Active", "#38bdf8"},
+			{"Best / Optimal", "#4ade80"},
+			{"Candidate", "#fde047"},
+			{"Loss / Penalty", "#f87171"},
+		}
+	case catalog.CategoryBacktracking:
+		items = []legendEntry{
+			{"Trying", "#38bdf8"},
+			{"Valid Solution", "#4ade80"},
+			{"Conflict", "#f87171"},
+			{"Backtracked", "#c084fc"},
+		}
+	case catalog.CategoryRecursion:
+		items = []legendEntry{
+			{"Active Frame", "#38bdf8"},
+			{"Base Case", "#4ade80"},
+			{"Call Push", "#fde047"},
+			{"Return Unwind", "#c084fc"},
+		}
+	case catalog.CategorySearching:
+		items = []legendEntry{
+			{"Scanning", "#38bdf8"},
+			{"Matched", "#4ade80"},
+			{"Mismatch", "#f87171"},
+			{"Eliminated", "#94a3b8"},
+		}
+	default:
+		items = []legendEntry{
+			{"Active", "#38bdf8"},
+			{"Complete", "#4ade80"},
+		}
+	}
+
+	var sb strings.Builder
+	for _, it := range items {
+		sb.WriteString(fmt.Sprintf(
+			`<div class="legend-chip"><span class="legend-dot" style="background-color: %s;"></span><span class="legend-text">%s</span></div>`,
+			it.color, it.label,
+		))
+	}
+	legendEl.Set("innerHTML", sb.String())
 }
 
 func (p *Player) RenderStep(idx int) {
@@ -246,7 +334,12 @@ func (p *Player) RenderStep(idx int) {
 		activeEl := p.doc.Call("getElementById", "line-"+step.LineID)
 		if !activeEl.IsNull() && !activeEl.IsUndefined() {
 			activeEl.Get("classList").Call("add", "active")
-			activeEl.Call("scrollIntoView", map[string]any{"block": "nearest", "behavior": "smooth"})
+			codeBox := p.doc.Call("getElementById", "code-container")
+			if !codeBox.IsNull() && !codeBox.IsUndefined() && !activeEl.IsNull() && !activeEl.IsUndefined() {
+				offsetTop := activeEl.Get("offsetTop").Float()
+				boxHeight := codeBox.Get("clientHeight").Float()
+				codeBox.Set("scrollTop", offsetTop-boxHeight/2.0)
+			}
 		}
 	}
 
