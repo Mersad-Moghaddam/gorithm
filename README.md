@@ -143,6 +143,16 @@ Set `APP_URL` or `CHROMIUM` to override `http://localhost:8080` or
 `/usr/bin/chromium`. The check covers discovery, history, pause cancellation,
 dialog validation, tabs, mobile overflow, and runtime loading failure.
 
+For the broader four-theme accessibility and all-lesson audit, install
+`@axe-core/playwright` alongside the external Playwright installation, then run:
+
+```bash
+APP_URL=http://localhost:8080/ NODE_PATH=/path/to/playwright/node_modules node scripts/audit_ui.mjs
+```
+
+The mobile-first interface uses translucent surfaces where supported, opaque
+fallbacks, safe-area spacing, and reduced-motion/reduced-transparency preferences.
+
 ### Keyboard Shortcuts
 
 - `/`: Focus library search

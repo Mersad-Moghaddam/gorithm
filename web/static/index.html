@@ -9,6 +9,8 @@
   <script>
     try { const theme = localStorage.getItem('gorithm-theme'); if (['lab','midnight','paper','plum'].includes(theme)) document.documentElement.dataset.theme = theme; } catch (_) {}
   </script>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" href="/static/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
@@ -68,6 +70,18 @@
   <dialog id="custom-modal" aria-labelledby="modal-title" aria-describedby="modal-description"><div class="modal-head"><h2 id="modal-title">Make it your problem</h2><button id="btn-modal-close" class="quiet-button" aria-label="Close custom data dialog">×</button></div><p id="modal-description">Edit the JSON dataset and see how this algorithm responds.</p><div id="preset-row" class="preset-row"><span>Try a dataset</span><button class="preset-chip" data-preset="worst">Reversed</button><button class="preset-chip" data-preset="sorted">Nearly sorted</button><button class="preset-chip" data-preset="small">Small example</button></div><label for="custom-input-val">Dataset (JSON)</label><textarea id="custom-input-val" rows="6" spellcheck="false"></textarea><p id="modal-error" role="alert" hidden></p><div class="modal-foot"><button id="btn-modal-cancel" class="quiet-button">Cancel</button><button id="btn-modal-apply" class="primary">Apply &amp; visualize</button></div></dialog>
   <script>
     const themeColors = {lab:'#101c19', midnight:'#111c30', paper:'#f6f1e7', plum:'#281c2b'};
+    const themeMenu = document.getElementById('theme-options');
+    const themeButton = document.getElementById('theme-toggle');
+    const positionThemeMenu = () => {
+      if (!themeMenu.matches(':popover-open')) return;
+      const button = themeButton.getBoundingClientRect();
+      const menu = themeMenu.getBoundingClientRect();
+      themeMenu.style.left = Math.max(16, Math.min(button.right - menu.width, innerWidth - menu.width - 16)) + 'px';
+      themeMenu.style.top = Math.max(8, Math.min(button.bottom + 8, innerHeight - menu.height - 8)) + 'px';
+    };
+    themeMenu.addEventListener('toggle', positionThemeMenu);
+    window.addEventListener('resize', positionThemeMenu);
+    window.addEventListener('scroll', positionThemeMenu, {passive:true});
     document.querySelectorAll('input[name="theme"]').forEach(input => {
       input.checked = input.value === (document.documentElement.dataset.theme || 'lab');
       input.addEventListener('change', () => {

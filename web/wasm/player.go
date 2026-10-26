@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"math/rand"
 	"strings"
 	"sync"
@@ -365,7 +366,7 @@ func (p *Player) RenderStep(idx int) {
 	if !varsEl.IsNull() && !varsEl.IsUndefined() {
 		var varsHTML strings.Builder
 		for k, v := range step.Variables {
-			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%v</span></span>`, k, v))
+			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%s</span></span>`, html.EscapeString(k), html.EscapeString(fmt.Sprint(v))))
 		}
 		varsEl.Set("innerHTML", varsHTML.String())
 	}

@@ -14,6 +14,12 @@ try {
   assert.equal(await page.locator('.algorithm-card').count(), 40);
   for (const theme of ['midnight','paper','plum','lab']) {
     await page.locator('#theme-toggle').click();
+    const buttonBox = await page.locator('#theme-toggle').boundingBox();
+    const menuBox = await page.locator('#theme-options').boundingBox();
+    assert.ok(Math.abs(menuBox.y - (buttonBox.y + buttonBox.height + 8)) < 3, 'Theme menu sits below its button');
+    assert.ok(menuBox.x <= buttonBox.x + buttonBox.width && menuBox.x + menuBox.width >= buttonBox.x, 'Theme menu aligns with its button');
+    const expectedLeft = Math.max(16, Math.min(buttonBox.x + buttonBox.width - menuBox.width, page.viewportSize().width - menuBox.width - 16));
+    assert.ok(Math.abs(menuBox.x - expectedLeft) < 2, 'Theme menu right edge follows button, clamped to viewport');
     await page.locator(`input[name="theme"][value="${theme}"]`).check();
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     await page.reload();

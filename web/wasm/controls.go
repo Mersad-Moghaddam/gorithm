@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"syscall/js"
@@ -62,14 +63,31 @@ func bindLabControls(doc js.Value, p *Player) {
 		})
 	}
 	modal, input, errBox := get("custom-modal"), get("custom-input-val"), get("modal-error")
+	input.Call("setAttribute", "aria-describedby", "modal-description modal-error")
+	clearError := func() {
+		errBox.Set("hidden", true)
+		input.Call("removeAttribute", "aria-invalid")
+	}
+	showError := func(message string) {
+		errBox.Set("textContent", message)
+		errBox.Set("hidden", false)
+		input.Call("setAttribute", "aria-invalid", "true")
+		input.Call("focus")
+	}
+	on(input, "input", func(js.Value) { clearError() })
 	closeModal := func() { modal.Call("close"); get("btn-custom-input").Call("focus") }
 	on(get("btn-custom-input"), "click", func(js.Value) {
 		if p.lesson == nil {
 			return
 		}
 		p.Pause()
-		input.Set("value", p.lesson.Meta().DefaultInput)
-		errBox.Set("hidden", true)
+		defaultInput := p.lesson.Meta().DefaultInput
+		if !json.Valid([]byte(defaultInput)) {
+			encoded, _ := json.Marshal(defaultInput)
+			defaultInput = string(encoded)
+		}
+		input.Set("value", defaultInput)
+		clearError()
 		id := p.lesson.Meta().ID
 		get("preset-row").Set("hidden", !strings.Contains("|bubble|selection|insertion|merge|quick|heap|countingsort|radixsort|bucketsort|linearsearch|binarysearch|bst|hanoitower|fibonacci|nqueens|coinchange|", "|"+id+"|"))
 		modal.Call("showModal")
@@ -84,19 +102,16 @@ func bindLabControls(doc js.Value, p *Player) {
 			return
 		}
 		val := strings.TrimSpace(input.Get("value").String())
-		if !json.Valid([]byte(val)) {
-			errBox.Set("textContent", "Enter valid JSON, for example the dataset shown when opening this dialog.")
-			errBox.Set("hidden", false)
+		if val == "" {
+			showError("Enter a JSON dataset before applying.")
 			return
 		}
-		if val == "" {
-			errBox.Set("textContent", "Enter a JSON dataset before applying.")
-			errBox.Set("hidden", false)
+		if err := validateInputShape(val, p.lesson.Meta().ID, p.lesson.Meta().DefaultInput); err != nil {
+			showError(err.Error())
 			return
 		}
 		if _, err := p.lesson.Build([]byte(val)); err != nil {
-			errBox.Set("textContent", err.Error())
-			errBox.Set("hidden", false)
+			showError(err.Error())
 			return
 		}
 		p.LoadLessonWithInput(p.lesson, []byte(val))
@@ -107,6 +122,7 @@ func bindLabControls(doc js.Value, p *Player) {
 		on(chips.Index(i), "click", func(e js.Value) {
 			if p.lesson != nil {
 				input.Set("value", getPresetInput(e.Get("currentTarget").Get("dataset").Get("preset").String(), p.lesson.Meta().ID))
+				clearError()
 			}
 		})
 	}
@@ -131,4 +147,97 @@ func bindLabControls(doc js.Value, p *Player) {
 			p.Reset()
 		}
 	})
+}
+
+// validateInputShape catches JSON that permissive lesson decoders silently ignore.
+// ponytail: shape validation only; algorithm-specific limits remain in Build.
+func validateInputShape(input, id, example string) error {
+	var value any
+	if err := json.Unmarshal([]byte(input), &value); err != nil {
+		return fmt.Errorf("Enter valid JSON, for example the dataset shown when opening this dialog.")
+	}
+	if array, ok := value.([]any); ok && len(array) == 0 {
+		return fmt.Errorf("Enter a non-empty dataset; an empty array would use the default dataset.")
+	}
+	if !json.Valid([]byte(example)) {
+		encoded, _ := json.Marshal(example)
+		example = string(encoded)
+	}
+	examples := []string{example}
+	// Preserve alternate formats already supported by lesson decoders.
+	switch id {
+	case "linearsearch", "binarysearch":
+		examples = append(examples, `[1]`, `{"arr":[1],"array":[1],"target":1}`)
+	case "bst":
+		examples = append(examples, `[1]`)
+	case "avl":
+		examples = append(examples, `{"values":[1]}`)
+	case "hanoitower":
+		examples = append(examples, `{"n":1,"disks":1,"count":1}`)
+	case "fibonacci", "nqueens":
+		examples = append(examples, `1`)
+	case "trie":
+		examples = append(examples, `["word"]`)
+	case "segmenttree", "minimax":
+		examples = append(examples, `[1]`)
+	case "lcs":
+		examples = append(examples, `["a","b"]`, `{"text":"a","pattern":"b"}`)
+	case "kmp":
+		examples = append(examples, `["a","b"]`)
+	case "sudoku":
+		examples = append(examples, `[[1]]`)
+	case "dfs", "bfs", "bellmanford", "toposort":
+		examples = append(examples, `{"start":"A","nodes":[{"id":"A","label":"A","x":1,"y":1}],"edges":[{"from":"A","to":"B","weight":1,"directed":true}]}`)
+	}
+	for _, raw := range examples {
+		var sample any
+		if json.Unmarshal([]byte(raw), &sample) == nil && matchesInputShape(value, sample) {
+			return nil
+		}
+	}
+	return fmt.Errorf("Dataset has the wrong shape or field types. Use the example shown when opening this dialog.")
+}
+
+func matchesInputShape(value, sample any) bool {
+	switch want := sample.(type) {
+	case []any:
+		got, ok := value.([]any)
+		if !ok {
+			return false
+		}
+		for _, item := range got {
+			if len(want) > 0 && !matchesInputShape(item, want[0]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		got, ok := value.(map[string]any)
+		if !ok {
+			return false
+		}
+		if len(got) == 0 {
+			return len(want) == 0
+		}
+		matched := false
+		for key, item := range got {
+			if expected, known := want[key]; known {
+				if !matchesInputShape(item, expected) {
+					return false
+				}
+				matched = true
+			}
+		}
+		return matched
+	case float64:
+		_, ok := value.(float64)
+		return ok
+	case string:
+		_, ok := value.(string)
+		return ok
+	case bool:
+		_, ok := value.(bool)
+		return ok
+	}
+	return false
 }

@@ -92,7 +92,8 @@ func initLibrary(doc js.Value, player *Player) {
 			if hash != "" && hash != "discovery" && hash != "main" {
 				get("navigation-notice").Set("textContent", "That algorithm link was not found. Explore the library below.")
 				get("navigation-notice").Set("hidden", false)
-				js.Global().Get("history").Call("replaceState", js.Null(), "", js.Global().Get("location").Get("pathname").String())
+				location := js.Global().Get("location")
+				js.Global().Get("history").Call("replaceState", js.Null(), "", location.Get("pathname").String()+location.Get("search").String())
 			}
 			if lastID != "" {
 				card := get("card-" + lastID)
@@ -103,9 +104,16 @@ func initLibrary(doc js.Value, player *Player) {
 				}
 			}
 			if hash == "discovery" {
+				if lastID == "" {
+					search.Call("focus")
+					get("discovery").Call("scrollIntoView")
+				}
+			} else if hash == "main" {
+				get("main").Call("focus")
+			} else if lastID == "" && hash != "" {
 				search.Call("focus")
-				get("discovery").Call("scrollIntoView")
 			}
+			lastID = ""
 		}
 	}
 	on(doc.Call("querySelector", ".skip-link"), "click", func(e js.Value) {
@@ -117,7 +125,7 @@ func initLibrary(doc js.Value, player *Player) {
 	on(doc, "keydown", func(e js.Value) {
 		target := e.Get("target")
 		tag := target.Get("tagName").String()
-		if e.Get("key").String() == "/" && !e.Get("ctrlKey").Bool() && !e.Get("metaKey").Bool() && tag != "INPUT" && tag != "TEXTAREA" && tag != "SELECT" && !target.Get("isContentEditable").Bool() && !get("library").Get("hidden").Bool() {
+		if e.Get("key").String() == "/" && !e.Get("ctrlKey").Bool() && !e.Get("metaKey").Bool() && !e.Get("altKey").Bool() && !e.Get("isComposing").Bool() && tag != "INPUT" && tag != "TEXTAREA" && tag != "SELECT" && !target.Get("isContentEditable").Bool() && !get("library").Get("hidden").Bool() {
 			e.Call("preventDefault")
 			search.Call("focus")
 		}
