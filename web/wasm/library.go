@@ -33,7 +33,7 @@ func initLibrary(doc js.Value, player *Player) {
 		fmt.Fprintf(&filters, `<button class="filter-button" data-category="%s" aria-pressed="false">%s <span>%d</span></button>`, html.EscapeString(string(cat)), html.EscapeString(string(cat)), counts[cat])
 	}
 	for _, m := range metas {
-		fmt.Fprintf(&cards, `<a class="algorithm-card" id="card-%s" href="#algorithm=%s"><div class="card-illustration" aria-hidden="true">%s</div><p class="card-category">%s</p><h3>%s</h3><p class="card-summary">%s</p><div class="card-bottom"><span class="card-complexity">%s</span><span class="card-open">Explore algorithm ↗</span></div></a>`, html.EscapeString(m.ID), url.QueryEscape(m.ID), categoryArt(m.Renderer), html.EscapeString(string(m.Category)), html.EscapeString(m.Name), html.EscapeString(m.Documentation.Summary), html.EscapeString(m.Documentation.TimeComplexity))
+		fmt.Fprintf(&cards, `<a class="algorithm-card" id="card-%s" href="#algorithm=%s"><div class="card-illustration" aria-hidden="true">%s</div><p class="card-category">%s</p><h3>%s</h3><p class="card-summary">%s</p><div class="card-bottom"><span class="card-complexity">%s</span><span class="card-open">Explore algorithm <span aria-hidden="true">↗</span></span></div></a>`, html.EscapeString(m.ID), url.QueryEscape(m.ID), categoryArt(m.Renderer), html.EscapeString(string(m.Category)), html.EscapeString(m.Name), html.EscapeString(m.Documentation.Summary), html.EscapeString(m.Documentation.TimeComplexity))
 	}
 	get("algorithm-grid").Set("innerHTML", cards.String())
 	get("category-filters").Set("innerHTML", filters.String())

@@ -97,6 +97,23 @@ func bindLabControls(doc js.Value, p *Player) {
 		on(get(id), "click", func(js.Value) { closeModal() })
 	}
 	on(modal, "cancel", func(e js.Value) { e.Call("preventDefault"); closeModal() })
+	on(modal, "click", func(e js.Value) {
+		if e.Get("target").Equal(modal) {
+			rect := modal.Call("getBoundingClientRect")
+			clientX := e.Get("clientX").Float()
+			clientY := e.Get("clientY").Float()
+			if clientX < rect.Get("left").Float() || clientX > rect.Get("right").Float() ||
+				clientY < rect.Get("top").Float() || clientY > rect.Get("bottom").Float() {
+				closeModal()
+			}
+		}
+	})
+	on(input, "keydown", func(e js.Value) {
+		if (e.Get("ctrlKey").Bool() || e.Get("metaKey").Bool()) && e.Get("key").String() == "Enter" {
+			e.Call("preventDefault")
+			get("btn-modal-apply").Call("click")
+		}
+	})
 	on(get("btn-modal-apply"), "click", func(js.Value) {
 		if p.lesson == nil {
 			return

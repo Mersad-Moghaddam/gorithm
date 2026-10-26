@@ -333,7 +333,7 @@ func (p *Player) RenderStep(idx int) {
 	p.doc.Call("getElementById", "svg-stage").Set("innerHTML", svgContent)
 
 	// 2. Update line highlight & auto-scroll
-	allLines := p.doc.Call("querySelectorAll", ".code-line")
+	allLines := p.doc.Call("querySelectorAll", ".code-line.active")
 	for i := 0; i < allLines.Length(); i++ {
 		allLines.Index(i).Get("classList").Call("remove", "active")
 	}
@@ -351,7 +351,9 @@ func (p *Player) RenderStep(idx int) {
 	}
 
 	// 3. Update scrubber & step counter
-	p.doc.Call("getElementById", "scrubber").Set("value", idx)
+	scrubber := p.doc.Call("getElementById", "scrubber")
+	scrubber.Set("value", idx)
+	scrubber.Call("setAttribute", "aria-valuetext", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
 	p.doc.Call("getElementById", "step-counter").Set("innerText", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
 
 	// 4. Update Action Pill
@@ -406,6 +408,13 @@ func (p *Player) Reset() {
 func (p *Player) Play() {
 	if p.playing {
 		return
+	}
+	p.mu.Lock()
+	if len(p.steps) > 0 && p.stepIdx >= len(p.steps)-1 {
+		p.mu.Unlock()
+		p.RenderStep(0)
+	} else {
+		p.mu.Unlock()
 	}
 	p.playing = true
 	p.updatePlayButtonUI(true)
