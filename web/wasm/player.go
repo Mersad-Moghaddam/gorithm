@@ -18,20 +18,44 @@ import (
 )
 
 type Player struct {
-	lesson      catalog.Lesson
-	steps       []trace.Step
-	stepIdx     int
-	playing     bool
-	speed       float64
-	doc         js.Value
-	mu          sync.Mutex
-	stopChannel chan struct{}
+	lesson         catalog.Lesson
+	steps          []trace.Step
+	stepIdx        int
+	playing        bool
+	speed          float64
+	doc            js.Value
+	mu             sync.Mutex
+	stopChannel    chan struct{}
+	lastActiveLine string
+
+	// Cached DOM references
+	elSvgStage        js.Value
+	elCodeContainer   js.Value
+	elScrubber        js.Value
+	elStepCounter     js.Value
+	elVizAction       js.Value
+	elStepVariables   js.Value
+	elStepExplanation js.Value
+	elMetricComps     js.Value
+	elMetricSwaps     js.Value
+	elMetricOps       js.Value
 }
 
 func NewPlayer(doc js.Value) *Player {
+	get := func(id string) js.Value { return doc.Call("getElementById", id) }
 	return &Player{
-		speed: 1.0,
-		doc:   doc,
+		speed:             1.0,
+		doc:               doc,
+		elSvgStage:        get("svg-stage"),
+		elCodeContainer:   get("code-container"),
+		elScrubber:        get("scrubber"),
+		elStepCounter:     get("step-counter"),
+		elVizAction:       get("viz-action"),
+		elStepVariables:   get("step-variables"),
+		elStepExplanation: get("step-explanation"),
+		elMetricComps:     get("metric-comps"),
+		elMetricSwaps:     get("metric-swaps"),
+		elMetricOps:       get("metric-ops"),
 	}
 }
 
@@ -51,6 +75,7 @@ func (p *Player) LoadLessonWithInput(l catalog.Lesson, input []byte) {
 	}
 	p.steps = steps
 	p.stepIdx = 0
+	p.lastActiveLine = ""
 	p.mu.Unlock()
 
 	p.renderLessonShell()
@@ -330,56 +355,62 @@ func (p *Player) RenderStep(idx int) {
 	default:
 		svgContent = renderers.RenderArraySVG(step, 800, 450)
 	}
-	p.doc.Call("getElementById", "svg-stage").Set("innerHTML", svgContent)
+	p.elSvgStage.Set("innerHTML", svgContent)
 
 	// 2. Update line highlight & auto-scroll
-	allLines := p.doc.Call("querySelectorAll", ".code-line.active")
-	for i := 0; i < allLines.Length(); i++ {
-		allLines.Index(i).Get("classList").Call("remove", "active")
-	}
-	if step.LineID != "" {
-		activeEl := p.doc.Call("getElementById", "line-"+step.LineID)
-		if !activeEl.IsNull() && !activeEl.IsUndefined() {
-			activeEl.Get("classList").Call("add", "active")
-			codeBox := p.doc.Call("getElementById", "code-container")
-			if !codeBox.IsNull() && !codeBox.IsUndefined() && !activeEl.IsNull() && !activeEl.IsUndefined() {
-				offsetTop := activeEl.Get("offsetTop").Float()
-				boxHeight := codeBox.Get("clientHeight").Float()
-				codeBox.Set("scrollTop", offsetTop-boxHeight/2.0)
+	if p.lastActiveLine != step.LineID {
+		if p.lastActiveLine != "" {
+			oldEl := p.doc.Call("getElementById", "line-"+p.lastActiveLine)
+			if !oldEl.IsNull() && !oldEl.IsUndefined() {
+				oldEl.Get("classList").Call("remove", "active")
 			}
 		}
+		if step.LineID != "" {
+			activeEl := p.doc.Call("getElementById", "line-"+step.LineID)
+			if !activeEl.IsNull() && !activeEl.IsUndefined() {
+				activeEl.Get("classList").Call("add", "active")
+				if !p.elCodeContainer.IsNull() && !p.elCodeContainer.IsUndefined() {
+					offsetTop := activeEl.Get("offsetTop").Float()
+					boxHeight := p.elCodeContainer.Get("clientHeight").Float()
+					p.elCodeContainer.Set("scrollTop", offsetTop-boxHeight/2.0)
+				}
+			}
+		}
+		p.lastActiveLine = step.LineID
 	}
 
 	// 3. Update scrubber & step counter
-	scrubber := p.doc.Call("getElementById", "scrubber")
-	scrubber.Set("value", idx)
-	scrubber.Call("setAttribute", "aria-valuetext", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
-	p.doc.Call("getElementById", "step-counter").Set("innerText", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
+	p.elScrubber.Set("value", idx)
+	p.elScrubber.Call("setAttribute", "aria-valuetext", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
+	p.elStepCounter.Set("innerText", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
 
 	// 4. Update Action Pill
-	actionEl := p.doc.Call("getElementById", "viz-action")
-	if !actionEl.IsNull() && !actionEl.IsUndefined() {
-		actionEl.Set("innerText", strings.ToUpper(string(step.Action)))
-		actionEl.Set("className", fmt.Sprintf("action-pill action-%s", step.Action))
+	if !p.elVizAction.IsNull() && !p.elVizAction.IsUndefined() {
+		p.elVizAction.Set("innerText", strings.ToUpper(string(step.Action)))
+		p.elVizAction.Set("className", fmt.Sprintf("action-pill action-%s", step.Action))
 	}
 
 	// 5. Update Live Variables Pill Deck
-	varsEl := p.doc.Call("getElementById", "step-variables")
-	if !varsEl.IsNull() && !varsEl.IsUndefined() {
-		var varsHTML strings.Builder
-		for k, v := range step.Variables {
-			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%s</span></span>`, html.EscapeString(k), html.EscapeString(fmt.Sprint(v))))
+	if !p.elStepVariables.IsNull() && !p.elStepVariables.IsUndefined() {
+		if len(step.Variables) == 0 {
+			p.elStepVariables.Set("innerHTML", "")
+		} else {
+			var varsHTML strings.Builder
+			varsHTML.Grow(len(step.Variables) * 80)
+			for k, v := range step.Variables {
+				varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%s</span></span>`, html.EscapeString(k), html.EscapeString(fmt.Sprint(v))))
+			}
+			p.elStepVariables.Set("innerHTML", varsHTML.String())
 		}
-		varsEl.Set("innerHTML", varsHTML.String())
 	}
 
 	// 6. Update Explanation
-	p.doc.Call("getElementById", "step-explanation").Set("innerText", step.Explanation)
+	p.elStepExplanation.Set("innerText", step.Explanation)
 
 	// 7. Update Metrics
-	p.doc.Call("getElementById", "metric-comps").Set("innerText", fmt.Sprintf("%d", step.Metrics.Comparisons))
-	p.doc.Call("getElementById", "metric-swaps").Set("innerText", fmt.Sprintf("%d", step.Metrics.Swaps))
-	p.doc.Call("getElementById", "metric-ops").Set("innerText", fmt.Sprintf("%d", step.Metrics.Operations))
+	p.elMetricComps.Set("innerText", fmt.Sprintf("%d", step.Metrics.Comparisons))
+	p.elMetricSwaps.Set("innerText", fmt.Sprintf("%d", step.Metrics.Swaps))
+	p.elMetricOps.Set("innerText", fmt.Sprintf("%d", step.Metrics.Operations))
 }
 
 func (p *Player) Next() {

@@ -38,25 +38,45 @@ func initLibrary(doc js.Value, player *Player) {
 	get("algorithm-grid").Set("innerHTML", cards.String())
 	get("category-filters").Set("innerHTML", filters.String())
 	get("catalog-total").Set("textContent", fmt.Sprintf("%d algorithms. Endless lightbulb moments.", len(metas)))
+
+	cardMap := make(map[string]js.Value, len(metas))
+	for _, m := range metas {
+		cardMap[m.ID] = get("card-" + m.ID)
+	}
+	filterButtons := get("category-filters").Call("querySelectorAll", "button")
+	numButtons := filterButtons.Length()
+	catButtons := make([]js.Value, numButtons)
+	catValues := make([]string, numButtons)
+	for i := 0; i < numButtons; i++ {
+		catButtons[i] = filterButtons.Index(i)
+		catValues[i] = catButtons[i].Get("dataset").Get("category").String()
+	}
+
 	search := get("algo-search")
 	search.Set("disabled", false)
 	var category catalog.Category
+	resultCountEl := get("result-count")
+	emptyResultsEl := get("empty-results")
+	clearFiltersEl := get("clear-filters")
+
 	update := func() {
 		count := 0
+		query := search.Get("value").String()
+		catStr := string(category)
 		for _, m := range metas {
-			match := catalog.Matches(m, search.Get("value").String(), category)
-			get("card-"+m.ID).Set("hidden", !match)
+			match := catalog.Matches(m, query, category)
+			if card, ok := cardMap[m.ID]; ok {
+				card.Set("hidden", !match)
+			}
 			if match {
 				count++
 			}
 		}
-		get("result-count").Set("textContent", fmt.Sprintf("%d algorithms to explore", count))
-		get("empty-results").Set("hidden", count != 0)
-		get("clear-filters").Set("hidden", category == "" && search.Get("value").String() == "")
-		buttons := get("category-filters").Call("querySelectorAll", "button")
-		for i := 0; i < buttons.Length(); i++ {
-			b := buttons.Index(i)
-			b.Call("setAttribute", "aria-pressed", fmt.Sprint(b.Get("dataset").Get("category").String() == string(category)))
+		resultCountEl.Set("textContent", fmt.Sprintf("%d algorithms to explore", count))
+		emptyResultsEl.Set("hidden", count != 0)
+		clearFiltersEl.Set("hidden", category == "" && query == "")
+		for i := 0; i < numButtons; i++ {
+			catButtons[i].Call("setAttribute", "aria-pressed", fmt.Sprint(catValues[i] == catStr))
 		}
 	}
 	on(search, "input", func(js.Value) { update() })
