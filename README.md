@@ -143,7 +143,7 @@ Set `APP_URL` or `CHROMIUM` to override `http://localhost:8080` or
 `/usr/bin/chromium`. The check covers discovery, history, pause cancellation,
 dialog validation, tabs, mobile overflow, and runtime loading failure.
 
-For the broader four-theme accessibility and all-lesson audit, install
+For the broader eight-theme accessibility and all-lesson audit, install
 `@axe-core/playwright` alongside the external Playwright installation, then run:
 
 ```bash

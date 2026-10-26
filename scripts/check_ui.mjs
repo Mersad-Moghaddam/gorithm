@@ -12,7 +12,7 @@ try {
   await page.goto(base);
   await page.waitForSelector('.algorithm-card');
   assert.equal(await page.locator('.algorithm-card').count(), 40);
-  for (const theme of ['midnight','paper','plum','lab']) {
+  for (const theme of ['midnight','paper','plum','nord','amber','rose','monochrome','lab']) {
     await page.locator('#theme-toggle').click();
     const buttonBox = await page.locator('#theme-toggle').boundingBox();
     const menuBox = await page.locator('#theme-options').boundingBox();

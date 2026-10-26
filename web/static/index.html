@@ -7,7 +7,7 @@
   <meta name="description" content="Find your algorithm. Watch it work. Explore interactive Go algorithms, one step at a time.">
   <title>Gorithm — Make complex click.</title>
   <script>
-    try { const theme = localStorage.getItem('gorithm-theme'); if (['lab','midnight','paper','plum'].includes(theme)) document.documentElement.dataset.theme = theme; } catch (_) {}
+    try { const theme = localStorage.getItem('gorithm-theme'); if (['lab','midnight','paper','plum','nord','amber','rose','monochrome'].includes(theme)) document.documentElement.dataset.theme = theme; } catch (_) {}
   </script>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="alternate icon" href="/static/favicon.ico">
@@ -21,7 +21,7 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="app-header">
     <a class="brand" href="#" aria-label="Gorithm algorithm library"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 24V15M13 24V8M21 24V18M29 24V3"/></svg><span translate="no">gorithm</span><span>_</span></a>
-    <nav aria-label="Main"><a href="#" class="nav-library">Algorithm library</a><div class="theme-picker"><button id="theme-toggle" class="quiet-button" popovertarget="theme-options">Theme ◐</button><div id="theme-options" popover><fieldset><legend>Choose your theme</legend><label><input type="radio" name="theme" value="lab"><span class="theme-swatch" style="background:#ccf58a"></span>Living Lab</label><label><input type="radio" name="theme" value="midnight"><span class="theme-swatch" style="background:#91c9ff"></span>Midnight Blue</label><label><input type="radio" name="theme" value="paper"><span class="theme-swatch" style="background:#87602c"></span>Warm Paper</label><label><input type="radio" name="theme" value="plum"><span class="theme-swatch" style="background:#f0b1df"></span>Plum</label></fieldset></div></div><a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Main"><a href="#" class="nav-library">Algorithm library</a><div class="theme-picker"><button id="theme-toggle" class="quiet-button" popovertarget="theme-options">Theme ◐</button><div id="theme-options" popover><fieldset><legend>Choose your theme</legend><label><input type="radio" name="theme" value="lab"><span class="theme-swatch" style="background:#ccf58a"></span>Living Lab</label><label><input type="radio" name="theme" value="midnight"><span class="theme-swatch" style="background:#91c9ff"></span>Midnight Blue</label><label><input type="radio" name="theme" value="paper"><span class="theme-swatch" style="background:#87602c"></span>Warm Paper</label><label><input type="radio" name="theme" value="plum"><span class="theme-swatch" style="background:#f0b1df"></span>Plum</label><label><input type="radio" name="theme" value="nord"><span class="theme-swatch" style="background:#88c0d0"></span>Nordic Frost</label><label><input type="radio" name="theme" value="amber"><span class="theme-swatch" style="background:#f59e0b"></span>Retro Amber</label><label><input type="radio" name="theme" value="rose"><span class="theme-swatch" style="background:#fb7185"></span>Nordic Rose</label><label><input type="radio" name="theme" value="monochrome"><span class="theme-swatch" style="background:#e4e4e7"></span>Obsidian Mono</label></fieldset></div></div><a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main" tabindex="-1">
     <section id="library" aria-labelledby="library-title">
@@ -69,7 +69,7 @@
   <footer><span>Made for the moment it clicks.</span><span>Open source. Powered by Go &amp; WebAssembly.</span></footer>
   <dialog id="custom-modal" aria-labelledby="modal-title" aria-describedby="modal-description"><div class="modal-head"><h2 id="modal-title">Make it your problem</h2><button id="btn-modal-close" class="quiet-button" aria-label="Close custom data dialog">×</button></div><p id="modal-description">Edit the JSON dataset and see how this algorithm responds.</p><div id="preset-row" class="preset-row"><span>Try a dataset</span><button class="preset-chip" data-preset="worst">Reversed</button><button class="preset-chip" data-preset="sorted">Nearly sorted</button><button class="preset-chip" data-preset="small">Small example</button></div><label for="custom-input-val">Dataset (JSON)</label><textarea id="custom-input-val" rows="6" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea><p id="modal-error" role="alert" hidden></p><div class="modal-foot"><button id="btn-modal-cancel" class="quiet-button">Cancel</button><button id="btn-modal-apply" class="primary">Apply &amp; visualize</button></div></dialog>
   <script>
-    const themeColors = {lab:'#101c19', midnight:'#111c30', paper:'#f6f1e7', plum:'#281c2b'};
+    const themeColors = {lab:'#101c19', midnight:'#111c30', paper:'#f6f1e7', plum:'#281c2b', nord:'#1e2430', amber:'#181512', rose:'#221518', monochrome:'#0f0f12'};
     const themeMenu = document.getElementById('theme-options');
     const themeButton = document.getElementById('theme-toggle');
     const positionThemeMenu = () => {

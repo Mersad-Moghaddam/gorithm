@@ -57,7 +57,7 @@ Application uses Go/WASM, `syscall/js`, HTML, CSS, and SVG. No frontend framewor
 
 ## Visual direction and acceptance checks
 
-User-requested direction: mobile-first, iOS-inspired glass across **Living Lab (`lab`), Midnight Blue (`midnight`), Warm Paper (`paper`), and Plum (`plum`)**. Preserve the algorithm-first information hierarchy, restrained translucent surfaces, rounded controls, generous touch targets, and readable typography. This is a cross-theme requirement, not a dark-theme-only polish pass.
+User-requested direction: mobile-first, iOS-inspired glass across **eight themes: Living Lab (`lab`), Midnight Blue (`midnight`), Warm Paper (`paper`), Plum (`plum`), Nordic Frost (`nord`), Retro Amber (`amber`), Nordic Rose (`rose`), and Obsidian Mono (`monochrome`)**. Preserve the algorithm-first information hierarchy, restrained translucent surfaces, rounded controls, generous touch targets, and readable typography. This is a cross-theme requirement, not a dark-theme-only polish pass.
 
 - Use existing theme tokens and CSS for presentation. Keep opaque `var(--panel)` surfaces as the baseline; enhance glass through feature queries for blur/color mixing. Unsupported blur and reduced-transparency preference must retain readable surfaces and borders.
 - Test at 320px, common phone width, tablet, and desktop. Inspect library, theme popover, workspace transport, source/variables, and dataset dialog. No document-level horizontal overflow; source regions may scroll locally. Do not hide important controls to make a screenshot fit.
