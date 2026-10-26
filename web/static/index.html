@@ -2,313 +2,102 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#060911">
-  <title>Gorithm — Interactive Algorithm Studio</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101c19">
+  <meta name="description" content="Find your algorithm. Watch it work. Explore interactive Go algorithms, one step at a time.">
+  <title>Gorithm — Make complex click.</title>
+  <script>
+    try { const theme = localStorage.getItem('gorithm-theme'); if (['lab','midnight','paper','plum'].includes(theme)) document.documentElement.dataset.theme = theme; } catch (_) {}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chivo:ital,wght@0,300..900;1,300..900&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="/static/wasm_exec.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/themes.css">
 </head>
 <body>
-  <!-- Top Navigation Bar -->
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="app-header">
-    <div class="header-left">
-      <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle algorithms menu">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
-
-      <div class="brand">
-        <div class="brand-icon">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M2 17L12 22L22 17" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M2 12L12 17L22 12" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div>
-          <span class="brand-title">Gorithm</span>
-          <span class="brand-badge">GO • WASM</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="header-center">
-      <div class="live-pill">
-        <span class="pulse-dot"></span>
-        <span class="live-text">Deterministic Engine: Online</span>
-      </div>
-    </div>
-
-    <div class="header-right">
-      <a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" rel="noopener noreferrer" class="github-link">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
-        </svg>
-        <span>GitHub</span>
-      </a>
-    </div>
+    <a class="brand" href="#" aria-label="Gorithm algorithm library"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 24V15M13 24V8M21 24V18M29 24V3"/></svg>gorithm<span>_</span></a>
+    <nav aria-label="Main"><a href="#" class="nav-library">Algorithm library</a><div class="theme-picker"><button id="theme-toggle" class="quiet-button" popovertarget="theme-options">Theme ◐</button><div id="theme-options" popover><fieldset><legend>Choose your theme</legend><label><input type="radio" name="theme" value="lab"><span class="theme-swatch" style="background:#ccf58a"></span>Living Lab</label><label><input type="radio" name="theme" value="midnight"><span class="theme-swatch" style="background:#91c9ff"></span>Midnight Blue</label><label><input type="radio" name="theme" value="paper"><span class="theme-swatch" style="background:#87602c"></span>Warm Paper</label><label><input type="radio" name="theme" value="plum"><span class="theme-swatch" style="background:#f0b1df"></span>Plum</label></fieldset></div></div><a href="https://github.com/Mersad-Moghaddam/gorithm" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></nav>
   </header>
-
-  <div class="studio-layout">
-    <!-- Left Navigation: Searchable Algorithm Deck -->
-    <aside class="sidebar-deck" id="sidebar">
-      <div class="search-wrapper">
-        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input type="text" id="algo-search" class="search-input" placeholder="Filter 40 algorithms…" aria-label="Filter algorithms" autocomplete="off">
+  <main id="main" tabindex="-1">
+    <section id="library" aria-labelledby="library-title">
+      <div class="hero">
+        <div class="hero-copy"><p class="intro">An open playground for curious minds</p><h1 id="library-title">Make complex<br>click.</h1><p class="hero-description">Find the algorithm you need. Watch it work.<br>Understand the idea, one step at a time.</p><a class="explore-link" href="#discovery">Find your next algorithm <span aria-hidden="true">↓</span></a></div>
+        <div class="hero-art" aria-hidden="true"><div class="diagram-caption">A little order. A lot of understanding.</div><svg viewBox="0 0 440 270"><g class="diagram-lines"><path d="M80 70L140 135M220 70L140 135M220 70L300 135M360 70L300 135M140 170L220 225M300 170L220 225"/></g><g class="diagram-node"><rect x="46" y="25" width="68" height="65" rx="14"/><rect x="186" y="25" width="68" height="65" rx="14"/><rect x="326" y="25" width="68" height="65" rx="14"/><rect x="102" y="120" width="76" height="55" rx="14"/><rect x="262" y="120" width="76" height="55" rx="14"/></g><g class="diagram-numbers"><text x="80" y="66">8</text><text x="220" y="66">3</text><text x="360" y="66">5</text><text x="140" y="155">3 8</text><text x="300" y="155">5</text></g><rect x="155" y="211" width="130" height="52" rx="14" class="diagram-result"/><text x="220" y="245" class="diagram-answer">3 5 8</text></svg><span class="diagram-foot">Break it down. See the connections.</span></div>
       </div>
-
-      <div class="deck-scroll" id="algo-categories">
-        <div class="loading-state">
-          <div class="spinner"></div>
-          <span>Loading Go algorithms…</span>
-        </div>
-      </div>
-    </aside>
-
-    <div class="drawer-backdrop" id="drawer-backdrop" style="display: none;"></div>
-
-    <!-- Center Pane: Visualizer Canvas & Floating Dock -->
-    <main class="visualizer-stage">
-      <div class="stage-hud">
-        <div class="hud-left">
-          <div class="hud-tag" id="viz-category">Algorithm Group</div>
-          <h1 class="hud-title" id="viz-title">Select Algorithm</h1>
-        </div>
-        <div class="hud-right">
-          <button class="hud-action-btn" id="btn-shuffle" title="Shuffle / Randomize Input" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="16 3 21 3 21 8"></polyline>
-              <line x1="4" y1="20" x2="21" y2="3"></line>
-              <polyline points="21 16 21 21 16 21"></polyline>
-              <line x1="15" y1="15" x2="21" y2="21"></line>
-              <line x1="4" y1="4" x2="9" y2="9"></line>
-            </svg>
-            <span>Shuffle</span>
-          </button>
-          <button class="hud-action-btn" id="btn-custom-input" title="Custom Input Dialog" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 20h9"></path>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-            </svg>
-            <span>Custom Data</span>
-          </button>
-          <div class="action-pill" id="viz-action">READY</div>
-          <div class="complexity-chip" id="viz-complexity">Time: O(1) • Space: O(1)</div>
-        </div>
-      </div>
-
-      <div class="stage-legend" id="stage-legend"></div>
-
-      <div class="canvas-viewport">
-        <svg id="svg-stage" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid meet">
-          <!-- Rendered dynamically by Go/WASM -->
-        </svg>
-      </div>
-
-      <!-- Floating Glass Control Capsule -->
-      <div class="dock-container">
-        <div class="dock-capsule">
-          <div class="dock-scrubber-row">
-            <span class="scrub-label">Progress</span>
-            <input type="range" id="scrubber" class="dock-scrubber" min="0" max="0" value="0" aria-label="Step timeline">
-            <span class="step-counter" id="step-counter">Step 0 of 0</span>
+      <section class="discovery" id="discovery" aria-labelledby="discovery-title">
+        <div class="discovery-heading"><h2 id="discovery-title">What are you working on?</h2><span id="catalog-total">Interactive algorithms in Go</span></div>
+        <label class="search-box" for="algo-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span class="sr-only">Search algorithms</span><input id="algo-search" type="search" placeholder="Search algorithms, concepts, or problems…" autocomplete="off" disabled><kbd aria-hidden="true">/</kbd></label>
+        <p class="search-hint">Try “shortest path”, “sorting”, or “binary search”.</p>
+        <div id="category-filters" class="category-filters" role="group" aria-label="Filter by category"></div>
+        <div class="results-heading"><p id="result-count" role="status" aria-live="polite">Loading algorithm library…</p><button id="clear-filters" class="text-button" hidden>Reset filters</button></div>
+        <p id="navigation-notice" class="notice" role="status" hidden></p>
+        <div id="algorithm-grid" class="algorithm-grid"></div>
+        <div id="empty-results" class="empty-state" hidden><h3>No algorithms found</h3><p>Try fewer words or clear your category filter.</p><button id="reset-search" class="primary">Show all algorithms</button></div>
+      </section>
+    </section>
+    <section id="workspace" hidden aria-labelledby="viz-title">
+      <a id="back-library" class="back-link" href="#">← Back to library</a>
+      <div class="lesson-heading"><div><p id="viz-category" class="lesson-category"></p><h1 id="viz-title" tabindex="-1">Algorithm</h1><p id="viz-summary" class="lesson-summary"></p></div><p id="viz-complexity" class="complexity-chip"></p></div>
+      <div class="workspace-grid">
+        <section class="visualizer-stage" aria-label="Interactive visualization">
+          <div class="stage-toolbar"><span class="stage-label">Watch the idea unfold</span><div><button id="btn-shuffle" class="quiet-button" disabled>Shuffle</button><button id="btn-custom-input" class="quiet-button" disabled>Custom data</button></div></div>
+          <div id="stage-legend" class="stage-legend"></div>
+          <div class="canvas-viewport"><svg id="svg-stage" viewBox="0 0 800 450" role="img" aria-label="Algorithm visualization"></svg></div>
+          <div class="step-narration"><span id="viz-action" class="action-pill">Ready</span><p id="step-explanation">Choose Play or move forward one step.</p></div>
+          <div class="playback"><div class="timeline"><label for="scrubber">Progress</label><input id="scrubber" type="range" min="0" max="0" value="0" disabled><span id="step-counter">Step 0 of 0</span></div><div class="playback-actions"><div class="transport"><button id="btn-reset" class="quiet-button" title="Restart (R)" disabled>↺ <span>Restart</span></button><button id="btn-prev" class="quiet-button" title="Previous step (Left arrow)" disabled>← <span>Previous</span></button><button id="btn-play" class="primary" title="Play or pause (Space)" disabled><span id="btn-play-icon" aria-hidden="true">▶</span> <span id="btn-play-label">Play</span></button><button id="btn-next" class="quiet-button" title="Next step (Right arrow)" disabled><span>Next</span> →</button></div><label class="speed-label" for="speed-select">Speed <select id="speed-select" disabled><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label></div></div>
+          <p class="keyboard-hint">Step through with ← → &nbsp; · &nbsp; Space to play &nbsp; · &nbsp; R to restart</p>
+        </section>
+        <aside class="inspector-deck" aria-label="Algorithm details">
+          <div class="inspector-tabs" role="tablist" aria-label="Lesson details"><button id="tab-code-btn" role="tab" aria-selected="true" aria-controls="tab-code">Code &amp; state</button><button id="tab-doc-btn" role="tab" aria-selected="false" aria-controls="tab-doc" tabindex="-1">Learn</button></div>
+          <div id="tab-code" role="tabpanel" aria-labelledby="tab-code-btn" tabindex="0">
+            <div class="telemetry-grid"><div><strong id="metric-comps">0</strong><span>Comparisons</span></div><div><strong id="metric-swaps">0</strong><span>Swaps</span></div><div><strong id="metric-ops">0</strong><span>Operations</span></div></div>
+            <div class="variables-section"><h2>Variables</h2><div id="step-variables" class="variables-deck"></div></div>
+            <div class="code-stream-header"><span>algorithm.go</span><span>Go source</span></div><div id="code-container" class="code-container" tabindex="0" aria-label="Algorithm source code"></div>
           </div>
-
-          <div class="dock-actions-row">
-            <div class="dock-btn-group">
-              <button class="dock-btn" id="btn-reset" title="Restart (R)" type="button">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                  <path d="M3 3v5h5"></path>
-                </svg>
-                <span>Reset</span>
-                <span class="kbd-badge">R</span>
-              </button>
-
-              <button class="dock-btn" id="btn-prev" title="Previous Step (Left Arrow)" type="button">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="19 20 9 12 19 4 19 20"></polygon>
-                  <line x1="5" y1="19" x2="5" y2="5"></line>
-                </svg>
-                <span>Prev</span>
-                <span class="kbd-badge">←</span>
-              </button>
-
-              <button class="dock-btn dock-btn-primary" id="btn-play" title="Play / Pause (Space)" type="button">
-                <span id="btn-play-icon">
-                  <svg class="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                  </svg>
-                </span>
-                <span id="btn-play-label">Play</span>
-                <span class="kbd-badge">Space</span>
-              </button>
-
-              <button class="dock-btn" id="btn-next" title="Next Step (Right Arrow)" type="button">
-                <span>Next</span>
-                <span class="kbd-badge">→</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="5 4 15 12 5 20 5 4"></polygon>
-                  <line x1="19" y1="5" x2="19" y2="19"></line>
-                </svg>
-              </button>
-            </div>
-
-            <div class="dock-speed-group">
-              <span class="speed-label">Speed</span>
-              <select id="speed-select" class="speed-dropdown" aria-label="Playback speed">
-                <option value="0.25">0.25x (Study)</option>
-                <option value="0.5">0.5x (Slow)</option>
-                <option value="1" selected>1.0x (Normal)</option>
-                <option value="1.5">1.5x (Fast)</option>
-                <option value="2">2.0x (Hyper)</option>
-              </select>
-            </div>
-          </div>
-        </div>
+          <div id="tab-doc" role="tabpanel" aria-labelledby="tab-doc-btn" tabindex="0" hidden><section class="doc-card"><h2>The idea</h2><p id="doc-summary"></p></section><section class="doc-card"><h2>How it works</h2><p id="doc-how"></p></section><section class="doc-card"><h2>Key concepts</h2><div id="doc-concepts" class="concepts-cloud"></div></section><section class="doc-card"><h2>Complexity</h2><pre id="doc-complexity-detail"></pre></section></div>
+        </aside>
       </div>
-    </main>
-
-    <!-- Right Inspector: Code Stream & Masterclass Learn -->
-    <aside class="inspector-deck">
-      <div class="inspector-tabs">
-        <button class="tab-pill active" id="tab-code-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="16 18 22 12 16 6"></polyline>
-            <polyline points="8 6 2 12 8 18"></polyline>
-          </svg>
-          <span>Code Stream</span>
-        </button>
-        <button class="tab-pill" id="tab-doc-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-          </svg>
-          <span>Learn</span>
-        </button>
-      </div>
-
-      <!-- Tab 1: Code Stream -->
-      <div class="inspector-body" id="tab-code">
-        <!-- Live Metrics Grid -->
-        <div class="telemetry-grid">
-          <div class="telemetry-card">
-            <span class="telemetry-num" id="metric-comps">0</span>
-            <span class="telemetry-tag">Comparisons</span>
-          </div>
-          <div class="telemetry-card">
-            <span class="telemetry-num" id="metric-swaps">0</span>
-            <span class="telemetry-tag">Swaps</span>
-          </div>
-          <div class="telemetry-card">
-            <span class="telemetry-num" id="metric-ops">0</span>
-            <span class="telemetry-tag">Operations</span>
-          </div>
-        </div>
-
-        <!-- Live Step Explanation Box -->
-        <div class="step-narration">
-          <div class="narration-header">
-            <span class="narration-indicator"></span>
-            <span class="narration-title">Execution Step</span>
-          </div>
-          <p id="step-explanation" class="narration-text">Select an algorithm to begin.</p>
-        </div>
-
-        <!-- Live Variables Deck -->
-        <div class="variables-section">
-          <span class="section-micro-label">Memory Snapshot</span>
-          <div class="variables-deck" id="step-variables">
-            <span class="var-empty">No active local variables</span>
-          </div>
-        </div>
-
-        <!-- Go Source Code Stream -->
-        <div class="code-stream-wrapper">
-          <div class="code-stream-header">
-            <span class="file-name">algorithm.go</span>
-            <span class="go-tag">Go 1.24</span>
-          </div>
-          <div class="code-container" id="code-container">
-            <!-- Rendered by Go/WASM -->
-          </div>
-        </div>
-      </div>
-
-      <!-- Tab 2: Masterclass Documentation -->
-      <div class="inspector-body" id="tab-doc" style="display: none;">
-        <div class="doc-card">
-          <h3 class="doc-heading">Overview</h3>
-          <p id="doc-summary" class="doc-body"></p>
-        </div>
-
-        <div class="doc-card">
-          <h3 class="doc-heading">How It Works</h3>
-          <p id="doc-how" class="doc-body"></p>
-        </div>
-
-        <div class="doc-card">
-          <h3 class="doc-heading">Key Invariants</h3>
-          <div id="doc-concepts" class="concepts-cloud"></div>
-        </div>
-
-        <div class="doc-card">
-          <h3 class="doc-heading">Computational Complexity</h3>
-          <pre id="doc-complexity-detail" class="doc-code-block"></pre>
-        </div>
-      </div>
-    </aside>
-  </div>
-
-  <!-- Interactive Input Lab Modal -->
-  <div class="modal-backdrop" id="custom-modal" style="display: none;">
-    <div class="modal-dialog">
-      <div class="modal-head">
-        <div class="modal-title-wrap">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
-            <path d="M12 20h9"></path>
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-          </svg>
-          <span class="modal-title">Custom Dataset Lab</span>
-        </div>
-        <button class="modal-close" id="btn-modal-close" aria-label="Close dialog">&times;</button>
-      </div>
-      <p class="modal-desc">Provide your own JSON dataset to observe the algorithm solve your specific test case:</p>
-      <div class="preset-row">
-        <span class="preset-label">Quick Presets:</span>
-        <button class="preset-chip" type="button" data-preset="worst">Reversed (Worst)</button>
-        <button class="preset-chip" type="button" data-preset="sorted">Nearly Sorted</button>
-        <button class="preset-chip" type="button" data-preset="small">Small Edge</button>
-      </div>
-      <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]" aria-label="Custom dataset input">
-      <div id="modal-error" class="modal-error" style="display: none;"></div>
-      <div class="modal-foot">
-        <button class="dock-btn" id="btn-modal-cancel" type="button">Cancel</button>
-        <button class="dock-btn dock-btn-primary" id="btn-modal-apply" type="button">Apply &amp; Visualize</button>
-      </div>
-    </div>
-  </div>
-
+    </section>
+    <div id="runtime-error" class="empty-state" role="alert" hidden><h2>The algorithm engine could not load</h2><p>Check your connection and reload to try again.</p><button class="primary" id="reload-app">Reload</button></div>
+    <noscript><p class="empty-state">Enable JavaScript to explore interactive algorithms.</p></noscript>
+  </main>
+  <footer><span>Made for the moment it clicks.</span><span>Open source. Powered by Go &amp; WebAssembly.</span></footer>
+  <dialog id="custom-modal" aria-labelledby="modal-title" aria-describedby="modal-description"><div class="modal-head"><h2 id="modal-title">Make it your problem</h2><button id="btn-modal-close" class="quiet-button" aria-label="Close custom data dialog">×</button></div><p id="modal-description">Edit the JSON dataset and see how this algorithm responds.</p><div id="preset-row" class="preset-row"><span>Try a dataset</span><button class="preset-chip" data-preset="worst">Reversed</button><button class="preset-chip" data-preset="sorted">Nearly sorted</button><button class="preset-chip" data-preset="small">Small example</button></div><label for="custom-input-val">Dataset (JSON)</label><textarea id="custom-input-val" rows="6" spellcheck="false"></textarea><p id="modal-error" role="alert" hidden></p><div class="modal-foot"><button id="btn-modal-cancel" class="quiet-button">Cancel</button><button id="btn-modal-apply" class="primary">Apply &amp; visualize</button></div></dialog>
   <script>
-    const go = new Go();
-    WebAssembly.instantiateStreaming(fetch("/static/app.wasm"), go.importObject)
-      .then(result => {
-        go.run(result.instance);
-      })
-      .catch(err => {
-        console.error("Failed to load WebAssembly:", err);
-        const title = document.getElementById("viz-title");
-        if (title) title.innerText = "WebAssembly Loading Failed";
+    const themeColors = {lab:'#101c19', midnight:'#111c30', paper:'#f6f1e7', plum:'#281c2b'};
+    document.querySelectorAll('input[name="theme"]').forEach(input => {
+      input.checked = input.value === (document.documentElement.dataset.theme || 'lab');
+      input.addEventListener('change', () => {
+        document.documentElement.dataset.theme = input.value;
+        document.querySelector('meta[name="theme-color"]').content = themeColors[input.value];
+        try { localStorage.setItem('gorithm-theme', input.value); } catch (_) {}
+        document.getElementById('theme-options').hidePopover();
+        document.getElementById('theme-toggle').focus();
       });
+    });
+    document.querySelector('meta[name="theme-color"]').content = themeColors[document.documentElement.dataset.theme || 'lab'];
+    const showRuntimeError = err => {
+      console.error('Algorithm engine failed:', err);
+      document.getElementById('runtime-error').hidden = false;
+      document.getElementById('result-count').textContent = 'Algorithm library unavailable';
+      document.querySelectorAll('#workspace button, #workspace input, #workspace select, #algo-search').forEach(el => el.disabled = true);
+    };
+    document.getElementById('reload-app').addEventListener('click', () => location.reload());
+  </script>
+  <script src="/static/wasm_exec.js" onerror="showRuntimeError(new Error('Runtime script unavailable'))"></script>
+  <script>
+    (async () => {
+      try {
+        const go = new Go();
+        const response = await fetch('/static/app.wasm');
+        if (!response.ok) throw new Error('WASM HTTP ' + response.status);
+        const result = await WebAssembly.instantiate(await response.arrayBuffer(), go.importObject);
+        await go.run(result.instance);
+      } catch (err) { showRuntimeError(err); }
+    })();
   </script>
 </body>
 </html>

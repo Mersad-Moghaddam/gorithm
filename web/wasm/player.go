@@ -166,9 +166,15 @@ func (p *Player) renderLessonShell() {
 	meta := p.lesson.Meta()
 
 	p.doc.Call("getElementById", "viz-title").Set("innerText", meta.Name)
+	p.doc.Call("getElementById", "viz-summary").Set("textContent", meta.Documentation.Summary)
+	p.doc.Call("getElementById", "svg-stage").Call("setAttribute", "aria-label", meta.Name+" execution visualization")
+	controls := p.doc.Call("querySelectorAll", "#workspace button, #workspace input, #workspace select")
+	for i := 0; i < controls.Length(); i++ {
+		controls.Index(i).Set("disabled", len(p.steps) == 0)
+	}
 	p.doc.Call("getElementById", "viz-category").Set("innerText", string(meta.Category))
 	p.doc.Call("getElementById", "viz-complexity").Set("innerText", fmt.Sprintf(
-		"Time: %s | Space: %s", meta.Documentation.TimeComplexity, meta.Documentation.SpaceComplexity,
+		"Time: %s\nSpace: %s", meta.Documentation.TimeComplexity, meta.Documentation.SpaceComplexity,
 	))
 
 	// Documentation tab
@@ -403,11 +409,12 @@ func (p *Player) Play() {
 	p.playing = true
 	p.updatePlayButtonUI(true)
 	p.stopChannel = make(chan struct{})
+	stop := p.stopChannel
 
 	go func() {
 		for {
 			select {
-			case <-p.stopChannel:
+			case <-stop:
 				return
 			default:
 				p.mu.Lock()
@@ -422,11 +429,19 @@ func (p *Player) Play() {
 				}
 
 				interval := time.Duration(float64(500*time.Millisecond) / sp)
-				time.Sleep(interval)
+				select {
+				case <-stop:
+					return
+				case <-time.After(interval):
+				}
 
 				var cb js.Func
 				cb = js.FuncOf(func(this js.Value, args []js.Value) any {
-					p.Next()
+					select {
+					case <-stop:
+					default:
+						p.Next()
+					}
 					cb.Release()
 					return nil
 				})

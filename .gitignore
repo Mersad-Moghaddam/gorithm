@@ -11,3 +11,6 @@ dist/
 # Testing
 *.out
 *.test
+
+# Local design and execution artifacts
+.superpowers/

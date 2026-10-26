@@ -111,8 +111,44 @@ make run
 
 Open `http://localhost:8080` in your browser.
 
+### Find an algorithm
+
+Start in the Living Lab library. Search names, categories, summaries, and key
+concepts; every search word must match. Combine search with a category filter,
+then open a card to explore its visualization, source, and explanation.
+
+Lesson links such as `/#algorithm=merge` can be shared directly. Returning to
+the library preserves your search and category. Motion respects your system's
+reduced-motion preference; playback always starts on your command.
+
+Use **Theme** in the header to choose Living Lab, Midnight Blue, Warm Paper,
+or Plum. Your choice is saved locally and restored on reload. Warm Paper keeps
+the visualization canvas dark so existing algorithm state colors stay legible.
+
+### Verification
+
+```bash
+go test ./...
+make build
+```
+
+Optional browser regression check requires an external Playwright installation
+and Chromium, with the app running. No Node dependency is needed by the app:
+
+```bash
+NODE_PATH=/path/to/playwright/node_modules node scripts/check_ui.mjs
+```
+
+Set `APP_URL` or `CHROMIUM` to override `http://localhost:8080` or
+`/usr/bin/chromium`. The check covers discovery, history, pause cancellation,
+dialog validation, tabs, mobile overflow, and runtime loading failure.
+
 ### Keyboard Shortcuts
 
+- `/`: Focus library search
+- `R`: Restart current lesson
+- Arrow keys, Home, End: Move between Code & state and Learn tabs when focused
+- `Escape`: Close custom dataset dialog
 - `Space`: Play / Pause animation
 - `ArrowRight`: Step forward
 - `ArrowLeft`: Step backward
