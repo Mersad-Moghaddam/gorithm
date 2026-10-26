@@ -467,20 +467,27 @@ func (p *Player) Pause() {
 func (p *Player) updatePlayButtonUI(playing bool) {
 	labelEl := p.doc.Call("getElementById", "btn-play-label")
 	iconEl := p.doc.Call("getElementById", "btn-play-icon")
+	btn := p.doc.Call("getElementById", "btn-play")
+	if !btn.IsNull() && !btn.IsUndefined() {
+		if playing {
+			btn.Call("setAttribute", "aria-label", "Pause playback (Space)")
+			btn.Set("title", "Pause playback (Space)")
+		} else {
+			btn.Call("setAttribute", "aria-label", "Play playback (Space)")
+			btn.Set("title", "Play playback (Space)")
+		}
+	}
 	if !labelEl.IsNull() && !labelEl.IsUndefined() {
 		if playing {
 			labelEl.Set("innerText", "Pause")
 		} else {
 			labelEl.Set("innerText", "Play")
 		}
-	} else {
-		btn := p.doc.Call("getElementById", "btn-play")
-		if !btn.IsNull() && !btn.IsUndefined() {
-			if playing {
-				btn.Set("innerText", "Pause")
-			} else {
-				btn.Set("innerText", "Play")
-			}
+	} else if !btn.IsNull() && !btn.IsUndefined() {
+		if playing {
+			btn.Set("innerText", "Pause")
+		} else {
+			btn.Set("innerText", "Play")
 		}
 	}
 	if !iconEl.IsNull() && !iconEl.IsUndefined() {
