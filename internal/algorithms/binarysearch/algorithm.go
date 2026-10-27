@@ -1,7 +1,5 @@
 package binarysearch
 
-// ponytail: slice-based binary search on []int; upgrade to cmp.Ordered generic for arbitrary ordered types.
-
 // Search performs binary search on a sorted slice of integers, returning the
 // index of target if found, or -1 otherwise.
 func Search(arr []int, target int) int {

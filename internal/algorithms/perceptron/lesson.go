@@ -1,9 +1,7 @@
 package perceptron
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -66,84 +64,33 @@ type PerceptronInput struct {
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	defaultInputs := [][]float64{
+	inputs := [][]float64{
 		{0, 0},
 		{0, 1},
 		{1, 0},
 		{1, 1},
 	}
-	defaultLabels := []int{0, 1, 1, 1}
-	defaultLR := 0.1
-	defaultEpochs := 10
+	labels := []int{0, 1, 1, 1}
+	lr := 0.1
+	epochs := 10
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace(defaultInputs, defaultLabels, defaultLR, defaultEpochs), nil
-	}
-
-	if bytes.Equal(trimmed, []byte("null")) {
-		return nil, fmt.Errorf("perceptron: input cannot be null")
-	}
-
-	var payload PerceptronInput
-	if err := json.Unmarshal(trimmed, &payload); err != nil {
-		return nil, fmt.Errorf("perceptron: invalid input json: %w", err)
-	}
-
-	if payload.Inputs == nil {
-		return nil, fmt.Errorf("perceptron: inputs field is required")
-	}
-	if len(payload.Inputs) == 0 {
-		return nil, fmt.Errorf("perceptron: inputs cannot be empty")
-	}
-	if payload.Labels == nil {
-		return nil, fmt.Errorf("perceptron: labels field is required")
-	}
-	if len(payload.Labels) != len(payload.Inputs) {
-		return nil, fmt.Errorf("perceptron: labels length (%d) must match inputs length (%d)", len(payload.Labels), len(payload.Inputs))
-	}
-
-	d := len(payload.Inputs[0])
-	if d == 0 {
-		return nil, fmt.Errorf("perceptron: sample feature vector cannot be empty")
-	}
-	for i, x := range payload.Inputs {
-		if len(x) != d {
-			return nil, fmt.Errorf("perceptron: sample %d dimension %d does not match first sample %d", i, len(x), d)
+	if len(input) > 0 {
+		var payload PerceptronInput
+		if err := json.Unmarshal(input, &payload); err == nil {
+			if len(payload.Inputs) > 0 && len(payload.Labels) == len(payload.Inputs) {
+				inputs = payload.Inputs
+				labels = payload.Labels
+			}
+			if payload.LR > 0 {
+				lr = payload.LR
+			}
+			if payload.Epochs > 0 {
+				epochs = payload.Epochs
+			}
 		}
 	}
 
-	normLabels := make([]int, len(payload.Labels))
-	for i, lbl := range payload.Labels {
-		if lbl == -1 {
-			normLabels[i] = 0
-		} else if lbl == 0 || lbl == 1 {
-			normLabels[i] = lbl
-		} else {
-			return nil, fmt.Errorf("perceptron: invalid label %d at index %d; must be 0 or 1 (or -1 and 1)", lbl, i)
-		}
-	}
-
-	lr := defaultLR
-	if payload.LR < 0 {
-		return nil, fmt.Errorf("perceptron: learning rate cannot be negative")
-	}
-	if payload.LR > 0 {
-		lr = payload.LR
-	}
-
-	epochs := defaultEpochs
-	if payload.Epochs < 0 {
-		return nil, fmt.Errorf("perceptron: epochs cannot be negative")
-	}
-	if payload.Epochs > 0 {
-		epochs = payload.Epochs
-	}
-	if epochs > 50 {
-		epochs = 50
-	}
-
-	return Trace(payload.Inputs, normLabels, lr, epochs), nil
+	return Trace(inputs, labels, lr, epochs), nil
 }
 
 func init() {

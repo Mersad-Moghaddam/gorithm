@@ -1,10 +1,7 @@
 package bucketsort
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"strconv"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -59,34 +56,8 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{78, 17, 39, 26, 72, 94, 21, 12, 23, 68}
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) > 0 {
-			if string(trimmed) == "null" {
-				return nil, fmt.Errorf("bucketsort input cannot be null")
-			}
-			if trimmed[0] != '[' {
-				return nil, fmt.Errorf("bucketsort input must be a JSON array of integers")
-			}
-			dec := json.NewDecoder(bytes.NewReader(trimmed))
-			var rawList []json.RawMessage
-			if err := dec.Decode(&rawList); err != nil {
-				return nil, fmt.Errorf("invalid JSON array: %w", err)
-			}
-			if dec.More() {
-				return nil, fmt.Errorf("unexpected trailing data in input")
-			}
-			custom := make([]int, 0, len(rawList))
-			for i, raw := range rawList {
-				rawTrimmed := string(bytes.TrimSpace(raw))
-				if rawTrimmed == "null" {
-					return nil, fmt.Errorf("element at index %d is null", i)
-				}
-				val, err := strconv.Atoi(rawTrimmed)
-				if err != nil {
-					return nil, fmt.Errorf("element %q at index %d is not an integer", rawTrimmed, i)
-				}
-				custom = append(custom, val)
-			}
+		var custom []int
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
 			arr = custom
 		}
 	}

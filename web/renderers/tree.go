@@ -2,7 +2,6 @@ package renderers
 
 import (
 	"fmt"
-	"html"
 	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -118,7 +117,6 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 
 	// Nodes
 	for _, n := range state.Nodes {
-		fmt.Fprintf(&sb, `<g data-key="tree-%s"><title>%s</title>`, html.EscapeString(n.ID), html.EscapeString(n.State))
 		fillRef := "url(#tree-grad-node)"
 		strokeColor := "#475569"
 		filterStr := ""
@@ -152,9 +150,8 @@ func RenderTreeSVG(step trace.Step, width, height int) string {
 		))
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="%.1f" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle" dy="5">%s</text>`,
-			n.X, n.Y, fontSize, html.EscapeString(displayText),
+			n.X, n.Y, fontSize, displayText,
 		))
-		sb.WriteString(`</g>`)
 	}
 
 	return sb.String()

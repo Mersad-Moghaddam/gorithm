@@ -1,9 +1,7 @@
 package knapsack
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -60,38 +58,13 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	values := []int{3, 4, 5, 6}
 	capacity := 5
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) > 0 {
-		if bytes.Equal(trimmed, []byte("null")) {
-			return nil, fmt.Errorf("input cannot be null")
-		}
-
+	if len(input) > 0 {
 		var custom buildInput
-		if err := json.Unmarshal(trimmed, &custom); err != nil {
-			return nil, fmt.Errorf("malformed JSON input: %w", err)
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Weights) > 0 && len(custom.Weights) == len(custom.Values) && custom.Capacity != nil {
+			weights = custom.Weights
+			values = custom.Values
+			capacity = *custom.Capacity
 		}
-
-		if custom.Weights == nil || custom.Values == nil {
-			return nil, fmt.Errorf("weights and values are required")
-		}
-		if len(custom.Weights) != len(custom.Values) {
-			return nil, fmt.Errorf("mismatched weights and values length: %d != %d", len(custom.Weights), len(custom.Values))
-		}
-		if custom.Capacity == nil {
-			return nil, fmt.Errorf("capacity is required")
-		}
-		if *custom.Capacity < 0 {
-			return nil, fmt.Errorf("capacity cannot be negative: %d", *custom.Capacity)
-		}
-		for i, w := range custom.Weights {
-			if w < 0 {
-				return nil, fmt.Errorf("weight cannot be negative at index %d: %d", i, w)
-			}
-		}
-
-		weights = custom.Weights
-		values = custom.Values
-		capacity = *custom.Capacity
 	}
 
 	return Trace(weights, values, capacity), nil

@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"math"
 	"math/rand"
-	"sort"
 	"strings"
 	"sync"
 	"syscall/js"
@@ -20,25 +18,44 @@ import (
 )
 
 type Player struct {
-	lesson        catalog.Lesson
-	steps         []trace.Step
-	stepIdx       int
-	playing       bool
-	speed         float64
-	doc           js.Value
-	mu            sync.Mutex
-	timerID       int
-	timerCallback js.Func
-	timerPending  bool
-	generation    uint64
-	renderedIdx   int
+	lesson         catalog.Lesson
+	steps          []trace.Step
+	stepIdx        int
+	playing        bool
+	speed          float64
+	doc            js.Value
+	mu             sync.Mutex
+	stopChannel    chan struct{}
+	lastActiveLine string
+
+	// Cached DOM references
+	elSvgStage        js.Value
+	elCodeContainer   js.Value
+	elScrubber        js.Value
+	elStepCounter     js.Value
+	elVizAction       js.Value
+	elStepVariables   js.Value
+	elStepExplanation js.Value
+	elMetricComps     js.Value
+	elMetricSwaps     js.Value
+	elMetricOps       js.Value
 }
 
 func NewPlayer(doc js.Value) *Player {
+	get := func(id string) js.Value { return doc.Call("getElementById", id) }
 	return &Player{
-		speed:       1.0,
-		doc:         doc,
-		renderedIdx: -1,
+		speed:             1.0,
+		doc:               doc,
+		elSvgStage:        get("svg-stage"),
+		elCodeContainer:   get("code-container"),
+		elScrubber:        get("scrubber"),
+		elStepCounter:     get("step-counter"),
+		elVizAction:       get("viz-action"),
+		elStepVariables:   get("step-variables"),
+		elStepExplanation: get("step-explanation"),
+		elMetricComps:     get("metric-comps"),
+		elMetricSwaps:     get("metric-swaps"),
+		elMetricOps:       get("metric-ops"),
 	}
 }
 
@@ -46,24 +63,23 @@ func (p *Player) LoadLesson(l catalog.Lesson) {
 	p.LoadLessonWithInput(l, nil)
 }
 
-func (p *Player) LoadLessonWithInput(l catalog.Lesson, input []byte) error {
+func (p *Player) LoadLessonWithInput(l catalog.Lesson, input []byte) {
 	p.Pause()
 
 	p.mu.Lock()
+	p.lesson = l
 	steps, err := l.Build(input)
 	if err != nil {
-		p.mu.Unlock()
-		return err
+		fmt.Printf("Error building lesson: %v\n", err)
+		steps, _ = l.Build(nil)
 	}
-	p.lesson = l
 	p.steps = steps
 	p.stepIdx = 0
-	p.renderedIdx = -1
+	p.lastActiveLine = ""
 	p.mu.Unlock()
 
 	p.renderLessonShell()
 	p.RenderStep(0)
-	return nil
 }
 
 func (p *Player) Shuffle() {
@@ -176,9 +192,15 @@ func (p *Player) renderLessonShell() {
 	meta := p.lesson.Meta()
 
 	p.doc.Call("getElementById", "viz-title").Set("innerText", meta.Name)
+	p.doc.Call("getElementById", "viz-summary").Set("textContent", meta.Documentation.Summary)
+	p.doc.Call("getElementById", "svg-stage").Call("setAttribute", "aria-label", meta.Name+" execution visualization")
+	controls := p.doc.Call("querySelectorAll", "#workspace button, #workspace input, #workspace select")
+	for i := 0; i < controls.Length(); i++ {
+		controls.Index(i).Set("disabled", len(p.steps) == 0)
+	}
 	p.doc.Call("getElementById", "viz-category").Set("innerText", string(meta.Category))
 	p.doc.Call("getElementById", "viz-complexity").Set("innerText", fmt.Sprintf(
-		"Time: %s | Space: %s", meta.Documentation.TimeComplexity, meta.Documentation.SpaceComplexity,
+		"Time: %s\nSpace: %s", meta.Documentation.TimeComplexity, meta.Documentation.SpaceComplexity,
 	))
 
 	// Documentation tab
@@ -319,69 +341,79 @@ func (p *Player) RenderStep(idx int) {
 	step := p.steps[idx]
 
 	// 1. Render Visualizer SVG
-	svgContent := renderers.RenderStepSVG(step, p.lesson.Meta().Renderer, 800, 450)
-	duration := 0.0
-	if p.renderedIdx >= 0 && (idx == p.renderedIdx+1 || idx == p.renderedIdx-1) {
-		duration = math.Min(300, 400/p.speed)
+	rendererType := p.lesson.Meta().Renderer
+	var svgContent string
+	switch rendererType {
+	case "graph":
+		svgContent = renderers.RenderGraphSVG(step, 800, 450)
+	case "tree":
+		svgContent = renderers.RenderTreeSVG(step, 800, 450)
+	case "table":
+		svgContent = renderers.RenderTableSVG(step, 800, 450)
+	case "hanoi":
+		svgContent = renderers.RenderHanoiSVG(step, 800, 450)
+	default:
+		svgContent = renderers.RenderArraySVG(step, 800, 450)
 	}
-	js.Global().Get("gorithmScene").Call("render", p.doc.Call("getElementById", "svg-stage"), svgContent, duration)
-	p.renderedIdx = idx
+	p.elSvgStage.Set("innerHTML", svgContent)
 
 	// 2. Update line highlight & auto-scroll
-	allLines := p.doc.Call("querySelectorAll", ".code-line")
-	for i := 0; i < allLines.Length(); i++ {
-		allLines.Index(i).Get("classList").Call("remove", "active")
-	}
-	if step.LineID != "" {
-		activeEl := p.doc.Call("getElementById", "line-"+step.LineID)
-		if !activeEl.IsNull() && !activeEl.IsUndefined() {
-			activeEl.Get("classList").Call("add", "active")
-			codeBox := p.doc.Call("getElementById", "code-container")
-			if !codeBox.IsNull() && !codeBox.IsUndefined() && !activeEl.IsNull() && !activeEl.IsUndefined() {
-				offsetTop := activeEl.Get("offsetTop").Float()
-				boxHeight := codeBox.Get("clientHeight").Float()
-				codeBox.Set("scrollTop", offsetTop-boxHeight/2.0)
+	if p.lastActiveLine != step.LineID {
+		if p.lastActiveLine != "" {
+			oldEl := p.doc.Call("getElementById", "line-"+p.lastActiveLine)
+			if !oldEl.IsNull() && !oldEl.IsUndefined() {
+				oldEl.Get("classList").Call("remove", "active")
 			}
 		}
+		if step.LineID != "" {
+			activeEl := p.doc.Call("getElementById", "line-"+step.LineID)
+			if !activeEl.IsNull() && !activeEl.IsUndefined() {
+				activeEl.Get("classList").Call("add", "active")
+				if !p.elCodeContainer.IsNull() && !p.elCodeContainer.IsUndefined() {
+					offsetTop := activeEl.Get("offsetTop").Float()
+					boxHeight := p.elCodeContainer.Get("clientHeight").Float()
+					p.elCodeContainer.Set("scrollTop", offsetTop-boxHeight/2.0)
+				}
+			}
+		}
+		p.lastActiveLine = step.LineID
 	}
 
 	// 3. Update scrubber & step counter
-	p.doc.Call("getElementById", "scrubber").Set("value", idx)
-	p.doc.Call("getElementById", "step-counter").Set("innerText", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
+	p.elScrubber.Set("value", idx)
+	p.elScrubber.Call("setAttribute", "aria-valuetext", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
+	p.elStepCounter.Set("innerText", fmt.Sprintf("Step %d of %d", idx+1, len(p.steps)))
 
 	// 4. Update Action Pill
-	actionEl := p.doc.Call("getElementById", "viz-action")
-	if !actionEl.IsNull() && !actionEl.IsUndefined() {
-		actionEl.Set("innerText", strings.ToUpper(string(step.Action)))
-		actionEl.Set("className", fmt.Sprintf("action-pill action-%s", step.Action))
+	if !p.elVizAction.IsNull() && !p.elVizAction.IsUndefined() {
+		p.elVizAction.Set("innerText", strings.ToUpper(string(step.Action)))
+		p.elVizAction.Set("className", fmt.Sprintf("action-pill action-%s", step.Action))
 	}
 
 	// 5. Update Live Variables Pill Deck
-	varsEl := p.doc.Call("getElementById", "step-variables")
-	if !varsEl.IsNull() && !varsEl.IsUndefined() {
-		var varsHTML strings.Builder
-		keys := make([]string, 0, len(step.Variables))
-		for k := range step.Variables {
-			keys = append(keys, k)
+	if !p.elStepVariables.IsNull() && !p.elStepVariables.IsUndefined() {
+		if len(step.Variables) == 0 {
+			p.elStepVariables.Set("innerHTML", "")
+		} else {
+			var varsHTML strings.Builder
+			varsHTML.Grow(len(step.Variables) * 80)
+			for k, v := range step.Variables {
+				varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%s</span></span>`, html.EscapeString(k), html.EscapeString(fmt.Sprint(v))))
+			}
+			p.elStepVariables.Set("innerHTML", varsHTML.String())
 		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%s</span></span>`, html.EscapeString(k), html.EscapeString(fmt.Sprint(step.Variables[k]))))
-		}
-		varsEl.Set("innerHTML", varsHTML.String())
 	}
 
 	// 6. Update Explanation
-	p.doc.Call("getElementById", "step-explanation").Set("innerText", step.Explanation)
+	p.elStepExplanation.Set("innerText", step.Explanation)
 
 	// 7. Update Metrics
-	p.doc.Call("getElementById", "metric-comps").Set("innerText", fmt.Sprintf("%d", step.Metrics.Comparisons))
-	p.doc.Call("getElementById", "metric-swaps").Set("innerText", fmt.Sprintf("%d", step.Metrics.Swaps))
-	p.doc.Call("getElementById", "metric-ops").Set("innerText", fmt.Sprintf("%d", step.Metrics.Operations))
+	p.elMetricComps.Set("innerText", fmt.Sprintf("%d", step.Metrics.Comparisons))
+	p.elMetricSwaps.Set("innerText", fmt.Sprintf("%d", step.Metrics.Swaps))
+	p.elMetricOps.Set("innerText", fmt.Sprintf("%d", step.Metrics.Operations))
 }
 
 func (p *Player) Next() {
-	p.Pause()
 	if p.stepIdx < len(p.steps)-1 {
 		p.RenderStep(p.stepIdx + 1)
 	} else {
@@ -390,85 +422,112 @@ func (p *Player) Next() {
 }
 
 func (p *Player) Prev() {
-	p.Pause()
 	if p.stepIdx > 0 {
 		p.RenderStep(p.stepIdx - 1)
 	}
 }
 
 func (p *Player) Seek(idx int) {
-	p.Pause()
-	p.renderedIdx = -1
 	p.RenderStep(idx)
 }
 
 func (p *Player) Reset() {
 	p.Pause()
-	p.renderedIdx = -1
 	p.RenderStep(0)
 }
 
 func (p *Player) Play() {
-	if p.playing || len(p.steps) == 0 || p.stepIdx >= len(p.steps)-1 {
+	if p.playing {
 		return
+	}
+	p.mu.Lock()
+	if len(p.steps) > 0 && p.stepIdx >= len(p.steps)-1 {
+		p.mu.Unlock()
+		p.RenderStep(0)
+	} else {
+		p.mu.Unlock()
 	}
 	p.playing = true
 	p.updatePlayButtonUI(true)
-	p.scheduleNext()
-}
+	p.stopChannel = make(chan struct{})
+	stop := p.stopChannel
 
-func (p *Player) scheduleNext() {
-	generation := p.generation
-	var cb js.Func
-	cb = js.FuncOf(func(this js.Value, args []js.Value) any {
-		defer cb.Release()
-		p.timerPending = false
-		if !p.playing || generation != p.generation {
-			return nil
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				p.mu.Lock()
+				currentIdx := p.stepIdx
+				maxIdx := len(p.steps) - 1
+				sp := p.speed
+				p.mu.Unlock()
+
+				if currentIdx >= maxIdx {
+					p.Pause()
+					return
+				}
+
+				interval := time.Duration(float64(500*time.Millisecond) / sp)
+				select {
+				case <-stop:
+					return
+				case <-time.After(interval):
+				}
+
+				var cb js.Func
+				cb = js.FuncOf(func(this js.Value, args []js.Value) any {
+					select {
+					case <-stop:
+					default:
+						p.Next()
+					}
+					cb.Release()
+					return nil
+				})
+				js.Global().Call("requestAnimationFrame", cb)
+			}
 		}
-		p.RenderStep(p.stepIdx + 1)
-		if p.stepIdx >= len(p.steps)-1 {
-			p.playing = false
-			p.updatePlayButtonUI(false)
-		} else {
-			p.scheduleNext()
-		}
-		return nil
-	})
-	p.timerCallback = cb
-	p.timerPending = true
-	p.timerID = js.Global().Call("setTimeout", cb, 500/p.speed).Int()
+	}()
 }
 
 func (p *Player) Pause() {
-	p.generation++
+	if !p.playing {
+		return
+	}
 	p.playing = false
 	p.updatePlayButtonUI(false)
-	if p.timerPending {
-		js.Global().Call("clearTimeout", p.timerID)
-		p.timerCallback.Release()
-		p.timerPending = false
+	if p.stopChannel != nil {
+		close(p.stopChannel)
+		p.stopChannel = nil
 	}
-	js.Global().Get("gorithmScene").Call("cancel", p.doc.Call("getElementById", "svg-stage"))
 }
 
 func (p *Player) updatePlayButtonUI(playing bool) {
 	labelEl := p.doc.Call("getElementById", "btn-play-label")
 	iconEl := p.doc.Call("getElementById", "btn-play-icon")
+	btn := p.doc.Call("getElementById", "btn-play")
+	if !btn.IsNull() && !btn.IsUndefined() {
+		if playing {
+			btn.Call("setAttribute", "aria-label", "Pause playback (Space)")
+			btn.Set("title", "Pause playback (Space)")
+		} else {
+			btn.Call("setAttribute", "aria-label", "Play playback (Space)")
+			btn.Set("title", "Play playback (Space)")
+		}
+	}
 	if !labelEl.IsNull() && !labelEl.IsUndefined() {
 		if playing {
 			labelEl.Set("innerText", "Pause")
 		} else {
 			labelEl.Set("innerText", "Play")
 		}
-	} else {
-		btn := p.doc.Call("getElementById", "btn-play")
-		if !btn.IsNull() && !btn.IsUndefined() {
-			if playing {
-				btn.Set("innerText", "Pause")
-			} else {
-				btn.Set("innerText", "Play")
-			}
+	} else if !btn.IsNull() && !btn.IsUndefined() {
+		if playing {
+			btn.Set("innerText", "Pause")
+		} else {
+			btn.Set("innerText", "Play")
 		}
 	}
 	if !iconEl.IsNull() && !iconEl.IsUndefined() {
@@ -489,15 +548,9 @@ func (p *Player) TogglePlay() {
 }
 
 func (p *Player) SetSpeed(speed float64) {
-	if math.IsNaN(speed) || math.IsInf(speed, 0) || speed <= 0 {
-		return
-	}
-	wasPlaying := p.playing
-	p.Pause()
+	p.mu.Lock()
 	p.speed = speed
-	if wasPlaying {
-		p.Play()
-	}
+	p.mu.Unlock()
 }
 
 func escapeHTML(s string) string {

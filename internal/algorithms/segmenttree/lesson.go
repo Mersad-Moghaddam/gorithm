@@ -1,10 +1,7 @@
 package segmenttree
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -86,67 +83,24 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	updIdx, updVal := 2, 6
 
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) == 0 {
-			return Trace(arr, ql, qr, updIdx, updVal), nil
-		}
-		if string(trimmed) == "null" {
-			return nil, errors.New("input cannot be null")
-		}
-
-		if trimmed[0] == '[' {
-			var customArr []int
-			dec := json.NewDecoder(bytes.NewReader(trimmed))
-			if err := dec.Decode(&customArr); err != nil {
-				return nil, fmt.Errorf("invalid json array: %w", err)
-			}
-			if dec.More() {
-				return nil, errors.New("unexpected extra data after json array")
-			}
-			if len(customArr) == 0 {
-				return nil, errors.New("array cannot be empty")
-			}
-			arr = customArr
-			ql, qr = 0, len(arr)-1
-			updIdx, updVal = 0, arr[0]
-		} else if trimmed[0] == '{' {
-			var custom buildInput
-			dec := json.NewDecoder(bytes.NewReader(trimmed))
-			if err := dec.Decode(&custom); err != nil {
-				return nil, fmt.Errorf("invalid json object: %w", err)
-			}
-			if dec.More() {
-				return nil, errors.New("unexpected extra data after json object")
-			}
-			if len(custom.Arr) == 0 {
-				return nil, errors.New("array cannot be empty")
-			}
+		var custom buildInput
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Arr) > 0 {
 			arr = custom.Arr
-
-			if custom.Query != nil {
-				if len(custom.Query) != 2 {
-					return nil, errors.New("query range must contain exactly two elements [ql, qr]")
-				}
+			if len(custom.Query) == 2 {
 				ql, qr = custom.Query[0], custom.Query[1]
-				if ql < 0 || qr >= len(arr) || ql > qr {
-					return nil, fmt.Errorf("invalid query range [%d, %d] for array of length %d", ql, qr, len(arr))
-				}
 			} else {
 				ql, qr = 0, len(arr)-1
 			}
-
 			if custom.Update != nil {
-				if custom.Update.Index < 0 || custom.Update.Index >= len(arr) {
-					return nil, fmt.Errorf("invalid update index %d for array of length %d", custom.Update.Index, len(arr))
-				}
 				updIdx = custom.Update.Index
 				updVal = custom.Update.Value
-			} else {
-				updIdx = 0
-				updVal = arr[0]
 			}
 		} else {
-			return nil, errors.New("input must be a json object or array")
+			var customArr []int
+			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
+				arr = customArr
+				ql, qr = 0, len(arr)-1
+			}
 		}
 	}
 

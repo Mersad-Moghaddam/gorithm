@@ -19,7 +19,7 @@ func FindSCCs(nodes []string, edges [][2]string) [][]string {
 	}
 
 	visited := make(map[string]bool, len(nodes))
-	finishStack := make([]string, 0, len(nodes))
+	order := make([]string, 0, len(nodes))
 
 	var dfs1 func(u string)
 	dfs1 = func(u string) {
@@ -29,7 +29,7 @@ func FindSCCs(nodes []string, edges [][2]string) [][]string {
 				dfs1(v)
 			}
 		}
-		finishStack = append(finishStack, u)
+		order = append(order, u)
 	}
 
 	for _, u := range nodes {
@@ -52,9 +52,8 @@ func FindSCCs(nodes []string, edges [][2]string) [][]string {
 		}
 	}
 
-	for len(finishStack) > 0 {
-		u := finishStack[len(finishStack)-1]
-		finishStack = finishStack[:len(finishStack)-1]
+	for i := len(order) - 1; i >= 0; i-- {
+		u := order[i]
 		if !visitedRev[u] {
 			var comp []string
 			dfs2(u, &comp)

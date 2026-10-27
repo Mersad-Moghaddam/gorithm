@@ -1,10 +1,7 @@
 package gradientdescent
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"math"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -58,71 +55,31 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-type LessonInput struct {
-	X      *[]float64 `json:"x"`
-	Y      *[]float64 `json:"y"`
-	LR     *float64   `json:"lr"`
-	Epochs *int       `json:"epochs"`
-}
-
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	x := []float64{1.0, 2.0, 3.0, 4.0}
 	y := []float64{3.0, 5.0, 7.0, 9.0}
 	lr := 0.05
 	epochs := 10
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace(x, y, lr, epochs), nil
-	}
-	if bytes.Equal(trimmed, []byte("null")) {
-		return nil, fmt.Errorf("gradient descent input cannot be null")
-	}
-
-	var custom LessonInput
-	dec := json.NewDecoder(bytes.NewReader(trimmed))
-	if err := dec.Decode(&custom); err != nil {
-		return nil, fmt.Errorf("malformed JSON input: %w", err)
-	}
-	if dec.More() {
-		return nil, fmt.Errorf("unexpected trailing data in input")
-	}
-
-	if custom.X == nil || custom.Y == nil {
-		return nil, fmt.Errorf("both x and y arrays are required")
-	}
-	if len(*custom.X) == 0 || len(*custom.Y) == 0 {
-		return nil, fmt.Errorf("x and y arrays cannot be empty")
-	}
-	if len(*custom.X) != len(*custom.Y) {
-		return nil, fmt.Errorf("mismatched x and y lengths: %d != %d", len(*custom.X), len(*custom.Y))
-	}
-	for i, v := range *custom.X {
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return nil, fmt.Errorf("x[%d] must be a finite number", i)
+	if len(input) > 0 {
+		var custom struct {
+			X      []float64 `json:"x"`
+			Y      []float64 `json:"y"`
+			LR     *float64  `json:"lr"`
+			Epochs *int      `json:"epochs"`
 		}
-	}
-	for i, v := range *custom.Y {
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return nil, fmt.Errorf("y[%d] must be a finite number", i)
+		if err := json.Unmarshal(input, &custom); err == nil {
+			if len(custom.X) > 0 && len(custom.X) == len(custom.Y) {
+				x = custom.X
+				y = custom.Y
+			}
+			if custom.LR != nil && *custom.LR > 0 {
+				lr = *custom.LR
+			}
+			if custom.Epochs != nil && *custom.Epochs > 0 {
+				epochs = *custom.Epochs
+			}
 		}
-	}
-
-	x = *custom.X
-	y = *custom.Y
-
-	if custom.LR != nil {
-		if *custom.LR <= 0 || math.IsNaN(*custom.LR) || math.IsInf(*custom.LR, 0) {
-			return nil, fmt.Errorf("learning rate must be positive and finite")
-		}
-		lr = *custom.LR
-	}
-
-	if custom.Epochs != nil {
-		if *custom.Epochs <= 0 {
-			return nil, fmt.Errorf("epochs must be positive")
-		}
-		epochs = *custom.Epochs
 	}
 
 	return Trace(x, y, lr, epochs), nil

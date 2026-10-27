@@ -1,9 +1,7 @@
 package qlearning
 
 import (
-	"fmt"
 	"math/rand"
-	"strings"
 )
 
 // Action represents an agent movement in the grid.
@@ -17,7 +15,6 @@ const (
 )
 
 var ActionNames = [4]string{"Up", "Right", "Down", "Left"}
-var ActionArrows = [4]string{"↑", "→", "↓", "←"}
 
 // Coord represents a 2D coordinate (row, col) in the grid world.
 type Coord struct {
@@ -154,69 +151,16 @@ func (ag *QAgent) MaxQ(s Coord) (Action, float64) {
 	return best[0], maxVal
 }
 
-// ChooseActionWithMode selects action using epsilon-greedy exploration,
-// returning both chosen action and strategy name ("exploration" or "exploitation").
-func (ag *QAgent) ChooseActionWithMode(s Coord, rng *rand.Rand) (Action, string) {
+// ChooseAction selects action using epsilon-greedy exploration with random tie-breaking.
+func (ag *QAgent) ChooseAction(s Coord, rng *rand.Rand) Action {
 	if rng != nil && rng.Float64() < ag.Epsilon {
-		return Action(rng.Intn(4)), "exploration"
+		return Action(rng.Intn(4))
 	}
 	best, _ := ag.BestActions(s)
 	if rng != nil && len(best) > 1 {
-		return best[rng.Intn(len(best))], "exploitation"
+		return best[rng.Intn(len(best))]
 	}
-	return best[0], "exploitation"
-}
-
-// ChooseAction selects action using epsilon-greedy exploration with random tie-breaking.
-func (ag *QAgent) ChooseAction(s Coord, rng *rand.Rand) Action {
-	a, _ := ag.ChooseActionWithMode(s, rng)
-	return a
-}
-
-// ExtractPolicy returns the best action name for each reachable state based on the current Q-table.
-func (ag *QAgent) ExtractPolicy() map[string]string {
-	policy := make(map[string]string, ag.Env.NumStates())
-	for r := 0; r < ag.Env.Rows; r++ {
-		for c := 0; c < ag.Env.Cols; c++ {
-			coord := Coord{Row: r, Col: c}
-			key := fmt.Sprintf("(%d,%d)", r, c)
-			if coord == ag.Env.Goal {
-				policy[key] = "Goal"
-				continue
-			}
-			if ag.Env.Obstacles[coord] {
-				policy[key] = "Obstacle"
-				continue
-			}
-			bestA, maxVal := ag.MaxQ(coord)
-			if maxVal > 0 {
-				policy[key] = ActionNames[bestA]
-			} else {
-				policy[key] = "none"
-			}
-		}
-	}
-	return policy
-}
-
-// FormatPolicy returns a compact string of policy arrows for active states.
-func (ag *QAgent) FormatPolicy() string {
-	var parts []string
-	for r := 0; r < ag.Env.Rows; r++ {
-		for c := 0; c < ag.Env.Cols; c++ {
-			coord := Coord{Row: r, Col: c}
-			if coord == ag.Env.Goal || ag.Env.Obstacles[coord] {
-				continue
-			}
-			bestA, maxVal := ag.MaxQ(coord)
-			arrow := "·"
-			if maxVal > 0 {
-				arrow = ActionArrows[bestA]
-			}
-			parts = append(parts, fmt.Sprintf("(%d,%d):%s", r, c, arrow))
-		}
-	}
-	return strings.Join(parts, " ")
+	return best[0]
 }
 
 // BellmanUpdate applies the Bellman optimality update:

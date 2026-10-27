@@ -1,9 +1,7 @@
 package dijkstra
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -13,10 +11,8 @@ import (
 type Lesson struct{}
 
 type LessonInput struct {
-	Start  string                `json:"start"`
-	Target string                `json:"target"`
-	Nodes  []renderers.GraphNode `json:"nodes,omitempty"`
-	Edges  []renderers.GraphEdge `json:"edges,omitempty"`
+	Start  string `json:"start"`
+	Target string `json:"target"`
 }
 
 func (l Lesson) Meta() catalog.Meta {
@@ -59,7 +55,7 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-func defaultGraph() ([]renderers.GraphNode, []renderers.GraphEdge) {
+func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes := []renderers.GraphNode{
 		{ID: "A", Label: "A", X: 120, Y: 225, State: "unvisited"},
 		{ID: "B", Label: "B", X: 320, Y: 120, State: "unvisited"},
@@ -77,67 +73,19 @@ func defaultGraph() ([]renderers.GraphNode, []renderers.GraphEdge) {
 		{From: "C", To: "E", Weight: 10},
 		{From: "D", To: "E", Weight: 2},
 	}
-	return nodes, edges
-}
 
-func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	nodes, edges := defaultGraph()
 	start := "A"
 	target := "E"
 
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if string(trimmed) == "null" {
-			return nil, fmt.Errorf("input cannot be null")
-		}
-		if len(trimmed) == 0 || trimmed[0] != '{' {
-			return nil, fmt.Errorf("malformed JSON input: expected JSON object")
-		}
-
 		var custom LessonInput
-		if err := json.Unmarshal(trimmed, &custom); err != nil {
-			return nil, fmt.Errorf("malformed JSON input: %w", err)
-		}
-
-		if len(custom.Nodes) > 0 {
-			nodes = custom.Nodes
-		}
-		if len(custom.Edges) > 0 {
-			edges = custom.Edges
-		}
-		if custom.Start != "" {
-			start = custom.Start
-		}
-		if custom.Target != "" {
-			target = custom.Target
-		}
-	}
-
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("graph must contain at least one node")
-	}
-
-	nodeMap := make(map[string]bool, len(nodes))
-	for _, n := range nodes {
-		if n.ID == "" {
-			return nil, fmt.Errorf("node ID cannot be empty")
-		}
-		nodeMap[n.ID] = true
-	}
-
-	if !nodeMap[start] {
-		return nil, fmt.Errorf("invalid start node %q: node does not exist in graph", start)
-	}
-	if target != "" && !nodeMap[target] {
-		return nil, fmt.Errorf("invalid target node %q: node does not exist in graph", target)
-	}
-
-	for _, e := range edges {
-		if e.Weight < 0 {
-			return nil, fmt.Errorf("negative edge weight %d between %s and %s is not permitted in Dijkstra", e.Weight, e.From, e.To)
-		}
-		if !nodeMap[e.From] || !nodeMap[e.To] {
-			return nil, fmt.Errorf("edge connects unknown node(s): %s -> %s", e.From, e.To)
+		if err := json.Unmarshal(input, &custom); err == nil {
+			if custom.Start != "" {
+				start = custom.Start
+			}
+			if custom.Target != "" {
+				target = custom.Target
+			}
 		}
 	}
 

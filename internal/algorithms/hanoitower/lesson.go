@@ -1,9 +1,7 @@
 package hanoitower
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -21,7 +19,6 @@ func (l Lesson) Meta() catalog.Meta {
 			Summary:         "A mathematical puzzle where disks are moved between three pegs under the rule that no larger disk may be placed on top of a smaller disk.",
 			TimeComplexity:  "O(2ⁿ)",
 			SpaceComplexity: "O(n)",
-			Difficulty:      "Medium",
 			KeyConcepts: []string{
 				"Mathematical Induction",
 				"Call Stack",
@@ -47,53 +44,31 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
+type buildInput struct {
+	Disks int `json:"disks"`
+	N     int `json:"n"`
+	Count int `json:"count"`
+}
+
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	n := 3
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) == 0 {
-			return nil, fmt.Errorf("input cannot be whitespace")
-		}
-		if bytes.Equal(trimmed, []byte("null")) {
-			return nil, fmt.Errorf("input cannot be null")
-		}
-
-		if trimmed[0] == '{' {
-			var obj struct {
-				Disks *int `json:"disks"`
-				N     *int `json:"n"`
-				Count *int `json:"count"`
-			}
-			dec := json.NewDecoder(bytes.NewReader(trimmed))
-			if err := dec.Decode(&obj); err != nil {
-				return nil, fmt.Errorf("malformed JSON object: %w", err)
-			}
-			if dec.More() {
-				return nil, fmt.Errorf("unexpected extra data after JSON object")
-			}
-			if obj.Disks != nil {
-				n = *obj.Disks
-			} else if obj.N != nil {
-				n = *obj.N
-			} else if obj.Count != nil {
-				n = *obj.Count
-			} else {
-				return nil, fmt.Errorf("JSON object must specify disks, n, or count")
+		var directVal int
+		if err := json.Unmarshal(input, &directVal); err == nil {
+			if directVal >= 3 && directVal <= 5 {
+				n = directVal
 			}
 		} else {
-			var directVal int
-			dec := json.NewDecoder(bytes.NewReader(trimmed))
-			if err := dec.Decode(&directVal); err != nil {
-				return nil, fmt.Errorf("malformed JSON input: expected integer or object with disks/n/count: %w", err)
+			var obj buildInput
+			if err := json.Unmarshal(input, &obj); err == nil {
+				if obj.Disks >= 3 && obj.Disks <= 5 {
+					n = obj.Disks
+				} else if obj.N >= 3 && obj.N <= 5 {
+					n = obj.N
+				} else if obj.Count >= 3 && obj.Count <= 5 {
+					n = obj.Count
+				}
 			}
-			if dec.More() {
-				return nil, fmt.Errorf("unexpected extra data after JSON integer")
-			}
-			n = directVal
-		}
-
-		if n < 1 || n > 7 {
-			return nil, fmt.Errorf("disks must be between 1 and 7, got %d", n)
 		}
 	}
 	return Trace(n), nil

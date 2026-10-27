@@ -2,8 +2,6 @@ package genetic
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -12,7 +10,7 @@ import (
 type Lesson struct{}
 
 type LessonInput struct {
-	Target         *string  `json:"target"`
+	Target         string   `json:"target"`
 	PopSize        *int     `json:"popSize"`
 	MaxGenerations *int     `json:"maxGenerations"`
 	MutationRate   *float64 `json:"mutationRate"`
@@ -73,67 +71,24 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		TournamentSize: 3,
 	}
 
-	trimmed := strings.TrimSpace(string(input))
-	if trimmed == "null" {
-		return nil, fmt.Errorf("genetic input cannot be null")
-	}
-
-	if len(trimmed) > 0 {
-		var rawMap map[string]json.RawMessage
-		if err := json.Unmarshal(input, &rawMap); err != nil {
-			return nil, fmt.Errorf("malformed JSON input: %w", err)
-		}
-
-		if rawTarget, ok := rawMap["target"]; ok && strings.TrimSpace(string(rawTarget)) == "null" {
-			return nil, fmt.Errorf("target cannot be null")
-		}
-		if rawPop, ok := rawMap["popSize"]; ok && strings.TrimSpace(string(rawPop)) == "null" {
-			return nil, fmt.Errorf("popSize cannot be null")
-		}
-		if rawMut, ok := rawMap["mutationRate"]; ok && strings.TrimSpace(string(rawMut)) == "null" {
-			return nil, fmt.Errorf("mutationRate cannot be null")
-		}
-		if rawGen, ok := rawMap["maxGenerations"]; ok && strings.TrimSpace(string(rawGen)) == "null" {
-			return nil, fmt.Errorf("maxGenerations cannot be null")
-		}
-		if rawTour, ok := rawMap["tournamentSize"]; ok && strings.TrimSpace(string(rawTour)) == "null" {
-			return nil, fmt.Errorf("tournamentSize cannot be null")
-		}
-
+	if len(input) > 0 {
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err != nil {
-			return nil, fmt.Errorf("malformed JSON input: %w", err)
-		}
-
-		if custom.Target != nil {
-			if *custom.Target == "" {
-				return nil, fmt.Errorf("target cannot be empty")
+		if err := json.Unmarshal(input, &custom); err == nil {
+			if custom.Target != "" {
+				cfg.Target = custom.Target
 			}
-			cfg.Target = *custom.Target
-		}
-		if custom.PopSize != nil {
-			if *custom.PopSize <= 0 {
-				return nil, fmt.Errorf("popSize must be greater than 0")
+			if custom.PopSize != nil && *custom.PopSize > 0 {
+				cfg.PopSize = *custom.PopSize
 			}
-			cfg.PopSize = *custom.PopSize
-		}
-		if custom.MaxGenerations != nil {
-			if *custom.MaxGenerations <= 0 {
-				return nil, fmt.Errorf("maxGenerations must be greater than 0")
+			if custom.MaxGenerations != nil && *custom.MaxGenerations > 0 {
+				cfg.MaxGenerations = *custom.MaxGenerations
 			}
-			cfg.MaxGenerations = *custom.MaxGenerations
-		}
-		if custom.MutationRate != nil {
-			if *custom.MutationRate < 0.0 || *custom.MutationRate > 1.0 {
-				return nil, fmt.Errorf("mutationRate must be between 0.0 and 1.0")
+			if custom.MutationRate != nil && *custom.MutationRate > 0 {
+				cfg.MutationRate = *custom.MutationRate
 			}
-			cfg.MutationRate = *custom.MutationRate
-		}
-		if custom.TournamentSize != nil {
-			if *custom.TournamentSize <= 0 {
-				return nil, fmt.Errorf("tournamentSize must be greater than 0")
+			if custom.TournamentSize != nil && *custom.TournamentSize > 0 {
+				cfg.TournamentSize = *custom.TournamentSize
 			}
-			cfg.TournamentSize = *custom.TournamentSize
 		}
 	}
 

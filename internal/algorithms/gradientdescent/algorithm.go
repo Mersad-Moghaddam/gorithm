@@ -1,7 +1,5 @@
 package gradientdescent
 
-// ponytail: full-batch gradient descent; add mini-batch/Adam when dataset exceeds memory.
-
 // Train fits a linear regression model y = w*x + b using gradient descent.
 func Train(x, y []float64, lr float64, epochs int) (float64, float64, []float64) {
 	n := len(x)

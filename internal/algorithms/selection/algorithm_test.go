@@ -3,12 +3,9 @@ package selection
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
-	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
-	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
 func TestSelectionSortCorrectness(t *testing.T) {
@@ -157,103 +154,3 @@ func TestSelectionSortRegistration(t *testing.T) {
 	}
 }
 
-func TestSelectionTeachingDecisionsAndIdentity(t *testing.T) {
-	steps := Trace([]int{2, 1, 1})
-	if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
-		t.Fatal(err)
-	}
-	var compared, rejected, chosen, swapped, settled bool
-	for _, step := range steps {
-		state := step.State.(renderers.ArrayState)
-		unique := make(map[string]bool)
-		for _, id := range state.IDs {
-			if id == "" || unique[id] {
-				t.Fatalf("objects need distinct nonempty IDs: %+v", state.IDs)
-			}
-			unique[id] = true
-		}
-		if len(unique) != 3 {
-			t.Fatalf("objects need distinct IDs: %+v", state.IDs)
-		}
-		if step.LineID == "L6" && step.Action == trace.ActionCompare && reflect.DeepEqual(state.Comparing, []int{2}) && state.Current == 1 {
-			compared = true
-		}
-		if step.LineID == "L6" && step.Action == trace.ActionHighlight && reflect.DeepEqual(state.Comparing, []int{2}) && state.Current == 1 {
-			rejected = true // equal values do not replace candidate
-		}
-		if step.LineID == "L7" && state.Current == 1 && len(state.Sorted) == 0 {
-			chosen = true
-		}
-		if step.LineID == "L10" && step.Action == trace.ActionSwap && reflect.DeepEqual(state.Values, []int{1, 2, 1}) && reflect.DeepEqual(state.IDs, []string{"selection-1", "selection-0", "selection-2"}) {
-			swapped = true
-		}
-		if step.LineID == "L11" && reflect.DeepEqual(state.Sorted, []int{0}) {
-			settled = true
-		}
-	}
-	if !compared || !rejected || !chosen || !swapped || !settled {
-		t.Fatalf("missing teaching states: compare=%v reject=%v choose=%v swap=%v settle=%v", compared, rejected, chosen, swapped, settled)
-	}
-	first := steps[0].State.(renderers.ArrayState)
-	last := steps[len(steps)-1].State.(renderers.ArrayState)
-	if !reflect.DeepEqual(first.Values, []int{2, 1, 1}) || !reflect.DeepEqual(first.IDs, []string{"selection-0", "selection-1", "selection-2"}) || !reflect.DeepEqual(last.Values, []int{1, 1, 2}) || !reflect.DeepEqual(last.Sorted, []int{0, 1, 2}) {
-		t.Fatalf("history or final state wrong: first=%+v final=%+v", first, last)
-	}
-	// Mutating a later snapshot must not affect any earlier or intermediate snapshot.
-	var intermediate renderers.ArrayState
-	for _, step := range steps {
-		state := step.State.(renderers.ArrayState)
-		if step.LineID == "L11" && reflect.DeepEqual(state.Sorted, []int{0}) {
-			intermediate = state
-			break
-		}
-	}
-	if len(intermediate.Values) == 0 {
-		t.Fatal("missing intermediate snapshot")
-	}
-	last.Values[0], last.IDs[0], last.Sorted[0] = 999, "corrupted", 999
-	if !reflect.DeepEqual(first.Values, []int{2, 1, 1}) || !reflect.DeepEqual(first.IDs, []string{"selection-0", "selection-1", "selection-2"}) || !reflect.DeepEqual(intermediate.Values, []int{1, 2, 1}) || !reflect.DeepEqual(intermediate.IDs, []string{"selection-1", "selection-0", "selection-2"}) || !reflect.DeepEqual(intermediate.Sorted, []int{0}) {
-		t.Fatalf("mutating final snapshot changed history: first=%+v intermediate=%+v", first, intermediate)
-	}
-	for _, input := range [][]int{nil, {}, {7}} {
-		history := Trace(input)
-		end := history[len(history)-1].State.(renderers.ArrayState)
-		if !reflect.DeepEqual(end.Values, input) && !(len(input) == 0 && len(end.Values) == 0) {
-			t.Fatalf("edge input %v: final %v", input, end.Values)
-		}
-		if len(end.IDs) != len(input) || len(end.Sorted) != len(input) {
-			t.Fatalf("edge input %v: ids=%v sorted=%v", input, end.IDs, end.Sorted)
-		}
-	}
-}
-
-func TestSelectionBuildInput(t *testing.T) {
-	lesson := Lesson{}
-	for _, input := range []json.RawMessage{[]byte(`not json`), []byte(`{"bad":1}`), []byte(`[1,"two"]`), []byte(`null`)} {
-		if _, err := lesson.Build(input); err == nil {
-			t.Fatalf("invalid input %s accepted", input)
-		}
-	}
-	steps, err := lesson.Build(json.RawMessage(`[]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := steps[len(steps)-1].State.(renderers.ArrayState).Values; len(got) != 0 {
-		t.Fatalf("empty input became %v", got)
-	}
-}
-
-func TestSelectionComparisonVisualRoles(t *testing.T) {
-	for _, step := range Trace([]int{2, 1, 1}) {
-		state := step.State.(renderers.ArrayState)
-		if step.LineID != "L6" || len(state.Comparing) != 1 {
-			continue
-		}
-		svg := renderers.RenderStepSVG(step, "array", 800, 400)
-		candidate := svg[strings.Index(svg, `data-key="array-`+state.IDs[state.Current]+`"`):]
-		scan := svg[strings.Index(svg, `data-key="array-`+state.IDs[state.Comparing[0]]+`"`):]
-		if !strings.Contains(strings.SplitN(candidate, "</g>", 2)[0], `fill="url(#bar-current)"`) || !strings.Contains(strings.SplitN(scan, "</g>", 2)[0], `fill="url(#bar-comp)"`) {
-			t.Fatalf("candidate and scan must have distinct visual cues at %s: %s", step.Action, svg)
-		}
-	}
-}

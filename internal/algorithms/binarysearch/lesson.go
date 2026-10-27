@@ -1,10 +1,7 @@
 package binarysearch
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -49,40 +46,31 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 type buildInput struct {
-	Array  *[]int `json:"array"`
-	Arr    *[]int `json:"arr"`
-	Target *int   `json:"target"`
+	Array  []int `json:"array"`
+	Arr    []int `json:"arr"`
+	Target *int  `json:"target"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{3, 8, 14, 22, 35, 47, 59, 71, 88}
 	target := 47
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) > 0 && string(trimmed) != "null" {
+	if len(input) > 0 {
 		var custom buildInput
-		if err := json.Unmarshal(trimmed, &custom); err != nil {
-			return nil, fmt.Errorf("invalid input format: %w", err)
-		}
-		if custom.Target == nil {
-			return nil, fmt.Errorf("target is required and cannot be null")
-		}
-		if custom.Array != nil {
-			arr = *custom.Array
-		} else if custom.Arr != nil {
-			arr = *custom.Arr
-		} else {
-			return nil, fmt.Errorf("array is required and cannot be null")
-		}
-		target = *custom.Target
-
-		if !slices.IsSorted(arr) {
-			for i := 1; i < len(arr); i++ {
-				if arr[i] < arr[i-1] {
-					return nil, fmt.Errorf("array must be sorted in ascending order (arr[%d]=%d > arr[%d]=%d)", i-1, arr[i-1], i, arr[i])
-				}
+		if err := json.Unmarshal(input, &custom); err == nil && (len(custom.Array) > 0 || len(custom.Arr) > 0 || custom.Target != nil) {
+			if len(custom.Array) > 0 {
+				arr = custom.Array
+			} else if len(custom.Arr) > 0 {
+				arr = custom.Arr
 			}
-			return nil, fmt.Errorf("array must be sorted in ascending order")
+			if custom.Target != nil {
+				target = *custom.Target
+			}
+		} else {
+			var customArr []int
+			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
+				arr = customArr
+			}
 		}
 	}
 

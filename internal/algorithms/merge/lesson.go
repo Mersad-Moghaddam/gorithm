@@ -1,10 +1,7 @@
 package merge
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"strconv"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -61,27 +58,10 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{38, 27, 43, 3, 9, 82, 10}
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) == 0 || trimmed[0] != '[' {
-			return nil, fmt.Errorf("merge sort input must be a JSON array of integers")
+		var custom []int
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
+			arr = custom
 		}
-		var rawItems []json.RawMessage
-		dec := json.NewDecoder(bytes.NewReader(trimmed))
-		if err := dec.Decode(&rawItems); err != nil {
-			return nil, fmt.Errorf("merge sort input must be a JSON array of integers: %w", err)
-		}
-		if dec.More() {
-			return nil, fmt.Errorf("unexpected extra data after JSON array")
-		}
-		custom := make([]int, 0, len(rawItems))
-		for _, item := range rawItems {
-			val, err := strconv.Atoi(string(bytes.TrimSpace(item)))
-			if err != nil {
-				return nil, fmt.Errorf("merge sort values must be integers: %w", err)
-			}
-			custom = append(custom, val)
-		}
-		arr = custom
 	}
 	return Trace(arr), nil
 }

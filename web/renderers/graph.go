@@ -2,7 +2,6 @@ package renderers
 
 import (
 	"fmt"
-	"html"
 	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -25,11 +24,8 @@ type GraphEdge struct {
 }
 
 type GraphState struct {
-	Caption       string         `json:"caption,omitempty"`
-	WorklistLabel string         `json:"worklistLabel,omitempty"`
-	Worklist      []WorklistItem `json:"worklist,omitempty"`
-	Nodes         []GraphNode    `json:"nodes"`
-	Edges         []GraphEdge    `json:"edges"`
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
 }
 
 func RenderGraphSVG(step trace.Step, width, height int) string {
@@ -44,7 +40,6 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(renderCaption(state.Caption, width))
 
 	// Defs for gradients & glowing nodes
 	sb.WriteString(`<defs>
@@ -134,7 +129,6 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 
 	// Render Nodes
 	for _, n := range state.Nodes {
-		fmt.Fprintf(&sb, `<g data-key="graph-%s"><title>%s: %s</title>`, html.EscapeString(n.ID), html.EscapeString(n.Label), html.EscapeString(n.State))
 		fillRef := "url(#grad-unvisited)"
 		strokeColor := "#475569"
 		textColor := "#f8fafc"
@@ -164,12 +158,8 @@ func RenderGraphSVG(step trace.Step, width, height int) string {
 		))
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="%s" font-size="13" font-family="ui-monospace, Menlo, monospace" font-weight="800" text-anchor="middle" dy="5">%s</text>`,
-			n.X, n.Y, textColor, html.EscapeString(n.Label),
+			n.X, n.Y, textColor, n.Label,
 		))
-		sb.WriteString(`</g>`)
-	}
-	if state.WorklistLabel != "" {
-		sb.WriteString(RenderWorklistSVG(state.WorklistLabel, state.Worklist, 40, float64(height-65), float64(width-80)))
 	}
 
 	return sb.String()

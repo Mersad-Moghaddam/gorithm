@@ -8,43 +8,7 @@ import (
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// cloneTableState returns an independent deep copy of TableState so step snapshots never share backing arrays.
-// ponytail: explicit slice copies for immutability; deltas or persistent structure if table is huge.
-func cloneTableState(s renderers.TableState) renderers.TableState {
-	var rowHeaders []string
-	if s.RowHeaders != nil {
-		rowHeaders = make([]string, len(s.RowHeaders))
-		copy(rowHeaders, s.RowHeaders)
-	}
-
-	var colHeaders []string
-	if s.ColHeaders != nil {
-		colHeaders = make([]string, len(s.ColHeaders))
-		copy(colHeaders, s.ColHeaders)
-	}
-
-	var cells []renderers.TableCell
-	if s.Cells != nil {
-		cells = make([]renderers.TableCell, len(s.Cells))
-		copy(cells, s.Cells)
-	}
-
-	var deps []renderers.TableDependency
-	if s.Dependencies != nil {
-		deps = make([]renderers.TableDependency, len(s.Dependencies))
-		copy(deps, s.Dependencies)
-	}
-
-	return renderers.TableState{
-		Caption:      s.Caption,
-		Dependencies: deps,
-		RowHeaders:   rowHeaders,
-		ColHeaders:   colHeaders,
-		Cells:        cells,
-	}
-}
-
-// makeTableState builds a renderers.TableState snapshot for Coin Change DP visualization.
+// ponytail: table state builds 1D array for rendering; could stream deltas if amount is huge.
 func makeTableState(
 	amount int,
 	dp []int,
@@ -52,8 +16,6 @@ func makeTableState(
 	activeState string,
 	sourceCols []int,
 	initialized bool,
-	caption string,
-	dependencies []renderers.TableDependency,
 ) renderers.TableState {
 	colHeaders := make([]string, amount+1)
 	for c := 0; c <= amount; c++ {
@@ -93,18 +55,10 @@ func makeTableState(
 		}
 	}
 
-	var deps []renderers.TableDependency
-	if len(dependencies) > 0 {
-		deps = make([]renderers.TableDependency, len(dependencies))
-		copy(deps, dependencies)
-	}
-
 	return renderers.TableState{
-		Caption:      caption,
-		Dependencies: deps,
-		RowHeaders:   []string{"dp[amount]"},
-		ColHeaders:   colHeaders,
-		Cells:        cells,
+		RowHeaders: []string{"dp"},
+		ColHeaders: colHeaders,
+		Cells:      cells,
 	}
 }
 
@@ -113,12 +67,12 @@ func Trace(coins []int, amount int) []trace.Step {
 	b := trace.NewBuilder()
 
 	if amount < 0 {
-		emptyState := makeTableState(0, []int{0}, -1, "normal", nil, false, "Invalid negative amount", nil)
+		emptyState := makeTableState(0, []int{0}, -1, "normal", nil, false)
 		b.AddStep(
 			"L2",
 			trace.ActionDone,
 			fmt.Sprintf("Invalid amount %d (< 0). Return -1.", amount),
-			cloneTableState(emptyState),
+			emptyState,
 			map[string]any{"amount": amount, "minCoins": -1, "result": -1},
 		)
 		return b.Steps()
@@ -127,44 +81,39 @@ func Trace(coins []int, amount int) []trace.Step {
 	dp := make([]int, amount+1)
 
 	// Step 1: L1 - Initialization
-	initCaption := fmt.Sprintf("Initialize dp table for amount %d with coins %v", amount, coins)
-	initState := makeTableState(amount, dp, -1, "normal", nil, false, initCaption, nil)
+	initState := makeTableState(amount, dp, -1, "normal", nil, false)
 	b.AddStep(
 		"L1",
 		trace.ActionInit,
 		fmt.Sprintf("Initialize Coin Change solver for amount %d with coins %v.", amount, coins),
-		cloneTableState(initState),
+		initState,
 		map[string]any{"amount": amount, "coins": coins},
 	)
 
 	// Step 2: L3 - Base case dp[0] = 0
 	b.IncOperations()
-	baseCaption := "Base case: dp[0] = 0 coins required to form amount 0"
-	baseState := makeTableState(amount, dp, 0, "computed", nil, false, baseCaption, nil)
+	baseState := makeTableState(amount, dp, 0, "computed", nil, false)
 	b.AddStep(
 		"L3",
 		trace.ActionSet,
 		"Base case: dp[0] = 0 coins required to form amount 0.",
-		cloneTableState(baseState),
+		baseState,
 		map[string]any{"amount": 0, "subproblem": 0, "dp[0]": 0},
 	)
 
 	// Step 3: L4 - Set dp[1..amount] to infinity
-	if amount > 0 {
-		for i := 1; i <= amount; i++ {
-			dp[i] = amount + 1
-		}
-		b.IncOperations()
-		infCaption := fmt.Sprintf("Initialize dp[1..%d] with ∞ (unreachable sentinel)", amount)
-		infState := makeTableState(amount, dp, -1, "normal", nil, true, infCaption, nil)
-		b.AddStep(
-			"L4",
-			trace.ActionSet,
-			fmt.Sprintf("Initialize dp[1..%d] with ∞ (unreachable sentinel).", amount),
-			cloneTableState(infState),
-			map[string]any{"amount": amount},
-		)
+	for i := 1; i <= amount; i++ {
+		dp[i] = amount + 1
 	}
+	b.IncOperations()
+	infState := makeTableState(amount, dp, -1, "normal", nil, true)
+	b.AddStep(
+		"L4",
+		trace.ActionSet,
+		fmt.Sprintf("Initialize dp[1..%d] with ∞ (unreachable sentinel).", amount),
+		infState,
+		map[string]any{"amount": amount},
+	)
 
 	// Outer loop: iterate over subproblem amounts 1..amount
 	for i := 1; i <= amount; i++ {
@@ -173,30 +122,28 @@ func Trace(coins []int, amount int) []trace.Step {
 			if c <= i {
 				subproblem := i - c
 				sources := []int{subproblem}
-				deps := []renderers.TableDependency{{
-					FromRow: 0,
-					FromCol: subproblem,
-					ToRow:   0,
-					ToCol:   i,
-				}}
 
-				var caption string
+				subVal := "∞"
 				if dp[subproblem] <= amount {
-					caption = fmt.Sprintf("Testing coin %d for amount %d: dp[%d - %d] + 1 = %d + 1 = %d coins", c, i, i, c, dp[subproblem], dp[subproblem]+1)
-				} else {
-					caption = fmt.Sprintf("Testing coin %d for amount %d: dp[%d - %d] = ∞ (cannot form %d)", c, i, i, c, subproblem)
+					subVal = strconv.Itoa(dp[subproblem])
+				}
+				curVal := "∞"
+				if dp[i] <= amount {
+					curVal = strconv.Itoa(dp[i])
 				}
 
-				compState := makeTableState(amount, dp, i, "active", sources, true, caption, deps)
+				compState := makeTableState(amount, dp, i, "active", sources, true)
 				b.AddStep(
 					"L7",
 					trace.ActionCompare,
-					caption,
-					cloneTableState(compState),
+					fmt.Sprintf("Amount %d: test coin %d. Subproblem dp[%d] = %s (candidate: %s + 1), current dp[%d] = %s.", i, c, subproblem, subVal, subVal, i, curVal),
+					compState,
 					map[string]any{
 						"i":          i,
 						"coin":       c,
 						"subproblem": subproblem,
+						"subVal":     subVal,
+						"curVal":     curVal,
 						"canTake":    true,
 					},
 				)
@@ -205,13 +152,12 @@ func Trace(coins []int, amount int) []trace.Step {
 					dp[i] = dp[subproblem] + 1
 					b.IncOperations()
 
-					setCaption := fmt.Sprintf("Update dp[%d] = dp[%d - %d] + 1 = %d using coin %d", i, i, c, dp[i], c)
-					setState := makeTableState(amount, dp, i, "computed", sources, true, setCaption, deps)
+					setState := makeTableState(amount, dp, i, "computed", sources, true)
 					b.AddStep(
 						"L8",
 						trace.ActionSet,
-						fmt.Sprintf("Update dp[%d] = dp[%d - %d] + 1 = %d using coin %d.", i, i, c, dp[i], c),
-						cloneTableState(setState),
+						fmt.Sprintf("Update dp[%d] = dp[%d] + 1 = %d using coin %d.", i, subproblem, dp[i], c),
+						setState,
 						map[string]any{
 							"i":          i,
 							"coin":       c,
@@ -221,13 +167,12 @@ func Trace(coins []int, amount int) []trace.Step {
 					)
 				}
 			} else {
-				caption := fmt.Sprintf("Testing coin %d for amount %d: coin exceeds amount (%d > %d), skip", c, i, c, i)
-				compState := makeTableState(amount, dp, i, "active", nil, true, caption, nil)
+				compState := makeTableState(amount, dp, i, "active", nil, true)
 				b.AddStep(
 					"L7",
 					trace.ActionCompare,
-					caption,
-					cloneTableState(compState),
+					fmt.Sprintf("Amount %d: coin %d > %d, cannot use.", i, c, i),
+					compState,
 					map[string]any{
 						"i":       i,
 						"coin":    c,
@@ -240,23 +185,21 @@ func Trace(coins []int, amount int) []trace.Step {
 
 	// Final step
 	if dp[amount] > amount {
-		finalCaption := fmt.Sprintf("Amount %d cannot be formed with coins %v. Return -1.", amount, coins)
-		doneState := makeTableState(amount, dp, amount, "normal", nil, true, finalCaption, nil)
+		doneState := makeTableState(amount, dp, amount, "normal", nil, true)
 		b.AddStep(
 			"L12",
 			trace.ActionDone,
-			finalCaption,
-			cloneTableState(doneState),
+			fmt.Sprintf("Amount %d cannot be made with coins %v. Return -1.", amount, coins),
+			doneState,
 			map[string]any{"amount": amount, "minCoins": -1, "result": -1},
 		)
 	} else {
-		finalCaption := fmt.Sprintf("Completed! Minimum coins needed for amount %d is %d.", amount, dp[amount])
-		doneState := makeTableState(amount, dp, amount, "computed", nil, true, finalCaption, nil)
+		doneState := makeTableState(amount, dp, amount, "computed", nil, true)
 		b.AddStep(
 			"L13",
 			trace.ActionDone,
-			finalCaption,
-			cloneTableState(doneState),
+			fmt.Sprintf("Completed! Minimum coins needed for amount %d is %d.", amount, dp[amount]),
+			doneState,
 			map[string]any{"amount": amount, "minCoins": dp[amount], "result": dp[amount]},
 		)
 	}

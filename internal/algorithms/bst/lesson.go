@@ -1,9 +1,7 @@
 package bst
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -72,50 +70,32 @@ type buildInput struct {
 	Ops     []Operation `json:"ops"`
 }
 
-func defaultInitial() []int {
-	return []int{50, 30, 70, 20, 40, 60, 80}
-}
-
-func defaultOps() []Operation {
-	return []Operation{
+func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
+	initial := []int{50, 30, 70, 20, 40, 60, 80}
+	ops := []Operation{
 		{Type: "insert", Value: 35},
 		{Type: "search", Value: 40},
 		{Type: "delete", Value: 30},
 	}
-}
 
-func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace(defaultInitial(), defaultOps()), nil
-	}
-	if bytes.Equal(trimmed, []byte("null")) {
-		return nil, fmt.Errorf("input cannot be null")
-	}
-
-	var custom buildInput
-	if err := json.Unmarshal(trimmed, &custom); err != nil {
-		return nil, fmt.Errorf("malformed JSON input: %w", err)
-	}
-
-	if len(custom.Ops) == 0 {
-		return nil, fmt.Errorf("ops cannot be empty")
-	}
-
-	for i, op := range custom.Ops {
-		switch op.Type {
-		case "insert", "search", "delete":
-		default:
-			return nil, fmt.Errorf("op %d: invalid operation type %q", i, op.Type)
+	if len(input) > 0 {
+		var custom buildInput
+		if err := json.Unmarshal(input, &custom); err == nil && (len(custom.Initial) > 0 || len(custom.Ops) > 0) {
+			if len(custom.Initial) > 0 {
+				initial = custom.Initial
+			}
+			if len(custom.Ops) > 0 {
+				ops = custom.Ops
+			}
+		} else {
+			var customArr []int
+			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
+				initial = customArr
+			}
 		}
 	}
 
-	initial := custom.Initial
-	if initial == nil {
-		initial = defaultInitial()
-	}
-
-	return Trace(initial, custom.Ops), nil
+	return Trace(initial, ops), nil
 }
 
 func init() {

@@ -1,9 +1,7 @@
 package linearsearch
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -24,7 +22,7 @@ func (l Lesson) Meta() catalog.Meta {
 			KeyConcepts:     []string{"Sequential Scan", "Unordered Data", "Early Exit"},
 			HowItWorks:      "Starts from the first element of the array and compares each element with the target value sequentially. If a match is found, returns its index immediately. If the end of the array is reached without finding the target, returns -1.",
 		},
-		DefaultInput: `{"array": [15, 28, 42, 8, 33, 91, 55], "target": 33}`,
+		DefaultInput: "[15, 28, 42, 8, 33, 91, 55]",
 	}
 }
 
@@ -41,44 +39,34 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-type buildInput struct {
-	Array  *[]int `json:"array"`
-	Arr    *[]int `json:"arr"`
-	Target *int   `json:"target"`
-}
-
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{15, 28, 42, 8, 33, 91, 55}
 	target := 33
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace(arr, target), nil
+	if len(input) > 0 {
+		var payload struct {
+			Arr    []int `json:"arr"`
+			Array  []int `json:"array"`
+			Target *int  `json:"target"`
+		}
+		if err := json.Unmarshal(input, &payload); err == nil && (len(payload.Arr) > 0 || len(payload.Array) > 0 || payload.Target != nil) {
+			if len(payload.Arr) > 0 {
+				arr = payload.Arr
+			} else if len(payload.Array) > 0 {
+				arr = payload.Array
+			}
+			if payload.Target != nil {
+				target = *payload.Target
+			}
+		} else {
+			var custom []int
+			if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
+				arr = custom
+			}
+		}
 	}
 
-	var payload buildInput
-	if err := json.Unmarshal(trimmed, &payload); err != nil {
-		return nil, fmt.Errorf("linearsearch: invalid input: %w", err)
-	}
-
-	var elements []int
-	if payload.Array != nil {
-		elements = *payload.Array
-	} else if payload.Arr != nil {
-		elements = *payload.Arr
-	} else {
-		return nil, fmt.Errorf("linearsearch: missing array")
-	}
-
-	if len(elements) == 0 {
-		return nil, fmt.Errorf("linearsearch: array cannot be empty")
-	}
-
-	if payload.Target == nil {
-		return nil, fmt.Errorf("linearsearch: missing or null target")
-	}
-
-	return Trace(elements, *payload.Target), nil
+	return Trace(arr, target), nil
 }
 
 func init() {

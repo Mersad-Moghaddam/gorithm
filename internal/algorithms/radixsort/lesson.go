@@ -1,10 +1,7 @@
 package radixsort
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -61,33 +58,10 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{170, 45, 75, 90, 802, 24, 2, 66}
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) == 0 || trimmed[0] != '[' || string(trimmed) == "null" {
-			return nil, fmt.Errorf("radix sort input must be a JSON array of non-negative integers")
+		var custom []int
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
+			arr = custom
 		}
-		var rawItems []json.RawMessage
-		if err := json.Unmarshal(trimmed, &rawItems); err != nil {
-			return nil, fmt.Errorf("invalid radix sort input: %w", err)
-		}
-		custom := make([]int, len(rawItems))
-		for i, raw := range rawItems {
-			s := string(bytes.TrimSpace(raw))
-			if s == "null" {
-				return nil, fmt.Errorf("radix sort elements cannot be null")
-			}
-			if strings.ContainsAny(s, ".eE") {
-				return nil, fmt.Errorf("radix sort elements must be integers: %s", s)
-			}
-			var v int
-			if err := json.Unmarshal(raw, &v); err != nil {
-				return nil, fmt.Errorf("invalid element at index %d: %w", i, err)
-			}
-			if v < 0 {
-				return nil, fmt.Errorf("radix sort elements must be non-negative: %d", v)
-			}
-			custom[i] = v
-		}
-		arr = custom
 	}
 	return Trace(arr), nil
 }

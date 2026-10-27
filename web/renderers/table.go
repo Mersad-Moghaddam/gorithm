@@ -2,7 +2,6 @@ package renderers
 
 import (
 	"fmt"
-	"html"
 	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -16,19 +15,9 @@ type TableCell struct {
 }
 
 type TableState struct {
-	Caption      string            `json:"caption,omitempty"`
-	Dependencies []TableDependency `json:"dependencies,omitempty"`
-	RowHeaders   []string          `json:"rowHeaders"`
-	ColHeaders   []string          `json:"colHeaders"`
-	Cells        []TableCell       `json:"cells"`
-}
-
-// TableDependency points from an input subproblem to the cell being computed.
-type TableDependency struct {
-	FromRow int `json:"fromRow"`
-	FromCol int `json:"fromCol"`
-	ToRow   int `json:"toRow"`
-	ToCol   int `json:"toCol"`
+	RowHeaders []string    `json:"rowHeaders"`
+	ColHeaders []string    `json:"colHeaders"`
+	Cells      []TableCell `json:"cells"`
 }
 
 func RenderTableSVG(step trace.Step, width, height int) string {
@@ -68,7 +57,6 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(renderCaption(state.Caption, width))
 
 	// Defs for table styling
 	sb.WriteString(`<defs>
@@ -86,7 +74,7 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		x := startX + float64(c)*cellW
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="#94a3b8" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%s</text>`,
-			x+cellW/2, startY-14, html.EscapeString(header),
+			x+cellW/2, startY-14, header,
 		))
 	}
 
@@ -95,13 +83,12 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		y := startY + float64(r)*cellH
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="#94a3b8" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="end">%s</text>`,
-			startX-14, y+cellH/2+4, html.EscapeString(header),
+			startX-14, y+cellH/2+4, header,
 		))
 	}
 
 	// Cells
 	for _, cell := range state.Cells {
-		fmt.Fprintf(&sb, `<g data-key="cell-%d-%d"><title>%s</title>`, cell.Row, cell.Col, html.EscapeString(cell.State))
 		x := startX + float64(cell.Col)*cellW
 		y := startY + float64(cell.Row)*cellH
 
@@ -133,18 +120,8 @@ func RenderTableSVG(step trace.Step, width, height int) string {
 		))
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="%s" font-size="%.1f" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%s</text>`,
-			x+(cellW-4)/2, y+(cellH-4)/2+4, textColor, fontSize, html.EscapeString(cell.Value),
+			x+(cellW-4)/2, y+(cellH-4)/2+4, textColor, fontSize, cell.Value,
 		))
-		sb.WriteString(`</g>`)
-	}
-	if len(state.Dependencies) > 0 {
-		sb.WriteString(`<defs><marker id="dependency-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10" fill="#e9d5ff"/></marker></defs>`)
-		for _, d := range state.Dependencies {
-			if d.FromRow < 0 || d.FromRow >= numRows || d.ToRow < 0 || d.ToRow >= numRows || d.FromCol < 0 || d.FromCol >= numCols || d.ToCol < 0 || d.ToCol >= numCols {
-				continue
-			}
-			fmt.Fprintf(&sb, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#e9d5ff" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#dependency-arrow)"/>`, startX+(float64(d.FromCol)+0.5)*cellW, startY+float64(d.FromRow)*cellH+3, startX+(float64(d.ToCol)+0.5)*cellW, startY+float64(d.ToRow)*cellH+3)
-		}
 	}
 
 	return sb.String()

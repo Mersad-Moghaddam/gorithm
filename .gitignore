@@ -12,5 +12,5 @@ dist/
 *.out
 *.test
 
-# Superpowers scratch
+# Local design and execution artifacts
 .superpowers/

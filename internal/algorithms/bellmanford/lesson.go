@@ -1,10 +1,7 @@
 package bellmanford
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -66,42 +63,29 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-func defaultNodes() []renderers.GraphNode {
-	return []renderers.GraphNode{
+func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
+	nodes := []renderers.GraphNode{
 		{ID: "A", Label: "A", X: 120, Y: 225, State: "unvisited"},
 		{ID: "B", Label: "B", X: 280, Y: 120, State: "unvisited"},
 		{ID: "C", Label: "C", X: 280, Y: 330, State: "unvisited"},
 		{ID: "D", Label: "D", X: 480, Y: 120, State: "unvisited"},
 		{ID: "E", Label: "E", X: 640, Y: 225, State: "unvisited"},
 	}
-}
 
-func defaultEdges() []renderers.GraphEdge {
-	return []renderers.GraphEdge{
-		{From: "A", To: "B", Weight: 4, Directed: true},
-		{From: "A", To: "C", Weight: 2, Directed: true},
-		{From: "B", To: "D", Weight: 2, Directed: true},
-		{From: "C", To: "D", Weight: 5, Directed: true},
-		{From: "C", To: "E", Weight: 4, Directed: true},
-		{From: "D", To: "E", Weight: -3, Directed: true},
+	edges := []renderers.GraphEdge{
+		{From: "A", To: "B", Weight: 4},
+		{From: "A", To: "C", Weight: 2},
+		{From: "B", To: "D", Weight: 2},
+		{From: "C", To: "D", Weight: 5},
+		{From: "C", To: "E", Weight: 4},
+		{From: "D", To: "E", Weight: -3},
 	}
-}
 
-func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	nodes := defaultNodes()
-	edges := defaultEdges()
 	start := "A"
 
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) > 0 {
-			if string(trimmed) == "null" {
-				return nil, errors.New("input cannot be null")
-			}
-			var custom LessonInput
-			if err := json.Unmarshal(input, &custom); err != nil {
-				return nil, fmt.Errorf("invalid json input: %w", err)
-			}
+		var custom LessonInput
+		if err := json.Unmarshal(input, &custom); err == nil {
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
 			}
@@ -112,30 +96,6 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				start = custom.Start
 			}
 		}
-	}
-
-	startIdx := -1
-	for i, n := range nodes {
-		if n.ID == start {
-			startIdx = i
-			break
-		}
-	}
-	if startIdx < 0 {
-		return nil, fmt.Errorf("unknown start node %q", start)
-	}
-
-	for i := range nodes {
-		if nodes[i].Label == "" {
-			nodes[i].Label = nodes[i].ID
-		}
-		if nodes[i].State == "" {
-			nodes[i].State = "unvisited"
-		}
-	}
-
-	for i := range edges {
-		edges[i].Directed = true
 	}
 
 	return Trace(nodes, edges, start), nil

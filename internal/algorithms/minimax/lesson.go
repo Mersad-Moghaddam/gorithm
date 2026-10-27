@@ -1,10 +1,7 @@
 package minimax
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -68,37 +65,18 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	scores := []int{-1, 4, 2, 6, -3, -5, 0, 7}
 	branching := 2
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) > 0 {
-		if string(trimmed) == "null" {
-			return nil, errors.New("input cannot be null")
-		}
-
-		if trimmed[0] == '{' {
-			var custom buildInput
-			if err := json.Unmarshal(trimmed, &custom); err != nil {
-				return nil, fmt.Errorf("invalid json object: %w", err)
-			}
-			if len(custom.Scores) == 0 {
-				return nil, errors.New("scores array cannot be empty")
-			}
+	if len(input) > 0 {
+		var custom buildInput
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Scores) > 0 {
 			scores = custom.Scores
 			if custom.Branching > 0 {
 				branching = custom.Branching
-			} else if custom.Branching < 0 {
-				return nil, errors.New("branching factor must be positive")
 			}
-		} else if trimmed[0] == '[' {
-			var customArr []int
-			if err := json.Unmarshal(trimmed, &customArr); err != nil {
-				return nil, fmt.Errorf("invalid json array: %w", err)
-			}
-			if len(customArr) == 0 {
-				return nil, errors.New("scores array cannot be empty")
-			}
-			scores = customArr
 		} else {
-			return nil, errors.New("invalid json input: expected object or array")
+			var customArr []int
+			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
+				scores = customArr
+			}
 		}
 	}
 

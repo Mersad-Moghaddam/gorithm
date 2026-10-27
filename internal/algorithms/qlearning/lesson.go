@@ -1,10 +1,7 @@
 package qlearning
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -13,10 +10,10 @@ import (
 type Lesson struct{}
 
 type LessonInput struct {
-	Episodes *int     `json:"episodes,omitempty"`
-	Alpha    *float64 `json:"alpha,omitempty"`
-	Gamma    *float64 `json:"gamma,omitempty"`
-	Epsilon  *float64 `json:"epsilon,omitempty"`
+	Episodes int     `json:"episodes,omitempty"`
+	Alpha    float64 `json:"alpha,omitempty"`
+	Gamma    float64 `json:"gamma,omitempty"`
+	Epsilon  float64 `json:"epsilon,omitempty"`
 }
 
 func (l Lesson) Meta() catalog.Meta {
@@ -68,40 +65,21 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	gamma := 0.9
 	epsilon := 0.3
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) > 0 {
-		if bytes.Equal(trimmed, []byte("null")) {
-			return nil, errors.New("input cannot be null")
-		}
+	if len(input) > 0 {
 		var custom LessonInput
-		if err := json.Unmarshal(trimmed, &custom); err != nil {
-			return nil, fmt.Errorf("malformed JSON input: %w", err)
-		}
-		if custom.Episodes != nil {
-			if *custom.Episodes < 0 {
-				return nil, errors.New("episodes cannot be negative")
+		if err := json.Unmarshal(input, &custom); err == nil {
+			if custom.Episodes > 0 {
+				episodes = custom.Episodes
 			}
-			if *custom.Episodes > 0 {
-				episodes = *custom.Episodes
+			if custom.Alpha > 0 {
+				alpha = custom.Alpha
 			}
-		}
-		if custom.Alpha != nil {
-			if *custom.Alpha < 0.0 || *custom.Alpha > 1.0 {
-				return nil, fmt.Errorf("alpha must be between 0 and 1, got %f", *custom.Alpha)
+			if custom.Gamma > 0 {
+				gamma = custom.Gamma
 			}
-			alpha = *custom.Alpha
-		}
-		if custom.Gamma != nil {
-			if *custom.Gamma < 0.0 || *custom.Gamma > 1.0 {
-				return nil, fmt.Errorf("gamma must be between 0 and 1, got %f", *custom.Gamma)
+			if custom.Epsilon > 0 {
+				epsilon = custom.Epsilon
 			}
-			gamma = *custom.Gamma
-		}
-		if custom.Epsilon != nil {
-			if *custom.Epsilon < 0.0 || *custom.Epsilon > 1.0 {
-				return nil, fmt.Errorf("epsilon must be between 0 and 1, got %f", *custom.Epsilon)
-			}
-			epsilon = *custom.Epsilon
 		}
 	}
 

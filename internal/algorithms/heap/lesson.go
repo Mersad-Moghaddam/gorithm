@@ -1,9 +1,7 @@
 package heap
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -55,19 +53,10 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{12, 11, 13, 5, 6, 7}
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) == 0 || trimmed[0] != '[' {
-			return nil, fmt.Errorf("heap input must be a JSON array of integers")
-		}
-		dec := json.NewDecoder(bytes.NewReader(trimmed))
 		var custom []int
-		if err := dec.Decode(&custom); err != nil {
-			return nil, fmt.Errorf("heap input must be a JSON array of integers: %w", err)
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
+			arr = custom
 		}
-		if dec.InputOffset() < int64(len(trimmed)) && len(bytes.TrimSpace(trimmed[dec.InputOffset():])) > 0 {
-			return nil, fmt.Errorf("heap input contains trailing data")
-		}
-		arr = custom
 	}
 	return Trace(arr), nil
 }

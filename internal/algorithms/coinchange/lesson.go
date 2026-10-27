@@ -1,9 +1,7 @@
 package coinchange
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -12,8 +10,8 @@ import (
 type Lesson struct{}
 
 type buildInput struct {
-	Coins  *[]int `json:"coins"`
-	Amount *int   `json:"amount"`
+	Coins  []int `json:"coins"`
+	Amount *int  `json:"amount"`
 }
 
 func (l Lesson) Meta() catalog.Meta {
@@ -62,53 +60,16 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	coins := []int{1, 2, 5}
 	amount := 11
 
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace(coins, amount), nil
-	}
-
-	if bytes.Equal(trimmed, []byte("null")) {
-		return nil, fmt.Errorf("input cannot be null")
-	}
-
-	if trimmed[0] != '{' {
-		return nil, fmt.Errorf("malformed JSON input: expected JSON object")
-	}
-
-	var rawMap map[string]json.RawMessage
-	if err := json.Unmarshal(trimmed, &rawMap); err != nil {
-		return nil, fmt.Errorf("malformed JSON input: %w", err)
-	}
-
-	if rawCoins, ok := rawMap["coins"]; ok && bytes.Equal(bytes.TrimSpace(rawCoins), []byte("null")) {
-		return nil, fmt.Errorf("coins cannot be null")
-	}
-	if rawAmount, ok := rawMap["amount"]; ok && bytes.Equal(bytes.TrimSpace(rawAmount), []byte("null")) {
-		return nil, fmt.Errorf("amount cannot be null")
-	}
-
-	var custom buildInput
-	if err := json.Unmarshal(trimmed, &custom); err != nil {
-		return nil, fmt.Errorf("malformed JSON input: %w", err)
-	}
-
-	if custom.Coins != nil {
-		if len(*custom.Coins) == 0 {
-			return nil, fmt.Errorf("coins cannot be empty")
-		}
-		for _, c := range *custom.Coins {
-			if c <= 0 {
-				return nil, fmt.Errorf("coin denominations must be positive, got %d", c)
+	if len(input) > 0 {
+		var custom buildInput
+		if err := json.Unmarshal(input, &custom); err == nil {
+			if len(custom.Coins) > 0 {
+				coins = custom.Coins
+			}
+			if custom.Amount != nil {
+				amount = *custom.Amount
 			}
 		}
-		coins = *custom.Coins
-	}
-
-	if custom.Amount != nil {
-		if *custom.Amount < 0 {
-			return nil, fmt.Errorf("amount cannot be negative: %d", *custom.Amount)
-		}
-		amount = *custom.Amount
 	}
 
 	return Trace(coins, amount), nil

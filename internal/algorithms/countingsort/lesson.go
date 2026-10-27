@@ -1,9 +1,7 @@
 package countingsort
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -65,35 +63,12 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace([]int{4, 2, 2, 8, 3, 3, 1}), nil
-	}
-	if string(trimmed) == "null" {
-		return nil, fmt.Errorf("counting sort input cannot be null")
-	}
-	if trimmed[0] != '[' {
-		return nil, fmt.Errorf("counting sort input must be a JSON array")
-	}
-	d := json.NewDecoder(bytes.NewReader(trimmed))
-	d.UseNumber()
-	var numbers []json.Number
-	if err := d.Decode(&numbers); err != nil {
-		return nil, fmt.Errorf("invalid json array of numbers: %w", err)
-	}
-	if d.More() {
-		return nil, fmt.Errorf("unexpected trailing data in input")
-	}
-	arr := make([]int, len(numbers))
-	for i, num := range numbers {
-		val, err := num.Int64()
-		if err != nil {
-			return nil, fmt.Errorf("element at index %d is not an integer: %s", i, num.String())
+	arr := []int{4, 2, 2, 8, 3, 3, 1}
+	if len(input) > 0 {
+		var custom []int
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
+			arr = custom
 		}
-		if val < 0 {
-			return nil, fmt.Errorf("element at index %d is negative (%d); counting sort requires non-negative integers", i, val)
-		}
-		arr[i] = int(val)
 	}
 	return Trace(arr), nil
 }

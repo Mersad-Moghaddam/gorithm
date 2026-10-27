@@ -1,9 +1,7 @@
 package trie
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -68,69 +66,29 @@ type buildInput struct {
 	Prefix string   `json:"prefix"`
 }
 
-// Build validates input and returns execution steps for the Trie lesson.
-// ponytail: accepts either JSON object with words/search/prefix or direct string array of words.
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	words := []string{"go", "golang", "good", "god"}
 	search := "gold"
 	prefix := "go"
 
-	if len(input) == 0 {
-		return Trace(words, search, prefix), nil
-	}
-
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return Trace(words, search, prefix), nil
-	}
-	if string(trimmed) == "null" {
-		return nil, fmt.Errorf("input cannot be null")
-	}
-
-	if trimmed[0] == '{' {
+	if len(input) > 0 {
 		var custom buildInput
-		dec := json.NewDecoder(bytes.NewReader(trimmed))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&custom); err != nil {
-			return nil, fmt.Errorf("malformed JSON object: %w", err)
-		}
-		if len(custom.Words) == 0 {
-			return nil, fmt.Errorf("words cannot be empty")
-		}
-		for _, w := range custom.Words {
-			if w == "" {
-				return nil, fmt.Errorf("word cannot be empty")
+		if err := json.Unmarshal(input, &custom); err == nil && (len(custom.Words) > 0 || custom.Search != "" || custom.Prefix != "") {
+			if len(custom.Words) > 0 {
+				words = custom.Words
+			}
+			if custom.Search != "" {
+				search = custom.Search
+			}
+			if custom.Prefix != "" {
+				prefix = custom.Prefix
+			}
+		} else {
+			var customList []string
+			if err := json.Unmarshal(input, &customList); err == nil && len(customList) > 0 {
+				words = customList
 			}
 		}
-		words = custom.Words
-		if custom.Search != "" {
-			search = custom.Search
-		} else {
-			search = words[0]
-		}
-		if custom.Prefix != "" {
-			prefix = custom.Prefix
-		} else {
-			prefix = words[0]
-		}
-	} else if trimmed[0] == '[' {
-		var customList []string
-		if err := json.Unmarshal(trimmed, &customList); err != nil {
-			return nil, fmt.Errorf("malformed JSON array: %w", err)
-		}
-		if len(customList) == 0 {
-			return nil, fmt.Errorf("words cannot be empty")
-		}
-		for _, w := range customList {
-			if w == "" {
-				return nil, fmt.Errorf("word cannot be empty")
-			}
-		}
-		words = customList
-		search = words[0]
-		prefix = words[0]
-	} else {
-		return nil, fmt.Errorf("invalid input: expected JSON object or array")
 	}
 
 	return Trace(words, search, prefix), nil

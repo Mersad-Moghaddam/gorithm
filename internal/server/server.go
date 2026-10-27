@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -10,6 +12,12 @@ import (
 
 type Config struct {
 	Addr string
+}
+
+type staticFile struct {
+	data        []byte
+	gzipped     []byte
+	contentType string
 }
 
 func NewHandler() (http.Handler, error) {
@@ -22,42 +30,92 @@ func NewHandler() (http.Handler, error) {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// Static files from embedded FS
 	subFS, err := fs.Sub(web.StaticFS, "static")
 	if err != nil {
 		return nil, err
 	}
-	fileServer := http.FileServer(http.FS(subFS))
+
+	// Pre-load and pre-compress static assets into memory
+	staticFiles := make(map[string]staticFile)
+	err = fs.WalkDir(subFS, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(subFS, p)
+		if err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		gw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+		if err == nil {
+			_, _ = gw.Write(data)
+			_ = gw.Close()
+		}
+
+		ctype := "application/octet-stream"
+		switch {
+		case strings.HasSuffix(p, ".html"):
+			ctype = "text/html; charset=utf-8"
+		case strings.HasSuffix(p, ".css"):
+			ctype = "text/css; charset=utf-8"
+		case strings.HasSuffix(p, ".js"):
+			ctype = "application/javascript; charset=utf-8"
+		case strings.HasSuffix(p, ".wasm"):
+			ctype = "application/wasm"
+		case strings.HasSuffix(p, ".svg"):
+			ctype = "image/svg+xml"
+		case strings.HasSuffix(p, ".ico"):
+			ctype = "image/x-icon"
+		}
+
+		staticFiles[p] = staticFile{
+			data:        data,
+			gzipped:     buf.Bytes(),
+			contentType: ctype,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Security headers
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-		path := r.URL.Path
-		if path == "/" || !strings.Contains(path, ".") {
-			// Serve index.html for root and SPA routes
-			indexData, err := fs.ReadFile(subFS, "index.html")
-			if err != nil {
-				http.Error(w, "index.html not found", http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(indexData)
+		reqPath := r.URL.Path
+		var fileKey string
+		if reqPath == "/" || !strings.Contains(reqPath, ".") {
+			fileKey = "index.html"
+		} else {
+			fileKey = strings.TrimPrefix(reqPath, "/static/")
+			fileKey = strings.TrimPrefix(fileKey, "/")
+		}
+
+		sf, ok := staticFiles[fileKey]
+		if !ok {
+			http.NotFound(w, r)
 			return
 		}
 
-		if strings.HasPrefix(path, "/static/") {
-			r.URL.Path = strings.TrimPrefix(path, "/static")
+		w.Header().Set("Content-Type", sf.contentType)
+		if fileKey == "index.html" {
+			w.Header().Set("Cache-Control", "no-cache")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
 		}
 
-		if strings.HasSuffix(r.URL.Path, ".wasm") {
-			w.Header().Set("Content-Type", "application/wasm")
+		acceptsGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+		if acceptsGzip && len(sf.gzipped) > 0 && len(sf.gzipped) < len(sf.data) {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Vary", "Accept-Encoding")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(sf.gzipped)
+		} else {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(sf.data)
 		}
-
-		fileServer.ServeHTTP(w, r)
 	})
 
 	return mux, nil

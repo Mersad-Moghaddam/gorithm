@@ -19,12 +19,10 @@ func formatDist(d int) string {
 func buildTableState(
 	nodes []string,
 	dist [][]int,
-	caption string,
 	activeRow, activeCol int,
 	sourceRow1, sourceCol1 int,
 	sourceRow2, sourceCol2 int,
 	updatedRow, updatedCol int,
-	deps []renderers.TableDependency,
 ) renderers.TableState {
 	v := len(nodes)
 	rowHeaders := make([]string, v)
@@ -38,10 +36,10 @@ func buildTableState(
 			state := "normal"
 			if r == updatedRow && c == updatedCol {
 				state = "computed"
-			} else if r == activeRow && c == activeCol {
-				state = "active"
 			} else if (r == sourceRow1 && c == sourceCol1) || (r == sourceRow2 && c == sourceCol2) {
 				state = "source"
+			} else if r == activeRow && c == activeCol {
+				state = "active"
 			}
 
 			cells = append(cells, renderers.TableCell{
@@ -53,18 +51,10 @@ func buildTableState(
 		}
 	}
 
-	var dependencies []renderers.TableDependency
-	if len(deps) > 0 {
-		dependencies = make([]renderers.TableDependency, len(deps))
-		copy(dependencies, deps)
-	}
-
 	return renderers.TableState{
-		Caption:      caption,
-		Dependencies: dependencies,
-		RowHeaders:   rowHeaders,
-		ColHeaders:   colHeaders,
-		Cells:        cells,
+		RowHeaders: rowHeaders,
+		ColHeaders: colHeaders,
+		Cells:      cells,
 	}
 }
 
@@ -106,10 +96,10 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 	}
 
 	b.AddStep(
-		"L2",
+		"L1",
 		trace.ActionInit,
 		fmt.Sprintf("Initialize %dx%d distance matrix for %d nodes.", v, v, v),
-		buildTableState(nodes, dist, fmt.Sprintf("Initialize %dx%d distance matrix", v, v), -1, -1, -1, -1, -1, -1, -1, -1, nil),
+		buildTableState(nodes, dist, -1, -1, -1, -1, -1, -1, -1, -1),
 		map[string]any{"k": -1, "i": -1, "j": -1, "nodes": nodes},
 	)
 
@@ -118,44 +108,32 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 			"L3",
 			trace.ActionVisit,
 			fmt.Sprintf("Evaluate node %s (k=%d) as intermediate vertex.", nodes[k], k),
-			buildTableState(nodes, dist, fmt.Sprintf("Intermediate vertex k=%s", nodes[k]), -1, -1, -1, -1, -1, -1, -1, -1, nil),
+			buildTableState(nodes, dist, -1, -1, -1, -1, -1, -1, -1, -1),
 			map[string]any{"k": k, "i": -1, "j": -1, "intermediate": nodes[k]},
 		)
 
 		for i := 0; i < v; i++ {
 			for j := 0; j < v; j++ {
-				pairDeps := []renderers.TableDependency{
-					{FromRow: i, FromCol: k, ToRow: i, ToCol: j},
-					{FromRow: k, FromCol: j, ToRow: i, ToCol: j},
-				}
-
 				b.IncComparisons()
 				if dist[i][k] == math.MaxInt || dist[k][j] == math.MaxInt {
-					unreachDesc := fmt.Sprintf("Checking path %s -> %s via %s: intermediate path unreachable.", nodes[i], nodes[j], nodes[k])
-					unreachCaption := fmt.Sprintf("Intermediate k=%s: path %s -> %s via %s unreachable", nodes[k], nodes[i], nodes[j], nodes[k])
 					b.AddStep(
 						"L6",
 						trace.ActionCompare,
-						unreachDesc,
-						buildTableState(nodes, dist, unreachCaption, i, j, i, k, k, j, -1, -1, pairDeps),
-						map[string]any{"k": k, "i": i, "j": j, "intermediate": nodes[k], "from": nodes[i], "to": nodes[j], "unreachable": true},
+						fmt.Sprintf("Checking path %s -> %s via %s: intermediate path unreachable.", nodes[i], nodes[j], nodes[k]),
+						buildTableState(nodes, dist, i, j, -1, -1, -1, -1, -1, -1),
+						map[string]any{"k": k, "i": i, "j": j, "intermediate": nodes[k], "from": nodes[i], "to": nodes[j]},
 					)
 					continue
 				}
 
 				alt := dist[i][k] + dist[k][j]
-				oldDist := dist[i][j]
-				oldDistStr := formatDist(oldDist)
-				compareDesc := fmt.Sprintf("Checking %s -> %s via %s: dist[%s][%s](%d) + dist[%s][%s](%d) = %d vs current %s.",
-					nodes[i], nodes[j], nodes[k], nodes[i], nodes[k], dist[i][k], nodes[k], nodes[j], dist[k][j], alt, oldDistStr)
-				compareCaption := fmt.Sprintf("Intermediate k=%s: checking %s -> %s: dist[%s][%s](%d) + dist[%s][%s](%d) = %d vs current %s",
-					nodes[k], nodes[i], nodes[j], nodes[i], nodes[k], dist[i][k], nodes[k], nodes[j], dist[k][j], alt, oldDistStr)
-
+				oldDistStr := formatDist(dist[i][j])
 				b.AddStep(
 					"L7",
 					trace.ActionCompare,
-					compareDesc,
-					buildTableState(nodes, dist, compareCaption, i, j, i, k, k, j, -1, -1, pairDeps),
+					fmt.Sprintf("Checking %s -> %s via %s: dist[%s][%s](%d) + dist[%s][%s](%d) = %d vs current %s.",
+						nodes[i], nodes[j], nodes[k], nodes[i], nodes[k], dist[i][k], nodes[k], nodes[j], dist[k][j], alt, oldDistStr),
+					buildTableState(nodes, dist, i, j, i, k, k, j, -1, -1),
 					map[string]any{
 						"k":            k,
 						"i":            i,
@@ -171,12 +149,11 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 				if alt < dist[i][j] {
 					dist[i][j] = alt
 					b.IncOperations()
-					relaxCaption := fmt.Sprintf("Path through intermediate k=%s is shorter: %d + %d = %d < %d", nodes[k], dist[i][k], dist[k][j], alt, oldDist)
 					b.AddStep(
 						"L8",
 						trace.ActionSet,
-						relaxCaption,
-						buildTableState(nodes, dist, relaxCaption, -1, -1, i, k, k, j, i, j, pairDeps),
+						fmt.Sprintf("Relaxed edge! Updated shortest path %s -> %s via %s to %d.", nodes[i], nodes[j], nodes[k], alt),
+						buildTableState(nodes, dist, -1, -1, i, k, k, j, i, j),
 						map[string]any{
 							"k":            k,
 							"i":            i,
@@ -185,7 +162,6 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 							"from":         nodes[i],
 							"to":           nodes[j],
 							"newDist":      alt,
-							"oldDist":      oldDist,
 						},
 					)
 				}
@@ -197,7 +173,7 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 		"L14",
 		trace.ActionHighlight,
 		"Scanning diagonal entries to check for negative cycles.",
-		buildTableState(nodes, dist, "Scanning diagonal for negative cycles (dist[i][i] < 0)", -1, -1, -1, -1, -1, -1, -1, -1, nil),
+		buildTableState(nodes, dist, -1, -1, -1, -1, -1, -1, -1, -1),
 		map[string]any{"k": -1, "i": -1, "j": -1},
 	)
 
@@ -205,13 +181,12 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 	for i := 0; i < v; i++ {
 		b.IncComparisons()
 		if dist[i][i] < 0 {
-			diagCaption := fmt.Sprintf("Negative cycle detected! dist[%s][%s] = %d < 0.", nodes[i], nodes[i], dist[i][i])
 			b.AddStep(
 				"L16",
 				trace.ActionHighlight,
-				diagCaption,
-				buildTableState(nodes, dist, fmt.Sprintf("Negative cycle detected: dist[%s][%s] = %d < 0", nodes[i], nodes[i], dist[i][i]), i, i, -1, -1, -1, -1, -1, -1, nil),
-				map[string]any{"k": -1, "i": i, "j": i, "negativeCycle": true, "cycleVertex": nodes[i]},
+				fmt.Sprintf("Negative cycle detected! dist[%s][%s] = %d < 0.", nodes[i], nodes[i], dist[i][i]),
+				buildTableState(nodes, dist, i, i, -1, -1, -1, -1, -1, -1),
+				map[string]any{"k": -1, "i": i, "j": i, "negativeCycle": true},
 			)
 			hasNegCycle = true
 			break
@@ -219,12 +194,11 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 	}
 
 	if !hasNegCycle {
-		doneCaption := "Floyd-Warshall completed! All-pairs shortest path matrix computed with no negative cycles."
 		b.AddStep(
 			"L19",
 			trace.ActionDone,
-			doneCaption,
-			buildTableState(nodes, dist, doneCaption, -1, -1, -1, -1, -1, -1, -1, -1, nil),
+			"Floyd-Warshall completed! All-pairs shortest path matrix computed with no negative cycles.",
+			buildTableState(nodes, dist, -1, -1, -1, -1, -1, -1, -1, -1),
 			map[string]any{"k": -1, "i": -1, "j": -1, "negativeCycle": false},
 		)
 	}

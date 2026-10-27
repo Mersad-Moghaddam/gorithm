@@ -2,42 +2,19 @@ package sudoku
 
 // ponytail: simple depth-first backtracking search; Dancing Links (Algorithm X) or bitboard constraints needed for 16x16 or hard benchmark grids.
 
-// Conflict records a constraint violation in row, column, or 3x3 box.
-type Conflict struct {
-	Row       int    `json:"row"`
-	Col       int    `json:"col"`
-	Invariant string `json:"invariant"` // "row", "column", "box"
-	Message   string `json:"message"`
-}
-
-// FindConflict checks if placing num at board[row][col] violates row, column, or 3x3 box invariants.
-func FindConflict(board [9][9]int, row, col, num int) (*Conflict, bool) {
+// IsValid checks if placing num at board[row][col] conforms to row, column, and 3x3 box constraints.
+func IsValid(board [9][9]int, row, col, num int) bool {
 	if num < 1 || num > 9 {
-		return nil, false
+		return false
 	}
-	// Check row invariant
-	for c := 0; c < 9; c++ {
-		if c != col && board[row][c] == num {
-			return &Conflict{
-				Row:       row,
-				Col:       c,
-				Invariant: "row",
-				Message:   "row conflict: digit already exists in row",
-			}, true
+	for i := 0; i < 9; i++ {
+		if i != col && board[row][i] == num {
+			return false
+		}
+		if i != row && board[i][col] == num {
+			return false
 		}
 	}
-	// Check column invariant
-	for r := 0; r < 9; r++ {
-		if r != row && board[r][col] == num {
-			return &Conflict{
-				Row:       r,
-				Col:       col,
-				Invariant: "column",
-				Message:   "column conflict: digit already exists in column",
-			}, true
-		}
-	}
-	// Check 3x3 box invariant
 	boxRow := (row / 3) * 3
 	boxCol := (col / 3) * 3
 	for r := 0; r < 3; r++ {
@@ -48,25 +25,11 @@ func FindConflict(board [9][9]int, row, col, num int) (*Conflict, bool) {
 				continue
 			}
 			if board[currR][currC] == num {
-				return &Conflict{
-					Row:       currR,
-					Col:       currC,
-					Invariant: "box",
-					Message:   "box conflict: digit already exists in 3x3 box",
-				}, true
+				return false
 			}
 		}
 	}
-	return nil, false
-}
-
-// IsValid checks if placing num at board[row][col] conforms to row, column, and 3x3 box constraints.
-func IsValid(board [9][9]int, row, col, num int) bool {
-	if num < 1 || num > 9 {
-		return false
-	}
-	_, hasConflict := FindConflict(board, row, col, num)
-	return !hasConflict
+	return true
 }
 
 func validateBoard(board [9][9]int) bool {

@@ -3,7 +3,8 @@ FROM golang:1.24-alpine AS wasm-builder
 WORKDIR /app
 COPY go.mod ./
 COPY . .
-RUN GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/static/app.wasm ./web/wasm
+RUN GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/static/app.wasm ./web/wasm \
+    && cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" web/static/wasm_exec.js
 
 # Stage 2: Build Native Go Server with embedded WASM & web assets
 FROM golang:1.24-alpine AS server-builder

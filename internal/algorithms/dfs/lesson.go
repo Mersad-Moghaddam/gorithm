@@ -1,9 +1,7 @@
 package dfs
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -30,7 +28,7 @@ func (l Lesson) Meta() catalog.Meta {
 			},
 			HowItWorks: "Starts at a chosen root vertex and marks it as visiting. Traverses outgoing edges to unvisited adjacent vertices recursively. Upon reaching a vertex with no unvisited neighbors, backtracks to explore remaining branches until all reachable vertices are processed and marked visited.",
 		},
-		DefaultInput: `{"start": "A"}`,
+		DefaultInput: "A",
 	}
 }
 
@@ -55,12 +53,6 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-type buildInput struct {
-	Nodes []renderers.GraphNode `json:"nodes"`
-	Edges []renderers.GraphEdge `json:"edges"`
-	Start *string               `json:"start"`
-}
-
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes := []renderers.GraphNode{
 		{ID: "A", Label: "A", X: 400, Y: 80, State: "unvisited"},
@@ -78,62 +70,33 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		{From: "C", To: "E"},
 		{From: "C", To: "F"},
 	}
-	start := "A"
+	startNode := "A"
 
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) > 0 {
-			if bytes.Equal(trimmed, []byte("null")) {
-				return nil, fmt.Errorf("input cannot be null")
+		var strInput string
+		if err := json.Unmarshal(input, &strInput); err == nil && strInput != "" {
+			startNode = strInput
+		} else {
+			var custom struct {
+				Start string                `json:"start"`
+				Nodes []renderers.GraphNode `json:"nodes"`
+				Edges []renderers.GraphEdge `json:"edges"`
 			}
-
-			var rawMap map[string]json.RawMessage
-			if err := json.Unmarshal(trimmed, &rawMap); err == nil {
-				if rawStart, ok := rawMap["start"]; ok && bytes.Equal(bytes.TrimSpace(rawStart), []byte("null")) {
-					return nil, fmt.Errorf("start node cannot be null")
+			if err := json.Unmarshal(input, &custom); err == nil {
+				if custom.Start != "" {
+					startNode = custom.Start
 				}
-			}
-
-			var custom buildInput
-			if err := json.Unmarshal(trimmed, &custom); err != nil {
-				var startStr string
-				if strErr := json.Unmarshal(trimmed, &startStr); strErr == nil {
-					custom.Start = &startStr
-				} else {
-					return nil, fmt.Errorf("malformed JSON input: %w", err)
+				if len(custom.Nodes) > 0 {
+					nodes = custom.Nodes
 				}
-			}
-
-			if len(custom.Nodes) > 0 {
-				nodes = custom.Nodes
-				if custom.Start == nil {
-					start = nodes[0].ID
+				if len(custom.Edges) > 0 {
+					edges = custom.Edges
 				}
-			}
-			if len(custom.Edges) > 0 {
-				edges = custom.Edges
-			}
-			if custom.Start != nil {
-				if *custom.Start == "" {
-					return nil, fmt.Errorf("start node cannot be empty")
-				}
-				start = *custom.Start
 			}
 		}
 	}
 
-	startFound := false
-	for _, n := range nodes {
-		if n.ID == start {
-			startFound = true
-			break
-		}
-	}
-	if !startFound {
-		return nil, fmt.Errorf("unknown start node: %q", start)
-	}
-
-	return Trace(nodes, edges, start), nil
+	return Trace(nodes, edges, startNode), nil
 }
 
 func init() {

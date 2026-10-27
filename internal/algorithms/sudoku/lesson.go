@@ -1,9 +1,7 @@
 package sudoku
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -62,65 +60,22 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-func parseAndValidateBoard(input json.RawMessage) ([9][9]int, error) {
-	trimmed := bytes.TrimSpace(input)
-	if len(trimmed) == 0 {
-		return CanonicalBoard, nil
-	}
-	if bytes.Equal(trimmed, []byte("null")) {
-		return [9][9]int{}, fmt.Errorf("input cannot be null")
-	}
-
-	var rawGrid [][]*int
-	if trimmed[0] == '{' {
-		var payload struct {
-			Board *[][]*int `json:"board"`
-		}
-		if err := json.Unmarshal(trimmed, &payload); err != nil {
-			return [9][9]int{}, fmt.Errorf("malformed JSON input: %w", err)
-		}
-		if payload.Board == nil {
-			return [9][9]int{}, fmt.Errorf("board cannot be null")
-		}
-		rawGrid = *payload.Board
-	} else if trimmed[0] == '[' {
-		if err := json.Unmarshal(trimmed, &rawGrid); err != nil {
-			return [9][9]int{}, fmt.Errorf("malformed JSON input: %w", err)
-		}
-	} else {
-		return [9][9]int{}, fmt.Errorf("malformed JSON input: expected JSON object or array")
-	}
-
-	if len(rawGrid) != 9 {
-		return [9][9]int{}, fmt.Errorf("invalid board dimensions: expected 9 rows, got %d", len(rawGrid))
-	}
-	var board [9][9]int
-	for r := 0; r < 9; r++ {
-		row := rawGrid[r]
-		if row == nil {
-			return [9][9]int{}, fmt.Errorf("invalid board: row %d cannot be null", r)
-		}
-		if len(row) != 9 {
-			return [9][9]int{}, fmt.Errorf("invalid board dimensions: row %d has %d columns, expected 9", r, len(row))
-		}
-		for c := 0; c < 9; c++ {
-			if row[c] == nil {
-				return [9][9]int{}, fmt.Errorf("invalid board: cell (%d, %d) cannot be null", r, c)
-			}
-			val := *row[c]
-			if val < 0 || val > 9 {
-				return [9][9]int{}, fmt.Errorf("invalid cell value at (%d, %d): %d (must be 0-9)", r, c, val)
-			}
-			board[r][c] = val
-		}
-	}
-	return board, nil
+type buildInput struct {
+	Board *[9][9]int `json:"board"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	board, err := parseAndValidateBoard(input)
-	if err != nil {
-		return nil, err
+	board := CanonicalBoard
+	if len(input) > 0 {
+		var payload buildInput
+		if err := json.Unmarshal(input, &payload); err == nil && payload.Board != nil {
+			board = *payload.Board
+		} else {
+			var direct [9][9]int
+			if err := json.Unmarshal(input, &direct); err == nil {
+				board = direct
+			}
+		}
 	}
 	return Trace(board), nil
 }

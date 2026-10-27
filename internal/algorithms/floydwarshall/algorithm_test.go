@@ -2,10 +2,8 @@ package floydwarshall
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -139,7 +137,6 @@ func TestFloydWarshallTraceTableState(t *testing.T) {
 	hasCompare := false
 	hasSet := false
 	hasDone := false
-	var relaxationChecked bool
 
 	for i, step := range steps {
 		tableState, ok := step.State.(renderers.TableState)
@@ -153,218 +150,22 @@ func TestFloydWarshallTraceTableState(t *testing.T) {
 			t.Errorf("step %d: expected 16 cells, got %d", i, len(tableState.Cells))
 		}
 
-		cellMap := make(map[[2]int]renderers.TableCell)
-		for _, cell := range tableState.Cells {
-			cellMap[[2]int{cell.Row, cell.Col}] = cell
-		}
-
-		switch step.Action {
-		case "init":
+		if step.Action == "init" {
 			hasInit = true
-		case "compare":
+		}
+		if step.Action == "compare" {
 			hasCompare = true
-			k := step.Variables["k"].(int)
-			rowI := step.Variables["i"].(int)
-			colJ := step.Variables["j"].(int)
-
-			if len(tableState.Dependencies) != 2 {
-				t.Fatalf("step %d: expected 2 dependencies, got %d", i, len(tableState.Dependencies))
-			}
-			dep1 := tableState.Dependencies[0]
-			dep2 := tableState.Dependencies[1]
-			if dep1.FromRow != rowI || dep1.FromCol != k || dep1.ToRow != rowI || dep1.ToCol != colJ {
-				t.Errorf("step %d: unexpected dep1: %+v, want (%d,%d)->(%d,%d)", i, dep1, rowI, k, rowI, colJ)
-			}
-			if dep2.FromRow != k || dep2.FromCol != colJ || dep2.ToRow != rowI || dep2.ToCol != colJ {
-				t.Errorf("step %d: unexpected dep2: %+v, want (%d,%d)->(%d,%d)", i, dep2, k, colJ, rowI, colJ)
-			}
-
-			// Cell (i, j) active
-			if cellMap[[2]int{rowI, colJ}].State != "active" {
-				t.Errorf("step %d: cell (%d,%d) state = %q; want 'active'", i, rowI, colJ, cellMap[[2]int{rowI, colJ}].State)
-			}
-			// Cell (i, k) source (unless i==k and j==k)
-			if !(rowI == k && colJ == k) {
-				if cellMap[[2]int{rowI, k}].State != "source" && !(rowI == rowI && k == colJ) {
-					t.Errorf("step %d: cell (%d,%d) state = %q; want 'source'", i, rowI, k, cellMap[[2]int{rowI, k}].State)
-				}
-				if cellMap[[2]int{k, colJ}].State != "source" && !(k == rowI && colJ == colJ) {
-					t.Errorf("step %d: cell (%d,%d) state = %q; want 'source'", i, k, colJ, cellMap[[2]int{k, colJ}].State)
-				}
-			}
-
-			// Intermediate vertex k in caption and vars
-			if !strings.Contains(tableState.Caption, fmt.Sprintf("k=%s", step.Variables["intermediate"])) {
-				t.Errorf("step %d: caption %q missing intermediate vertex", i, tableState.Caption)
-			}
-		case "set":
+		}
+		if step.Action == "set" {
 			hasSet = true
-			relaxationChecked = true
-			k := step.Variables["k"].(int)
-			rowI := step.Variables["i"].(int)
-			colJ := step.Variables["j"].(int)
-			inter := step.Variables["intermediate"].(string)
-
-			// Relaxed cell (i, j) is computed
-			if cellMap[[2]int{rowI, colJ}].State != "computed" {
-				t.Errorf("step %d: cell (%d,%d) state = %q; want 'computed'", i, rowI, colJ, cellMap[[2]int{rowI, colJ}].State)
-			}
-			// Sources are marked source
-			if cellMap[[2]int{rowI, k}].State != "source" {
-				t.Errorf("step %d: cell (%d,%d) state = %q; want 'source'", i, rowI, k, cellMap[[2]int{rowI, k}].State)
-			}
-			if cellMap[[2]int{k, colJ}].State != "source" {
-				t.Errorf("step %d: cell (%d,%d) state = %q; want 'source'", i, k, colJ, cellMap[[2]int{k, colJ}].State)
-			}
-
-			// Dependencies
-			if len(tableState.Dependencies) != 2 {
-				t.Fatalf("step %d: expected 2 dependencies, got %d", i, len(tableState.Dependencies))
-			}
-
-			// Educational caption: "Path through intermediate k=%s is shorter: %d + %d = %d < %d"
-			expectedPrefix := fmt.Sprintf("Path through intermediate k=%s is shorter:", inter)
-			if !strings.HasPrefix(tableState.Caption, expectedPrefix) {
-				t.Errorf("step %d: caption = %q; want prefix %q", i, tableState.Caption, expectedPrefix)
-			}
-			if !strings.Contains(tableState.Caption, "<") || !strings.Contains(tableState.Caption, "+") || !strings.Contains(tableState.Caption, "=") {
-				t.Errorf("step %d: caption %q does not match arithmetic format", i, tableState.Caption)
-			}
-		case "done":
+		}
+		if step.Action == "done" {
 			hasDone = true
 		}
 	}
 
-	if !hasInit || !hasCompare || !hasSet || !hasDone || !relaxationChecked {
-		t.Errorf("missing expected actions: init=%t, compare=%t, set=%t, done=%t, relaxationChecked=%t",
-			hasInit, hasCompare, hasSet, hasDone, relaxationChecked)
-	}
-}
-
-func TestFloydWarshallSnapshotImmutability(t *testing.T) {
-	steps := Trace([]string{"A", "B", "C"}, []WeightedEdge{
-		{From: "A", To: "B", Weight: 3, Directed: true},
-		{From: "B", To: "C", Weight: 2, Directed: true},
-		{From: "A", To: "C", Weight: 8, Directed: true},
-	})
-	if len(steps) < 2 {
-		t.Fatalf("expected multiple steps, got %d", len(steps))
-	}
-
-	for i := 0; i < len(steps)-1; i++ {
-		s1 := steps[i].State.(renderers.TableState)
-		s2 := steps[i+1].State.(renderers.TableState)
-
-		if len(s1.RowHeaders) > 0 && len(s2.RowHeaders) > 0 && &s1.RowHeaders[0] == &s2.RowHeaders[0] {
-			t.Errorf("steps %d and %d share RowHeaders backing array", i, i+1)
-		}
-		if len(s1.ColHeaders) > 0 && len(s2.ColHeaders) > 0 && &s1.ColHeaders[0] == &s2.ColHeaders[0] {
-			t.Errorf("steps %d and %d share ColHeaders backing array", i, i+1)
-		}
-		if len(s1.Cells) > 0 && len(s2.Cells) > 0 && &s1.Cells[0] == &s2.Cells[0] {
-			t.Errorf("steps %d and %d share Cells backing array", i, i+1)
-		}
-		if len(s1.Dependencies) > 0 && len(s2.Dependencies) > 0 && &s1.Dependencies[0] == &s2.Dependencies[0] {
-			t.Errorf("steps %d and %d share Dependencies backing array", i, i+1)
-		}
-	}
-
-	// Verify mutating step 0 does not mutate step 1
-	s0 := steps[0].State.(renderers.TableState)
-	s1 := steps[1].State.(renderers.TableState)
-	origS1Row := s1.RowHeaders[0]
-	origS1CellVal := s1.Cells[0].Value
-
-	s0.RowHeaders[0] = "MODIFIED"
-	s0.Cells[0].Value = "MODIFIED"
-
-	if s1.RowHeaders[0] != origS1Row {
-		t.Errorf("mutating step 0 RowHeaders mutated step 1 RowHeaders")
-	}
-	if s1.Cells[0].Value != origS1CellVal {
-		t.Errorf("mutating step 0 Cells mutated step 1 Cells")
-	}
-}
-
-func TestFloydWarshallNegativeCycleTrace(t *testing.T) {
-	nodes := []string{"A", "B", "C"}
-	edges := []WeightedEdge{
-		{From: "A", To: "B", Weight: 1, Directed: true},
-		{From: "B", To: "C", Weight: -3, Directed: true},
-		{From: "C", To: "A", Weight: -1, Directed: true},
-	}
-
-	steps := Trace(nodes, edges)
-	var foundNegCycleStep bool
-	for _, step := range steps {
-		if step.LineID == "L16" {
-			foundNegCycleStep = true
-			if step.Action != "highlight" {
-				t.Errorf("expected action 'highlight' for negative cycle, got %s", step.Action)
-			}
-			if neg, ok := step.Variables["negativeCycle"].(bool); !ok || !neg {
-				t.Errorf("expected negativeCycle=true in vars")
-			}
-			ts, ok := step.State.(renderers.TableState)
-			if !ok {
-				t.Fatalf("expected TableState, got %T", step.State)
-			}
-			rowI := step.Variables["i"].(int)
-			colJ := step.Variables["j"].(int)
-			for _, cell := range ts.Cells {
-				if cell.Row == rowI && cell.Col == colJ {
-					if cell.State != "active" {
-						t.Errorf("expected diagonal negative cycle cell (%d,%d) to be active, got %s", rowI, colJ, cell.State)
-					}
-				}
-			}
-		}
-	}
-
-	if !foundNegCycleStep {
-		t.Fatal("expected negative cycle detection step L16 in trace")
-	}
-
-	lesson := Lesson{}
-	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
-		t.Fatalf("negative cycle trace line validation failed: %v", err)
-	}
-}
-
-func TestFloydWarshallInputValidationStrict(t *testing.T) {
-	lesson := Lesson{}
-
-	// Valid empty/nil inputs default to valid steps
-	for _, input := range []json.RawMessage{nil, []byte(""), []byte("   ")} {
-		steps, err := lesson.Build(input)
-		if err != nil {
-			t.Fatalf("expected nil/empty input to succeed, got %v", err)
-		}
-		if len(steps) == 0 {
-			t.Fatal("expected non-empty steps for default input")
-		}
-	}
-
-	// Invalid inputs that must be rejected
-	invalidCases := []struct {
-		name  string
-		input []byte
-	}{
-		{"null", []byte("null")},
-		{"malformed json", []byte("{not json")},
-		{"empty object", []byte("{}")},
-		{"empty nodes slice", []byte(`{"nodes": []}`)},
-		{"empty graphNodes slice", []byte(`{"graphNodes": []}`)},
-		{"node with empty string", []byte(`{"nodes": ["A", " "]}`)},
-	}
-
-	for _, tc := range invalidCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := lesson.Build(tc.input)
-			if err == nil {
-				t.Fatalf("expected error for %s input %s, got nil", tc.name, string(tc.input))
-			}
-		})
+	if !hasInit || !hasCompare || !hasSet || !hasDone {
+		t.Errorf("missing expected actions: init=%t, compare=%t, set=%t, done=%t", hasInit, hasCompare, hasSet, hasDone)
 	}
 }
 

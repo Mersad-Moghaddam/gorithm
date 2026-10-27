@@ -1,10 +1,7 @@
 package quick
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"strconv"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -56,28 +53,9 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{10, 80, 30, 90, 40, 50, 70}
 	if len(input) > 0 {
-		trimmed := bytes.TrimSpace(input)
-		if len(trimmed) == 0 {
-			return Trace(arr), nil
-		}
-		if trimmed[0] != '[' || trimmed[len(trimmed)-1] != ']' {
-			return nil, fmt.Errorf("quick sort input must be a JSON array of integers")
-		}
-		var raw []json.RawMessage
-		if err := json.Unmarshal(trimmed, &raw); err != nil {
-			return nil, err
-		}
-		arr = make([]int, len(raw))
-		for i, item := range raw {
-			itemStr := string(bytes.TrimSpace(item))
-			if itemStr == "null" {
-				return nil, fmt.Errorf("quick sort element cannot be null")
-			}
-			val, err := strconv.Atoi(itemStr)
-			if err != nil {
-				return nil, fmt.Errorf("quick sort element %q is not a valid integer: %w", itemStr, err)
-			}
-			arr[i] = val
+		var custom []int
+		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
+			arr = custom
 		}
 	}
 	return Trace(arr), nil
