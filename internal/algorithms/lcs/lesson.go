@@ -1,7 +1,9 @@
 package lcs
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -72,22 +74,47 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	s1 := "AGGTAB"
 	s2 := "GXTXAYB"
 
-	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 {
+		if bytes.Equal(trimmed, []byte("null")) {
+			return nil, fmt.Errorf("input cannot be null")
+		}
+
+		if trimmed[0] == '{' {
+			var custom LessonInput
+			if err := json.Unmarshal(trimmed, &custom); err != nil {
+				return nil, fmt.Errorf("malformed JSON object: %w", err)
+			}
 			if custom.S1 != "" || custom.S2 != "" {
+				if custom.S1 == "" || custom.S2 == "" {
+					return nil, fmt.Errorf("both s1 and s2 must be non-empty")
+				}
 				s1 = custom.S1
 				s2 = custom.S2
 			} else if custom.Text != "" || custom.Pattern != "" {
+				if custom.Text == "" || custom.Pattern == "" {
+					return nil, fmt.Errorf("both text and pattern must be non-empty")
+				}
 				s1 = custom.Text
 				s2 = custom.Pattern
+			} else {
+				return nil, fmt.Errorf("input strings cannot be empty")
 			}
-		} else {
+		} else if trimmed[0] == '[' {
 			var sliceInput []string
-			if err := json.Unmarshal(input, &sliceInput); err == nil && len(sliceInput) >= 2 {
-				s1 = sliceInput[0]
-				s2 = sliceInput[1]
+			if err := json.Unmarshal(trimmed, &sliceInput); err != nil {
+				return nil, fmt.Errorf("malformed JSON array: %w", err)
 			}
+			if len(sliceInput) < 2 {
+				return nil, fmt.Errorf("input array must contain at least 2 strings")
+			}
+			if sliceInput[0] == "" || sliceInput[1] == "" {
+				return nil, fmt.Errorf("input strings cannot be empty")
+			}
+			s1 = sliceInput[0]
+			s2 = sliceInput[1]
+		} else {
+			return nil, fmt.Errorf("malformed JSON input: expected JSON object or array")
 		}
 	}
 

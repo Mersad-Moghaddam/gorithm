@@ -1,7 +1,9 @@
 package prim
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -14,7 +16,7 @@ type Lesson struct{}
 type LessonInput struct {
 	Nodes []renderers.GraphNode `json:"nodes,omitempty"`
 	Edges []WeightedEdge        `json:"edges,omitempty"`
-	Start string                `json:"start,omitempty"`
+	Start *string               `json:"start,omitempty"`
 }
 
 func (l Lesson) Meta() catalog.Meta {
@@ -117,19 +119,65 @@ func layoutNodesFromEdges(edges []WeightedEdge) []renderers.GraphNode {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges, start := DefaultGraph()
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Edges) > 0 {
-			edges = custom.Edges
-			if custom.Start != "" {
-				start = custom.Start
+		trimmed := bytes.TrimSpace(input)
+		if len(trimmed) > 0 {
+			if bytes.Equal(trimmed, []byte("null")) {
+				return nil, fmt.Errorf("input cannot be null")
 			}
-			if len(custom.Nodes) > 0 {
+
+			var rawMap map[string]json.RawMessage
+			if err := json.Unmarshal(trimmed, &rawMap); err != nil {
+				return nil, fmt.Errorf("malformed JSON input: %w", err)
+			}
+
+			if rawStart, ok := rawMap["start"]; ok && bytes.Equal(bytes.TrimSpace(rawStart), []byte("null")) {
+				return nil, fmt.Errorf("start node cannot be null")
+			}
+
+			var custom LessonInput
+			if err := json.Unmarshal(trimmed, &custom); err != nil {
+				return nil, fmt.Errorf("malformed JSON input: %w", err)
+			}
+
+			if len(custom.Edges) > 0 {
+				edges = custom.Edges
+				if len(custom.Nodes) > 0 {
+					nodes = custom.Nodes
+				} else {
+					nodes = layoutNodesFromEdges(edges)
+				}
+			} else if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
-			} else {
-				nodes = layoutNodesFromEdges(edges)
+			}
+
+			if custom.Start != nil {
+				start = *custom.Start
+			} else if len(custom.Edges) > 0 && len(nodes) > 0 {
+				found := false
+				for _, n := range nodes {
+					if n.ID == start {
+						found = true
+						break
+					}
+				}
+				if !found {
+					start = nodes[0].ID
+				}
 			}
 		}
 	}
+
+	startFound := false
+	for _, n := range nodes {
+		if n.ID == start {
+			startFound = true
+			break
+		}
+	}
+	if !startFound {
+		return nil, fmt.Errorf("unknown start node: %q", start)
+	}
+
 	return Trace(nodes, edges, start), nil
 }
 

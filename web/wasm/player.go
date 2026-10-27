@@ -5,7 +5,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html"
+	"math"
 	"math/rand"
+	"sort"
 	"strings"
 	"sync"
 	"syscall/js"
@@ -17,20 +20,25 @@ import (
 )
 
 type Player struct {
-	lesson      catalog.Lesson
-	steps       []trace.Step
-	stepIdx     int
-	playing     bool
-	speed       float64
-	doc         js.Value
-	mu          sync.Mutex
-	stopChannel chan struct{}
+	lesson        catalog.Lesson
+	steps         []trace.Step
+	stepIdx       int
+	playing       bool
+	speed         float64
+	doc           js.Value
+	mu            sync.Mutex
+	timerID       int
+	timerCallback js.Func
+	timerPending  bool
+	generation    uint64
+	renderedIdx   int
 }
 
 func NewPlayer(doc js.Value) *Player {
 	return &Player{
-		speed: 1.0,
-		doc:   doc,
+		speed:       1.0,
+		doc:         doc,
+		renderedIdx: -1,
 	}
 }
 
@@ -38,22 +46,24 @@ func (p *Player) LoadLesson(l catalog.Lesson) {
 	p.LoadLessonWithInput(l, nil)
 }
 
-func (p *Player) LoadLessonWithInput(l catalog.Lesson, input []byte) {
+func (p *Player) LoadLessonWithInput(l catalog.Lesson, input []byte) error {
 	p.Pause()
 
 	p.mu.Lock()
-	p.lesson = l
 	steps, err := l.Build(input)
 	if err != nil {
-		fmt.Printf("Error building lesson: %v\n", err)
-		steps, _ = l.Build(nil)
+		p.mu.Unlock()
+		return err
 	}
+	p.lesson = l
 	p.steps = steps
 	p.stepIdx = 0
+	p.renderedIdx = -1
 	p.mu.Unlock()
 
 	p.renderLessonShell()
 	p.RenderStep(0)
+	return nil
 }
 
 func (p *Player) Shuffle() {
@@ -309,21 +319,13 @@ func (p *Player) RenderStep(idx int) {
 	step := p.steps[idx]
 
 	// 1. Render Visualizer SVG
-	rendererType := p.lesson.Meta().Renderer
-	var svgContent string
-	switch rendererType {
-	case "graph":
-		svgContent = renderers.RenderGraphSVG(step, 800, 450)
-	case "tree":
-		svgContent = renderers.RenderTreeSVG(step, 800, 450)
-	case "table":
-		svgContent = renderers.RenderTableSVG(step, 800, 450)
-	case "hanoi":
-		svgContent = renderers.RenderHanoiSVG(step, 800, 450)
-	default:
-		svgContent = renderers.RenderArraySVG(step, 800, 450)
+	svgContent := renderers.RenderStepSVG(step, p.lesson.Meta().Renderer, 800, 450)
+	duration := 0.0
+	if p.renderedIdx >= 0 && (idx == p.renderedIdx+1 || idx == p.renderedIdx-1) {
+		duration = math.Min(300, 400/p.speed)
 	}
-	p.doc.Call("getElementById", "svg-stage").Set("innerHTML", svgContent)
+	js.Global().Get("gorithmScene").Call("render", p.doc.Call("getElementById", "svg-stage"), svgContent, duration)
+	p.renderedIdx = idx
 
 	// 2. Update line highlight & auto-scroll
 	allLines := p.doc.Call("querySelectorAll", ".code-line")
@@ -358,8 +360,13 @@ func (p *Player) RenderStep(idx int) {
 	varsEl := p.doc.Call("getElementById", "step-variables")
 	if !varsEl.IsNull() && !varsEl.IsUndefined() {
 		var varsHTML strings.Builder
-		for k, v := range step.Variables {
-			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%v</span></span>`, k, v))
+		keys := make([]string, 0, len(step.Variables))
+		for k := range step.Variables {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			varsHTML.WriteString(fmt.Sprintf(`<span class="var-pill"><span class="var-name">%s</span><span class="var-val">%s</span></span>`, html.EscapeString(k), html.EscapeString(fmt.Sprint(step.Variables[k]))))
 		}
 		varsEl.Set("innerHTML", varsHTML.String())
 	}
@@ -374,6 +381,7 @@ func (p *Player) RenderStep(idx int) {
 }
 
 func (p *Player) Next() {
+	p.Pause()
 	if p.stepIdx < len(p.steps)-1 {
 		p.RenderStep(p.stepIdx + 1)
 	} else {
@@ -382,70 +390,66 @@ func (p *Player) Next() {
 }
 
 func (p *Player) Prev() {
+	p.Pause()
 	if p.stepIdx > 0 {
 		p.RenderStep(p.stepIdx - 1)
 	}
 }
 
 func (p *Player) Seek(idx int) {
+	p.Pause()
+	p.renderedIdx = -1
 	p.RenderStep(idx)
 }
 
 func (p *Player) Reset() {
 	p.Pause()
+	p.renderedIdx = -1
 	p.RenderStep(0)
 }
 
 func (p *Player) Play() {
-	if p.playing {
+	if p.playing || len(p.steps) == 0 || p.stepIdx >= len(p.steps)-1 {
 		return
 	}
 	p.playing = true
 	p.updatePlayButtonUI(true)
-	p.stopChannel = make(chan struct{})
+	p.scheduleNext()
+}
 
-	go func() {
-		for {
-			select {
-			case <-p.stopChannel:
-				return
-			default:
-				p.mu.Lock()
-				currentIdx := p.stepIdx
-				maxIdx := len(p.steps) - 1
-				sp := p.speed
-				p.mu.Unlock()
-
-				if currentIdx >= maxIdx {
-					p.Pause()
-					return
-				}
-
-				interval := time.Duration(float64(500*time.Millisecond) / sp)
-				time.Sleep(interval)
-
-				var cb js.Func
-				cb = js.FuncOf(func(this js.Value, args []js.Value) any {
-					p.Next()
-					cb.Release()
-					return nil
-				})
-				js.Global().Call("requestAnimationFrame", cb)
-			}
+func (p *Player) scheduleNext() {
+	generation := p.generation
+	var cb js.Func
+	cb = js.FuncOf(func(this js.Value, args []js.Value) any {
+		defer cb.Release()
+		p.timerPending = false
+		if !p.playing || generation != p.generation {
+			return nil
 		}
-	}()
+		p.RenderStep(p.stepIdx + 1)
+		if p.stepIdx >= len(p.steps)-1 {
+			p.playing = false
+			p.updatePlayButtonUI(false)
+		} else {
+			p.scheduleNext()
+		}
+		return nil
+	})
+	p.timerCallback = cb
+	p.timerPending = true
+	p.timerID = js.Global().Call("setTimeout", cb, 500/p.speed).Int()
 }
 
 func (p *Player) Pause() {
-	if !p.playing {
-		return
-	}
+	p.generation++
 	p.playing = false
 	p.updatePlayButtonUI(false)
-	if p.stopChannel != nil {
-		close(p.stopChannel)
-		p.stopChannel = nil
+	if p.timerPending {
+		js.Global().Call("clearTimeout", p.timerID)
+		p.timerCallback.Release()
+		p.timerPending = false
 	}
+	js.Global().Get("gorithmScene").Call("cancel", p.doc.Call("getElementById", "svg-stage"))
 }
 
 func (p *Player) updatePlayButtonUI(playing bool) {
@@ -485,9 +489,15 @@ func (p *Player) TogglePlay() {
 }
 
 func (p *Player) SetSpeed(speed float64) {
-	p.mu.Lock()
+	if math.IsNaN(speed) || math.IsInf(speed, 0) || speed <= 0 {
+		return
+	}
+	wasPlaying := p.playing
+	p.Pause()
 	p.speed = speed
-	p.mu.Unlock()
+	if wasPlaying {
+		p.Play()
+	}
 }
 
 func escapeHTML(s string) string {

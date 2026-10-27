@@ -1179,6 +1179,11 @@ body {
 }
 
 @media (max-width: 768px) {
+  .studio-layout { grid-template-columns: minmax(0, 1fr); }
+  .visualizer-stage, .inspector-deck { min-width: 0; }
+  .stage-hud, .hud-right, .stage-legend, .dock-btn-group { flex-wrap: wrap; }
+  .stage-hud { gap: 12px; }
+  .dock-scrubber { min-width: 0; }
   .app-header {
     padding: 0 16px;
   }
@@ -1370,4 +1375,10 @@ body {
   .pulse-dot {
     animation: none !important;
   }
+}
+/* Snapshots own appearance; only keyed Web Animations own movement. */
+#svg-stage * { transition: none !important; }
+:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
 }

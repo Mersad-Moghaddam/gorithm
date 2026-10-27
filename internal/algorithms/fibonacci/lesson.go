@@ -1,7 +1,9 @@
 package fibonacci
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -44,20 +46,36 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	n := 8
-	if len(input) > 0 {
-		var payload struct {
-			N *int `json:"n"`
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) == 0 {
+		return Trace(8), nil
+	}
+	if bytes.Equal(trimmed, []byte("null")) {
+		return nil, fmt.Errorf("input cannot be null")
+	}
+
+	var n int
+	var payload struct {
+		N *int `json:"n"`
+	}
+	if err := json.Unmarshal(trimmed, &payload); err == nil {
+		if payload.N == nil {
+			return nil, fmt.Errorf("field 'n' is required and cannot be null")
 		}
-		if err := json.Unmarshal(input, &payload); err == nil && payload.N != nil {
-			n = *payload.N
+		n = *payload.N
+	} else {
+		var directInt int
+		if errInt := json.Unmarshal(trimmed, &directInt); errInt == nil {
+			n = directInt
 		} else {
-			var directInt int
-			if err := json.Unmarshal(input, &directInt); err == nil {
-				n = directInt
-			}
+			return nil, fmt.Errorf("malformed JSON input: %w", err)
 		}
 	}
+
+	if n < 0 || n > 30 {
+		return nil, fmt.Errorf("n must be between 0 and 30, got %d", n)
+	}
+
 	return Trace(n), nil
 }
 

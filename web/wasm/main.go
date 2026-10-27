@@ -423,8 +423,14 @@ func bindControls(doc js.Value, player *Player) {
 				}
 				return
 			}
+			if err := player.LoadLessonWithInput(player.lesson, []byte(val)); err != nil {
+				if !errBox.IsNull() && !errBox.IsUndefined() {
+					errBox.Set("innerText", err.Error())
+					errBox.Get("style").Set("display", "block")
+				}
+				return
+			}
 			closeModal()
-			player.LoadLessonWithInput(player.lesson, []byte(val))
 		} else {
 			closeModal()
 		}

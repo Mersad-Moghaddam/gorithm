@@ -64,6 +64,27 @@ func (d *DSU) Connected(i, j int) bool {
 	return d.Find(i) == d.Find(j)
 }
 
+// findPath returns sequence of nodes from i upward to representative root.
+func (d *DSU) findPath(i int) []int {
+	if i < 0 || i >= len(d.parent) {
+		return nil
+	}
+	path := []int{i}
+	curr := i
+	visited := make([]bool, len(d.parent))
+	visited[curr] = true
+	for d.parent[curr] != curr {
+		next := d.parent[curr]
+		if next < 0 || next >= len(d.parent) || visited[next] {
+			break
+		}
+		curr = next
+		visited[curr] = true
+		path = append(path, curr)
+	}
+	return path
+}
+
 // Count returns number of disjoint sets.
 func (d *DSU) Count() int {
 	return d.count

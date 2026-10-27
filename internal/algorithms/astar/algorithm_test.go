@@ -2,7 +2,9 @@ package astar
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -286,5 +288,298 @@ func TestAStarTraceInvalidParams(t *testing.T) {
 	emptySteps := Trace(nil, nil, "A", "B")
 	if len(emptySteps) != 0 {
 		t.Fatalf("expected empty trace for empty nodes, got %d steps", len(emptySteps))
+	}
+}
+
+func TestAStarWorklistAndCaptions(t *testing.T) {
+	nodes, edges, start, goal := defaultGraph()
+	steps := Trace(nodes, edges, start, goal)
+	if len(steps) == 0 {
+		t.Fatal("expected non-empty trace")
+	}
+
+	lesson := Lesson{}
+	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+		t.Fatalf("validation failed: %v", err)
+	}
+
+	var hasWorklistItems bool
+	var hasLowestFCaption bool
+	var hasTentativeGCaption bool
+
+	for _, step := range steps {
+		state, ok := step.State.(renderers.GraphState)
+		if !ok {
+			t.Fatalf("expected step state of type GraphState, got %T", step.State)
+		}
+
+		if state.WorklistLabel != "Open Set (Min-Heap: node, f = g + h)" {
+			t.Fatalf("unexpected WorklistLabel %q", state.WorklistLabel)
+		}
+		if state.Caption != step.Explanation {
+			t.Fatalf("state.Caption %q != step.Explanation %q", state.Caption, step.Explanation)
+		}
+
+		if strings.Contains(state.Caption, "Pop node") && strings.Contains(state.Caption, "lowest total estimated cost f(n)=g+h") {
+			hasLowestFCaption = true
+		}
+		if strings.Contains(state.Caption, "Update neighbor") && strings.Contains(state.Caption, "tentative g is lower") {
+			hasTentativeGCaption = true
+		}
+
+		if len(state.Worklist) > 0 {
+			hasWorklistItems = true
+			var prevF int
+			for i, item := range state.Worklist {
+				if item.ID == "" {
+					t.Fatalf("worklist item has empty ID at step %s", step.LineID)
+				}
+				// Format: "NODE: f=NUM (g=NUM, h=NUM)"
+				var id string
+				var f, g, h int
+				n, err := fmt.Sscanf(item.Label, "%s f=%d (g=%d, h=%d)", &id, &f, &g, &h)
+				if err != nil || n != 4 {
+					// Also handle without trailing colon in node token
+					id = strings.TrimSuffix(id, ":")
+				}
+				if f != g+h {
+					t.Fatalf("worklist item fScore mismatch: f=%d != g=%d + h=%d in %q", f, g, h, item.Label)
+				}
+				if i > 0 && f < prevF {
+					t.Fatalf("worklist items not sorted by fScore: %d < %d", f, prevF)
+				}
+				prevF = f
+			}
+		}
+	}
+
+	if !hasWorklistItems {
+		t.Fatal("expected trace steps to contain worklist items")
+	}
+	if !hasLowestFCaption {
+		t.Fatal("expected caption explaining Pop node with lowest f(n)=g+h")
+	}
+	if !hasTentativeGCaption {
+		t.Fatal("expected caption explaining Update neighbor when tentative g is lower")
+	}
+}
+
+func TestAStarSnapshotImmutability(t *testing.T) {
+	nodes, edges, start, goal := defaultGraph()
+	steps := Trace(nodes, edges, start, goal)
+	if len(steps) < 2 {
+		t.Fatalf("expected at least 2 steps, got %d", len(steps))
+	}
+
+	// Verify step snapshots have independent slice allocations
+	for i := 0; i < len(steps)-1; i++ {
+		s1 := steps[i].State.(renderers.GraphState)
+		s2 := steps[i+1].State.(renderers.GraphState)
+		if len(s1.Nodes) > 0 && len(s2.Nodes) > 0 && &s1.Nodes[0] == &s2.Nodes[0] {
+			t.Fatalf("step %d and %d share Nodes backing array", i, i+1)
+		}
+		if len(s1.Edges) > 0 && len(s2.Edges) > 0 && &s1.Edges[0] == &s2.Edges[0] {
+			t.Fatalf("step %d and %d share Edges backing array", i, i+1)
+		}
+	}
+
+	// Check start node state transitions across distinct steps
+	step0State := steps[0].State.(renderers.GraphState)
+	if step0State.Nodes[0].State != "unvisited" {
+		t.Fatalf("expected start node to be unvisited at step 0, got %q", step0State.Nodes[0].State)
+	}
+	var foundQueued, foundVisiting, foundPath bool
+	for _, s := range steps {
+		g := s.State.(renderers.GraphState)
+		for _, n := range g.Nodes {
+			if n.ID == start {
+				if n.State == "queued" {
+					foundQueued = true
+				}
+				if n.State == "visiting" {
+					foundVisiting = true
+				}
+				if n.State == "path" {
+					foundPath = true
+				}
+			}
+		}
+	}
+	if !foundQueued {
+		t.Fatal("expected start node to transition to 'queued'")
+	}
+	if !foundVisiting {
+		t.Fatal("expected start node to transition to 'visiting'")
+	}
+	if !foundPath {
+		t.Fatal("expected start node to transition to 'path'")
+	}
+
+	// Verify mutating step 0 does not alter subsequent steps
+	s0 := steps[0].State.(renderers.GraphState)
+	s1Before := steps[1].State.(renderers.GraphState).Nodes[0].State
+
+	s0.Nodes[0].State = "MUTATED"
+	s0.Edges[0].Active = true
+	s0.Worklist = append(s0.Worklist, renderers.WorklistItem{ID: "HACK", Label: "HACK"})
+
+	s1After := steps[1].State.(renderers.GraphState).Nodes[0].State
+	if s1After != s1Before {
+		t.Fatalf("step 1 state mutated by modifying step 0: before=%q, after=%q", s1Before, s1After)
+	}
+}
+
+func TestAStarPathReconstructionInTrace(t *testing.T) {
+	nodes, edges, start, goal := defaultGraph()
+	steps := Trace(nodes, edges, start, goal)
+	lastStep := steps[len(steps)-1]
+
+	if lastStep.Action != trace.ActionDone {
+		t.Fatalf("expected last step ActionDone, got %q", lastStep.Action)
+	}
+
+	rawPath, ok := lastStep.Variables["path"].([]string)
+	if !ok {
+		t.Fatalf("expected []string path in variables, got %T", lastStep.Variables["path"])
+	}
+	expectedPath := []string{"A", "B", "D", "F"}
+	if !reflect.DeepEqual(rawPath, expectedPath) {
+		t.Fatalf("expected path %v, got %v", expectedPath, rawPath)
+	}
+
+	state := lastStep.State.(renderers.GraphState)
+	pathNodeMap := make(map[string]bool)
+	for _, p := range rawPath {
+		pathNodeMap[p] = true
+	}
+
+	// Verify all nodes on path have state "path"
+	for _, n := range state.Nodes {
+		if pathNodeMap[n.ID] {
+			if n.State != "path" {
+				t.Fatalf("node %s on path has state %q, expected 'path'", n.ID, n.State)
+			}
+		}
+	}
+
+	// Verify path edges are active and non-path edges are inactive
+	pathEdgeMap := make(map[string]bool)
+	for i := 0; i < len(rawPath)-1; i++ {
+		u, v := rawPath[i], rawPath[i+1]
+		pathEdgeMap[u+"->"+v] = true
+		pathEdgeMap[v+"->"+u] = true
+	}
+
+	for _, e := range state.Edges {
+		isPathEdge := pathEdgeMap[e.From+"->"+e.To]
+		if isPathEdge && !e.Active {
+			t.Fatalf("path edge (%s -> %s) is not active", e.From, e.To)
+		}
+		if !isPathEdge && e.Active {
+			t.Fatalf("non-path edge (%s -> %s) is active", e.From, e.To)
+		}
+	}
+}
+
+func TestAStarStartEqualsGoalComplete(t *testing.T) {
+	nodes := []AStarNode{{ID: "A", Label: "A", X: 100, Y: 100}}
+	steps := Trace(nodes, nil, "A", "A")
+
+	lesson := Lesson{}
+	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+		t.Fatalf("validation failed: %v", err)
+	}
+
+	lastStep := steps[len(steps)-1]
+	if lastStep.Action != trace.ActionDone {
+		t.Fatalf("expected ActionDone, got %q", lastStep.Action)
+	}
+	if lastStep.Variables["cost"] != 0 {
+		t.Fatalf("expected cost 0, got %v", lastStep.Variables["cost"])
+	}
+	path := lastStep.Variables["path"].([]string)
+	if !reflect.DeepEqual(path, []string{"A"}) {
+		t.Fatalf("expected path [A], got %v", path)
+	}
+
+	state := lastStep.State.(renderers.GraphState)
+	if state.Nodes[0].State != "path" {
+		t.Fatalf("expected start node to be 'path', got %q", state.Nodes[0].State)
+	}
+}
+
+func TestAStarUnreachableGoalDirected(t *testing.T) {
+	nodes := []AStarNode{
+		{ID: "A", Label: "A", X: 100, Y: 100},
+		{ID: "B", Label: "B", X: 300, Y: 100},
+	}
+	edges := []AStarEdge{
+		{From: "A", To: "B", Weight: 10, Undirected: false},
+	}
+
+	// Search from B to A (impossible since edge is directed A -> B)
+	steps := Trace(nodes, edges, "B", "A")
+	if len(steps) == 0 {
+		t.Fatal("expected non-empty trace")
+	}
+
+	lesson := Lesson{}
+	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+		t.Fatalf("validation failed: %v", err)
+	}
+
+	lastStep := steps[len(steps)-1]
+	if lastStep.Action != trace.ActionDone {
+		t.Fatalf("expected ActionDone, got %q", lastStep.Action)
+	}
+	if lastStep.LineID != "L19" {
+		t.Fatalf("expected LineID L19, got %q", lastStep.LineID)
+	}
+	if lastStep.Variables["found"] != false {
+		t.Fatalf("expected found=false, got %v", lastStep.Variables["found"])
+	}
+	if lastStep.Variables["cost"] != -1 {
+		t.Fatalf("expected cost -1, got %v", lastStep.Variables["cost"])
+	}
+}
+
+func TestAStarBuildStrictValidation(t *testing.T) {
+	lesson := Lesson{}
+
+	// Nil and empty input should succeed with default graph
+	if _, err := lesson.Build(nil); err != nil {
+		t.Fatalf("Build(nil) failed: %v", err)
+	}
+	if _, err := lesson.Build([]byte("")); err != nil {
+		t.Fatalf("Build('') failed: %v", err)
+	}
+	if _, err := lesson.Build([]byte("   \n\t")); err != nil {
+		t.Fatalf("Build(whitespace) failed: %v", err)
+	}
+
+	// Rejections
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"null input", `null`},
+		{"malformed JSON", `{not valid json`},
+		{"empty JSON object", `{}`},
+		{"unknown start node", `{"start": "UNKNOWN", "goal": "F"}`},
+		{"unknown goal node", `{"start": "A", "goal": "UNKNOWN"}`},
+		{"disconnected node", `{"nodes": [{"id":"A","x":0,"y":0},{"id":"B","x":1,"y":1},{"id":"C","x":2,"y":2}],"edges":[{"from":"A","to":"B","weight":10,"undirected":true}],"start":"A","goal":"B"}`},
+		{"isolated nodes with empty edges", `{"nodes": [{"id":"A","x":0,"y":0},{"id":"B","x":1,"y":1}],"edges":[],"start":"A","goal":"B"}`},
+		{"unknown node in edge from", `{"nodes": [{"id":"A","x":0,"y":0},{"id":"B","x":1,"y":1}],"edges":[{"from":"Z","to":"B","weight":10}],"start":"A","goal":"B"}`},
+		{"unknown node in edge to", `{"nodes": [{"id":"A","x":0,"y":0},{"id":"B","x":1,"y":1}],"edges":[{"from":"A","to":"Z","weight":10}],"start":"A","goal":"B"}`},
+		{"negative edge weight", `{"nodes": [{"id":"A","x":0,"y":0},{"id":"B","x":1,"y":1}],"edges":[{"from":"A","to":"B","weight":-5}],"start":"A","goal":"B"}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := lesson.Build([]byte(tc.input))
+			if err == nil {
+				t.Fatalf("expected error for %s, got nil", tc.name)
+			}
+		})
 	}
 }

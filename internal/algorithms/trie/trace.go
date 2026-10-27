@@ -127,6 +127,9 @@ func (tr *tracer) treeState(states map[*Node]string) renderers.TreeState {
 	buildNodes = func(n *Node, parentID string, depth int) {
 		id := tr.idFor(n)
 		st := "normal"
+		if n.IsEnd {
+			st = "matched"
+		}
 		if states != nil {
 			if s, ok := states[n]; ok {
 				st = s
@@ -148,7 +151,9 @@ func (tr *tracer) treeState(states map[*Node]string) renderers.TreeState {
 	}
 	buildNodes(tr.root, "", 0)
 
-	return renderers.TreeState{Nodes: nodes}
+	cloned := make([]renderers.TreeNode, len(nodes))
+	copy(cloned, nodes)
+	return renderers.TreeState{Nodes: cloned}
 }
 
 func (tr *tracer) traceInsert(word string) {
@@ -183,7 +188,7 @@ func (tr *tracer) traceInsert(word string) {
 				tr.treeState(map[*Node]string{child: "inserted", curr: "active"}),
 				map[string]any{"word": word, "char": string(ch), "created": true})
 		} else {
-			tr.b.AddStep("L6", trace.ActionVisit, fmt.Sprintf("Edge '%c' exists. Reusing existing node.", ch),
+			tr.b.AddStep("L6", trace.ActionVisit, fmt.Sprintf("Edge '%c' exists (shared prefix). Reusing existing node.", ch),
 				tr.treeState(map[*Node]string{child: "matched", curr: "active"}),
 				map[string]any{"word": word, "char": string(ch), "created": false})
 		}

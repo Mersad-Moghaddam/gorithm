@@ -2,17 +2,22 @@ package renderers
 
 import (
 	"fmt"
+	"html"
+	"math"
 	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 )
 
 type ArrayState struct {
-	Values    []int `json:"values"`
-	Comparing []int `json:"comparing"`
-	Swapped   []int `json:"swapped"`
-	Sorted    []int `json:"sorted"`
-	Current   int   `json:"current"`
+	// IDs move with Values; omit for legacy slot identity. Never derive identity from value.
+	IDs       []string `json:"ids,omitempty"`
+	Caption   string   `json:"caption,omitempty"`
+	Values    []int    `json:"values"`
+	Comparing []int    `json:"comparing"`
+	Swapped   []int    `json:"swapped"`
+	Sorted    []int    `json:"sorted"`
+	Current   int      `json:"current"`
 }
 
 func RenderArraySVG(step trace.Step, width, height int) string {
@@ -30,14 +35,22 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 		return `<text x="50%" y="50%" fill="#64748b" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle">Empty array</text>`
 	}
 
-	maxVal := 1
+	maxVal := 0
+	minVal := 0
 	for _, v := range state.Values {
 		if v > maxVal {
 			maxVal = v
 		}
+		if v < minVal {
+			minVal = v
+		}
+	}
+	if maxVal == 0 && minVal == 0 {
+		maxVal = 1
 	}
 
 	var sb strings.Builder
+	sb.WriteString(renderCaption(state.Caption, width))
 
 	// Shared defs for gradients and glow
 	sb.WriteString(`<defs>
@@ -70,10 +83,10 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 		</filter>
 	</defs>`)
 
-	padX := 60
-	padY := 70
-	usableW := width - 2*padX
-	usableH := height - 2*padY
+	padX := math.Min(60, math.Max(0, float64(width)/10))
+	padY := math.Min(70, math.Max(0, float64(height)/4))
+	usableW := math.Max(0, float64(width)-2*padX)
+	usableH := math.Max(0, float64(height)-2*padY)
 
 	barWidth := float64(usableW) / float64(n)
 	spacing := barWidth * 0.18
@@ -84,6 +97,9 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 		spacing = 16
 	}
 	actualBarW := barWidth - spacing
+	if actualBarW < 0 {
+		actualBarW = 0
+	}
 
 	// Mark sets
 	isComp := make(map[int]bool)
@@ -99,20 +115,27 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 		isSort[idx] = true
 	}
 
-	// Floor baseline
-	baseY := float64(height - padY)
+	// Keep positive-only scenes anchored at floor; signed scenes place zero inside range.
+	baseY := float64(height) - padY
+	zeroY := baseY
+	if minVal < 0 {
+		zeroY = baseY - usableH*float64(-float64(minVal))/(float64(maxVal)-float64(minVal))
+	}
 	sb.WriteString(fmt.Sprintf(
-		`<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6" />`,
-		padX-10, baseY+2, width-padX+10, baseY+2,
+		`<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6" />`,
+		math.Max(0, padX-10), zeroY, math.Min(float64(width), float64(width)-padX+10), zeroY,
 	))
 
 	for i, v := range state.Values {
-		barH := (float64(v) / float64(maxVal)) * float64(usableH)
-		if barH < 18 {
-			barH = 18
+		barH := usableH * math.Abs(float64(v)) / (float64(maxVal) - float64(minVal))
+		if minVal == 0 {
+			barH = usableH * float64(v) / float64(maxVal)
 		}
 		x := float64(padX) + float64(i)*barWidth + spacing/2
-		y := baseY - barH
+		y := zeroY - barH
+		if v < 0 {
+			y = zeroY
+		}
 
 		fillRef := "url(#bar-default)"
 		strokeColor := "rgba(56, 189, 248, 0.4)"
@@ -134,23 +157,37 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 			strokeColor = "#e9d5ff"
 		}
 
-		// Bar container with smooth transitions
+		key := fmt.Sprintf("slot-%d", i)
+		if len(state.IDs) == n {
+			key = state.IDs[i]
+		}
+		fmt.Fprintf(&sb, `<g data-key="array-%s"><title>Value %d, index %d</title>`, html.EscapeString(key), v, i)
+		// Bar and value move together; index labels stay at their slots.
 		sb.WriteString(fmt.Sprintf(
 			`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="6" fill="%s" stroke="%s" stroke-width="1.5" %s style="transition: height 0.25s ease, y 0.25s ease, fill 0.2s ease, stroke 0.2s ease;" />`,
 			x, y, actualBarW, barH, fillRef, strokeColor, filterStr,
 		))
 
-		// Value label on top of bar
+		// Values follow bars; negative labels sit below their bar.
 		centerX := x + actualBarW/2
+		labelY := math.Max(12, y-10)
+		if v < 0 {
+			labelY = math.Min(float64(height)-20, y+barH+16)
+		}
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="#f8fafc" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="700" text-anchor="middle">%d</text>`,
-			centerX, y-10, v,
+			centerX, labelY, v,
 		))
 
 		// Array Index badge under bar
+		sb.WriteString(`</g>`)
+		indexY := math.Min(float64(height)-4, baseY+20)
+		if minVal < 0 {
+			indexY = math.Min(float64(height)-4, baseY+42)
+		}
 		sb.WriteString(fmt.Sprintf(
 			`<text x="%.1f" y="%.1f" fill="#64748b" font-size="11" font-family="ui-monospace, Menlo, monospace" font-weight="500" text-anchor="middle">[%d]</text>`,
-			centerX, baseY+20, i,
+			centerX, indexY, i,
 		))
 	}
 
@@ -159,6 +196,13 @@ func RenderArraySVG(step trace.Step, width, height int) string {
 
 func parseArrayState(m map[string]any) ArrayState {
 	state := ArrayState{Current: -1}
+	state.Caption, _ = m["caption"].(string)
+	if ids, ok := m["ids"].([]any); ok {
+		for _, id := range ids {
+			s, _ := id.(string)
+			state.IDs = append(state.IDs, s)
+		}
+	}
 	if rawVals, ok := m["values"].([]any); ok {
 		for _, v := range rawVals {
 			if num, ok := v.(float64); ok {

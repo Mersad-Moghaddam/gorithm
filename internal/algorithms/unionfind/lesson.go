@@ -1,7 +1,9 @@
 package unionfind
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -10,8 +12,8 @@ import (
 type Lesson struct{}
 
 type LessonInput struct {
-	N          int         `json:"n"`
-	Operations []Operation `json:"operations"`
+	N          *int         `json:"n"`
+	Operations *[]Operation `json:"operations"`
 }
 
 func (l Lesson) Meta() catalog.Meta {
@@ -70,19 +72,65 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		{Op: "connected", I: 0, J: 3},
 	}
 
-	if len(input) > 0 {
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 {
+		if string(trimmed) == "null" {
+			return nil, fmt.Errorf("input cannot be null")
+		}
+
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if custom.N > 0 {
-				n = custom.N
+		dec := json.NewDecoder(bytes.NewReader(trimmed))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&custom); err != nil {
+			return nil, fmt.Errorf("invalid json input: %w", err)
+		}
+
+		if custom.N != nil {
+			if *custom.N <= 0 {
+				return nil, fmt.Errorf("n must be greater than 0, got %d", *custom.N)
 			}
-			if len(custom.Operations) > 0 {
-				ops = custom.Operations
+			n = *custom.N
+		}
+
+		if custom.Operations != nil {
+			ops = *custom.Operations
+		} else if custom.N != nil && *custom.N < 5 {
+			ops = defaultOperationsForN(n)
+		}
+	}
+
+	for idx, op := range ops {
+		switch op.Op {
+		case "union", "connected":
+			if op.I < 0 || op.I >= n {
+				return nil, fmt.Errorf("op[%d] (%s): index i=%d out of bounds [0, %d)", idx, op.Op, op.I, n)
 			}
+			if op.J < 0 || op.J >= n {
+				return nil, fmt.Errorf("op[%d] (%s): index j=%d out of bounds [0, %d)", idx, op.Op, op.J, n)
+			}
+		case "find":
+			if op.I < 0 || op.I >= n {
+				return nil, fmt.Errorf("op[%d] (find): index i=%d out of bounds [0, %d)", idx, op.I, n)
+			}
+		default:
+			return nil, fmt.Errorf("op[%d]: unknown operation %q (must be 'union', 'find', or 'connected')", idx, op.Op)
 		}
 	}
 
 	return Trace(n, ops), nil
+}
+
+func defaultOperationsForN(n int) []Operation {
+	if n >= 2 {
+		return []Operation{
+			{Op: "union", I: 0, J: 1},
+			{Op: "find", I: 1},
+			{Op: "connected", I: 0, J: 1},
+		}
+	}
+	return []Operation{
+		{Op: "find", I: 0},
+	}
 }
 
 func init() {

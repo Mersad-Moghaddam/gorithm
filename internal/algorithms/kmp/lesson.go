@@ -1,7 +1,9 @@
 package kmp
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -60,17 +62,43 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	text := "ABABDABACDABABCABAB"
 	pattern := "ABABCABAB"
 
-	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && custom.Text != "" && custom.Pattern != "" {
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 {
+		if bytes.Equal(trimmed, []byte("null")) {
+			return nil, fmt.Errorf("input cannot be null")
+		}
+
+		if trimmed[0] == '{' {
+			var custom LessonInput
+			if err := json.Unmarshal(trimmed, &custom); err != nil {
+				return nil, fmt.Errorf("malformed JSON object: %w", err)
+			}
+			if custom.Text == "" {
+				return nil, fmt.Errorf("text cannot be empty")
+			}
+			if custom.Pattern == "" {
+				return nil, fmt.Errorf("pattern cannot be empty")
+			}
 			text = custom.Text
 			pattern = custom.Pattern
-		} else {
+		} else if trimmed[0] == '[' {
 			var sliceInput []string
-			if err := json.Unmarshal(input, &sliceInput); err == nil && len(sliceInput) >= 2 {
-				text = sliceInput[0]
-				pattern = sliceInput[1]
+			if err := json.Unmarshal(trimmed, &sliceInput); err != nil {
+				return nil, fmt.Errorf("malformed JSON array: %w", err)
 			}
+			if len(sliceInput) < 2 {
+				return nil, fmt.Errorf("input array must contain at least [text, pattern]")
+			}
+			if sliceInput[0] == "" {
+				return nil, fmt.Errorf("text cannot be empty")
+			}
+			if sliceInput[1] == "" {
+				return nil, fmt.Errorf("pattern cannot be empty")
+			}
+			text = sliceInput[0]
+			pattern = sliceInput[1]
+		} else {
+			return nil, fmt.Errorf("malformed JSON input: expected JSON object or array")
 		}
 	}
 

@@ -35,6 +35,10 @@ func (d *DSU) Find(x string) string {
 	return d.parent[x]
 }
 
+func (d *DSU) Rank(x string) int {
+	return d.rank[d.Find(x)]
+}
+
 func (d *DSU) Union(x, y string) bool {
 	rx := d.Find(x)
 	ry := d.Find(y)
@@ -59,7 +63,13 @@ func MST(nodes []string, edges []WeightedEdge) ([]WeightedEdge, int) {
 
 	sorted := slices.Clone(edges)
 	slices.SortFunc(sorted, func(a, b WeightedEdge) int {
-		return cmp.Compare(a.Weight, b.Weight)
+		if c := cmp.Compare(a.Weight, b.Weight); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.From, b.From); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.To, b.To)
 	})
 
 	dsu := NewDSU(nodes)

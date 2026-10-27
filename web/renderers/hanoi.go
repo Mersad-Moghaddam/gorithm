@@ -69,6 +69,7 @@ func RenderHanoiSVG(step trace.Step, width, height int) string {
 
 	for p := range 3 {
 		for level, diskSize := range state.Pegs[p] {
+			fmt.Fprintf(&sb, `<g data-key="disk-%d"><title>Disk %d on peg %c</title>`, diskSize, diskSize, 'A'+p)
 			diskW := 50.0 + float64(diskSize)*28.0
 			x := pegX[p] - diskW/2
 			y := baseY - float64(level+1)*diskHeight
@@ -82,6 +83,7 @@ func RenderHanoiSVG(step trace.Step, width, height int) string {
 				`<text x="%.1f" y="%.1f" fill="#ffffff" font-size="12" font-family="ui-monospace, Menlo, monospace" font-weight="800" text-anchor="middle">%d</text>`,
 				pegX[p], y+15, diskSize,
 			))
+			sb.WriteString(`</g>`)
 		}
 	}
 

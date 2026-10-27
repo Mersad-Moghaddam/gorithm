@@ -2,7 +2,9 @@ package kmeans
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -211,5 +213,259 @@ func TestLessonBuildCustomInput(t *testing.T) {
 	}
 	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
 		t.Fatalf("ValidateSourceLineIDs failed on custom input: %v", err)
+	}
+}
+
+func TestLessonBuildValidation(t *testing.T) {
+	lesson := Lesson{}
+
+	// Nil and empty input should succeed with defaults
+	if steps, err := lesson.Build(nil); err != nil || len(steps) == 0 {
+		t.Fatalf("expected nil input to succeed with defaults, got err: %v", err)
+	}
+	if steps, err := lesson.Build(json.RawMessage("")); err != nil || len(steps) == 0 {
+		t.Fatalf("expected empty input to succeed with defaults, got err: %v", err)
+	}
+	if steps, err := lesson.Build(json.RawMessage("   ")); err != nil || len(steps) == 0 {
+		t.Fatalf("expected whitespace input to succeed with defaults, got err: %v", err)
+	}
+
+	// Null input
+	if _, err := lesson.Build(json.RawMessage("null")); err == nil {
+		t.Fatal("expected error for null input, got nil")
+	}
+
+	// Malformed JSON
+	if _, err := lesson.Build(json.RawMessage("{not-json")); err == nil {
+		t.Fatal("expected error for malformed JSON, got nil")
+	}
+
+	// Empty points
+	if _, err := lesson.Build(json.RawMessage(`{"k": 2, "points": []}`)); err == nil {
+		t.Fatal("expected error for empty points, got nil")
+	}
+	if _, err := lesson.Build(json.RawMessage(`{"k": 2}`)); err == nil {
+		t.Fatal("expected error for missing points, got nil")
+	}
+	if _, err := lesson.Build(json.RawMessage(`{"k": 2, "points": null}`)); err == nil {
+		t.Fatal("expected error for null points, got nil")
+	}
+
+	// k <= 0
+	if _, err := lesson.Build(json.RawMessage(`{"k": 0, "points": [{"x": 10, "y": 10}]}`)); err == nil {
+		t.Fatal("expected error for k <= 0, got nil")
+	}
+	if _, err := lesson.Build(json.RawMessage(`{"k": -1, "points": [{"x": 10, "y": 10}]}`)); err == nil {
+		t.Fatal("expected error for negative k, got nil")
+	}
+
+	// k > len(points)
+	if _, err := lesson.Build(json.RawMessage(`{"k": 3, "points": [{"x": 10, "y": 10}]}`)); err == nil {
+		t.Fatal("expected error for k > len(points), got nil")
+	}
+
+	// Valid custom input
+	steps, err := lesson.Build(json.RawMessage(`{"k": 1, "points": [{"x": 10, "y": 10}]}`))
+	if err != nil {
+		t.Fatalf("expected valid single-point input to succeed, got err: %v", err)
+	}
+	if len(steps) == 0 {
+		t.Fatal("expected non-empty steps")
+	}
+}
+
+func TestAssignmentVisualizationAndCaptions(t *testing.T) {
+	pts := []Point{
+		{X: 10, Y: 10},
+		{X: 12, Y: 14},
+		{X: 200, Y: 200},
+		{X: 205, Y: 210},
+	}
+	k := 2
+	steps := Trace(pts, k, 10)
+	if len(steps) == 0 {
+		t.Fatal("expected steps to be generated")
+	}
+
+	// Verify initial step L1 has all points unassigned ("unvisited") and no centroids
+	firstState := steps[0].State.(renderers.GraphState)
+	if len(firstState.Nodes) != len(pts) {
+		t.Fatalf("expected initial step to have %d nodes, got %d", len(pts), len(firstState.Nodes))
+	}
+	for _, n := range firstState.Nodes {
+		if n.State != "unvisited" {
+			t.Errorf("expected initial point node to be unvisited, got %s", n.State)
+		}
+	}
+
+	// Verify L2 step introduces initial k centroids with IDs C0, C1
+	var l2State renderers.GraphState
+	var foundL2 bool
+	for _, s := range steps {
+		if s.LineID == "L2" {
+			l2State = s.State.(renderers.GraphState)
+			foundL2 = true
+			break
+		}
+	}
+	if !foundL2 {
+		t.Fatal("missing L2 step for initial centroid selection")
+	}
+	centroidCount := 0
+	for _, n := range l2State.Nodes {
+		if n.ID == "C0" || n.ID == "C1" {
+			centroidCount++
+		}
+	}
+	if centroidCount != k {
+		t.Fatalf("expected %d centroid nodes in L2 state, found %d", k, centroidCount)
+	}
+
+	// Verify distance comparisons and assignment captions
+	var foundDistCompare bool
+	var foundAssignmentCaption bool
+	expectedCaptionPattern := "closest to Centroid"
+
+	for _, s := range steps {
+		gs, ok := s.State.(renderers.GraphState)
+		if !ok {
+			continue
+		}
+
+		if s.LineID == "L7" && s.Action == trace.ActionCompare {
+			if strings.Contains(s.Explanation, "distance to Centroid") {
+				foundDistCompare = true
+				// Check active comparison edge exists
+				var hasActiveEdge bool
+				for _, e := range gs.Edges {
+					if e.Active && e.Weight >= 0 {
+						hasActiveEdge = true
+						break
+					}
+				}
+				if !hasActiveEdge {
+					t.Errorf("expected active comparison edge in step: %s", s.Explanation)
+				}
+			}
+			if strings.Contains(s.Explanation, expectedCaptionPattern) && strings.Contains(s.Explanation, "assign to Cluster") {
+				foundAssignmentCaption = true
+				if gs.Caption != s.Explanation {
+					t.Errorf("expected GraphState caption to match explanation, got %q vs %q", gs.Caption, s.Explanation)
+				}
+			}
+		}
+
+		if s.LineID == "L9" && s.Action == trace.ActionSet {
+			// Assigned point node should match cluster color
+			vars := s.Variables
+			ptIdx, okPt := vars["point"].(int)
+			clusterIdx, okCl := vars["cluster"].(int)
+			if okPt && okCl {
+				for _, n := range gs.Nodes {
+					if n.ID == fmt.Sprintf("P%d", ptIdx) {
+						expectedState := clusterColor(clusterIdx)
+						if n.State != expectedState {
+							t.Errorf("expected point P%d to have state %s after L9, got %s", ptIdx, expectedState, n.State)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !foundDistCompare {
+		t.Error("expected to find centroid distance comparison steps")
+	}
+	if !foundAssignmentCaption {
+		t.Error("expected to find assignment caption matching required pattern")
+	}
+}
+
+func TestCentroidUpdatesAndConvergence(t *testing.T) {
+	pts := defaultPoints()
+	steps := Trace(pts, 3, 20)
+
+	var foundCentroidUpdate bool
+	var foundConvergenceExplanation bool
+	var foundFinalStep bool
+
+	for _, s := range steps {
+		gs := s.State.(renderers.GraphState)
+		if s.LineID == "L13" && s.Action == trace.ActionSet {
+			foundCentroidUpdate = true
+			if !strings.Contains(s.Explanation, "Centroid C") {
+				t.Errorf("expected L13 explanation to mention Centroid, got %q", s.Explanation)
+			}
+			if strings.Contains(s.Explanation, "converged") && strings.Contains(s.Explanation, "threshold") {
+				foundConvergenceExplanation = true
+			}
+		}
+		if s.LineID == "L16" && s.Action == trace.ActionDone {
+			foundFinalStep = true
+			if !strings.Contains(s.Explanation, "centroids stabilized") && !strings.Contains(gs.Caption, "centroids stabilized") {
+				t.Errorf("expected L16 to explain stabilized centroids, got explanation %q, caption %q", s.Explanation, gs.Caption)
+			}
+		}
+	}
+
+	if !foundCentroidUpdate {
+		t.Error("expected L13 centroid update step")
+	}
+	if !foundConvergenceExplanation {
+		t.Error("expected L13 to explain convergence when movement < threshold")
+	}
+	if !foundFinalStep {
+		t.Error("expected L16 final step")
+	}
+}
+
+func TestSnapshotImmutability(t *testing.T) {
+	pts := []Point{
+		{X: 10, Y: 10},
+		{X: 15, Y: 15},
+		{X: 80, Y: 80},
+		{X: 85, Y: 85},
+	}
+	steps := Trace(pts, 2, 10)
+	if len(steps) < 5 {
+		t.Fatalf("expected at least 5 steps, got %d", len(steps))
+	}
+
+	firstStepState := steps[0].State.(renderers.GraphState)
+	origFirstNode0 := firstStepState.Nodes[0]
+
+	midIdx := len(steps) / 2
+	midStepState := steps[midIdx].State.(renderers.GraphState)
+	origMidNode0 := midStepState.Nodes[0]
+
+	lastIdx := len(steps) - 1
+	lastStepState := steps[lastIdx].State.(renderers.GraphState)
+
+	// Mutate lastStepState's nodes and edges
+	lastStepState.Nodes[0].X = 999999.0
+	lastStepState.Nodes[0].State = "corrupted_state"
+	if len(lastStepState.Edges) > 0 {
+		lastStepState.Edges[0].Weight = 888888
+		lastStepState.Edges[0].Active = !lastStepState.Edges[0].Active
+	}
+
+	// Verify firstStepState and midStepState were not affected
+	if firstStepState.Nodes[0].X == 999999.0 || firstStepState.Nodes[0].State == "corrupted_state" {
+		t.Fatal("mutating last step mutated first step nodes")
+	}
+	if firstStepState.Nodes[0] != origFirstNode0 {
+		t.Fatalf("first step node altered: got %+v, want %+v", firstStepState.Nodes[0], origFirstNode0)
+	}
+	if midStepState.Nodes[0].X == 999999.0 || midStepState.Nodes[0].State == "corrupted_state" {
+		t.Fatal("mutating last step mutated mid step nodes")
+	}
+	if midStepState.Nodes[0] != origMidNode0 {
+		t.Fatalf("mid step node altered: got %+v, want %+v", midStepState.Nodes[0], origMidNode0)
+	}
+
+	// Verify modifying input points array does not affect generated steps
+	pts[0].X = -12345.0
+	if steps[0].State.(renderers.GraphState).Nodes[0].X == -12345.0 {
+		t.Fatal("mutating input points array after Trace mutated step snapshot")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -226,5 +227,165 @@ func TestQLearningCustomInput(t *testing.T) {
 
 	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
 		t.Fatalf("custom input source line validation failed: %v", err)
+	}
+}
+
+func TestInputValidationStrict(t *testing.T) {
+	lesson := Lesson{}
+
+	// Valid nil or empty
+	if _, err := lesson.Build(nil); err != nil {
+		t.Fatalf("expected nil input to succeed, got %v", err)
+	}
+	if _, err := lesson.Build(json.RawMessage("")); err != nil {
+		t.Fatalf("expected empty input to succeed, got %v", err)
+	}
+
+	invalidCases := []struct {
+		name  string
+		input string
+	}{
+		{"null", "null"},
+		{"malformed json", "{episodes: 5"},
+		{"negative episodes", `{"episodes": -1}`},
+		{"negative alpha", `{"alpha": -0.1}`},
+		{"alpha greater than 1", `{"alpha": 1.05}`},
+		{"negative gamma", `{"gamma": -0.5}`},
+		{"gamma greater than 1", `{"gamma": 1.2}`},
+		{"negative epsilon", `{"epsilon": -0.01}`},
+		{"epsilon greater than 1", `{"epsilon": 2.0}`},
+	}
+
+	for _, tc := range invalidCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := lesson.Build(json.RawMessage(tc.input))
+			if err == nil {
+				t.Fatalf("expected error for input %q, got nil", tc.input)
+			}
+		})
+	}
+}
+
+func TestSnapshotImmutability(t *testing.T) {
+	lesson := Lesson{}
+	steps, err := lesson.Build(nil)
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	for i := 0; i < len(steps)-1; i++ {
+		t1, ok1 := steps[i].State.(renderers.TableState)
+		t2, ok2 := steps[i+1].State.(renderers.TableState)
+		if !ok1 || !ok2 {
+			t.Fatalf("step state is not TableState")
+		}
+
+		origVal := t2.Cells[0].Value
+		origState := t2.Cells[0].State
+
+		t1.Cells[0].Value = "MUTATED"
+		t1.Cells[0].State = "MUTATED_STATE"
+
+		if t2.Cells[0].Value == "MUTATED" || t2.Cells[0].State == "MUTATED_STATE" {
+			t.Fatalf("snapshot mutation leaked from step %d to step %d", i, i+1)
+		}
+
+		t2.Cells[0].Value = origVal
+		t2.Cells[0].State = origState
+	}
+}
+
+func TestBellmanUpdateVisualExplanation(t *testing.T) {
+	lesson := Lesson{}
+	steps, err := lesson.Build(nil)
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	captionRegex := regexp.MustCompile(`^Agent took action (Up|Right|Down|Left) from state \(\d+,\d+\) -> got reward \d+\. TD error = -?\d+\.\d{2}; updated Q\(\(\d+,\d+\), (Up|Right|Down|Left)\) = -?\d+\.\d{2}$`)
+
+	l10Count := 0
+	for i, step := range steps {
+		if step.LineID != "L10" {
+			continue
+		}
+		l10Count++
+
+		tbl, ok := step.State.(renderers.TableState)
+		if !ok {
+			t.Fatalf("step %d (L10) state is not TableState", i)
+		}
+
+		if !captionRegex.MatchString(tbl.Caption) {
+			t.Errorf("step %d (L10) caption %q does not match expected format", i, tbl.Caption)
+		}
+
+		hasActive := false
+		var activeRow, activeCol int
+		for _, cell := range tbl.Cells {
+			if cell.State == "active" {
+				hasActive = true
+				activeRow = cell.Row
+				activeCol = cell.Col
+				break
+			}
+		}
+		if !hasActive {
+			t.Errorf("step %d (L10) missing active cell for updated (s, a)", i)
+		}
+
+		if len(tbl.Dependencies) > 0 {
+			dep := tbl.Dependencies[0]
+			if dep.ToRow != activeRow || dep.ToCol != activeCol {
+				t.Errorf("step %d dependency target (%d,%d) does not match active cell (%d,%d)", i, dep.ToRow, dep.ToCol, activeRow, activeCol)
+			}
+			hasSource := false
+			for _, cell := range tbl.Cells {
+				if cell.Row == dep.FromRow && cell.Col == dep.FromCol && cell.State == "source" {
+					hasSource = true
+					break
+				}
+			}
+			if !hasSource {
+				t.Errorf("step %d dependency source (%d,%d) is not marked as source cell", i, dep.FromRow, dep.FromCol)
+			}
+		}
+
+		if _, ok := step.Variables["tdError"]; !ok {
+			t.Errorf("step %d missing 'tdError' variable", i)
+		}
+		if _, ok := step.Variables["tdTarget"]; !ok {
+			t.Errorf("step %d missing 'tdTarget' variable", i)
+		}
+	}
+
+	if l10Count == 0 {
+		t.Fatal("expected at least one L10 Bellman update step in trace")
+	}
+}
+
+func TestPolicyConvergence(t *testing.T) {
+	env := DefaultGridWorld()
+	agent := NewQAgent(env, 0.5, 0.9, 0.1)
+	rng := rand.New(rand.NewSource(42))
+
+	agent.Train(300, 25, rng)
+
+	policy := agent.ExtractPolicy()
+	if len(policy) != env.NumStates() {
+		t.Fatalf("expected policy for %d states, got %d", env.NumStates(), len(policy))
+	}
+
+	startPolicy, ok := policy["(0,0)"]
+	if !ok {
+		t.Fatal("missing policy for start state (0,0)")
+	}
+	if startPolicy != "Right" && startPolicy != "Down" {
+		t.Fatalf("expected start policy to be Right or Down, got %q", startPolicy)
+	}
+
+	f := agent.FormatPolicy()
+	if !strings.Contains(f, "(0,0):") {
+		t.Errorf("FormatPolicy output %q missing start state", f)
 	}
 }

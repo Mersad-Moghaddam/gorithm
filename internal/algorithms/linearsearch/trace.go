@@ -2,6 +2,7 @@ package linearsearch
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
@@ -10,57 +11,54 @@ import (
 // Trace generates execution steps for linear search on initial slice with given target.
 func Trace(initial []int, target int) []trace.Step {
 	b := trace.NewBuilder()
-	arr := make([]int, len(initial))
-	copy(arr, initial)
+	arr := slices.Clone(initial)
 	n := len(arr)
 
-	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Initialize Linear Search for target %d in array of %d elements.", target, n), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"target": target, "n": n})
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("linearsearch-%d", i)
+	}
+
+	snapshot := func(caption string, current int, comparing []int, sorted []int) renderers.ArrayState {
+		return renderers.ArrayState{
+			IDs:       slices.Clone(ids),
+			Caption:   caption,
+			Values:    slices.Clone(arr),
+			Comparing: slices.Clone(comparing),
+			Sorted:    slices.Clone(sorted),
+			Current:   current,
+		}
+	}
+
+	initCaption := fmt.Sprintf("Initialize Linear Search for target %d in array of %d elements.", target, n)
+	b.AddStep("L1", trace.ActionInit, initCaption, snapshot(initCaption, -1, nil, nil), map[string]any{"target": target, "n": n})
+
+	if n == 0 {
+		emptyCaption := fmt.Sprintf("Checked all elements: array is empty; target %d not found. Return -1.", target)
+		b.AddStep("L7", trace.ActionDone, emptyCaption, snapshot(emptyCaption, -1, nil, nil), map[string]any{"target": target, "result": -1, "found": false})
+		return b.Steps()
+	}
 
 	for i := 0; i < n; i++ {
-		b.AddStep("L2", trace.ActionHighlight, fmt.Sprintf("Scanning index %d (value %d).", i, arr[i]), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: i,
-		}, map[string]any{"i": i, "target": target, "val": arr[i]})
+		inspectCaption := fmt.Sprintf("Inspecting index %d (value %d) for target %d.", i, arr[i], target)
+		b.AddStep("L2", trace.ActionHighlight, inspectCaption, snapshot(inspectCaption, i, nil, nil), map[string]any{"i": i, "target": target, "val": arr[i]})
 
 		b.IncComparisons()
 		if arr[i] == target {
-			b.AddStep("L3", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) == %d: match found!", i, arr[i], target), renderers.ArrayState{
-				Values:    cloneSlice(arr),
-				Comparing: []int{i},
-				Current:   i,
-			}, map[string]any{"i": i, "target": target, "val": arr[i], "match": true})
+			matchCaption := fmt.Sprintf("arr[%d]=%d == target=%d: match found!", i, arr[i], target)
+			b.AddStep("L3", trace.ActionCompare, matchCaption, snapshot(matchCaption, i, []int{i}, nil), map[string]any{"i": i, "target": target, "val": arr[i], "match": true})
 
-			b.AddStep("L4", trace.ActionDone, fmt.Sprintf("Target %d found at index %d.", target, i), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: i,
-				Sorted:  []int{i},
-			}, map[string]any{"i": i, "target": target, "result": i})
+			foundCaption := fmt.Sprintf("Found target %d at index %d!", target, i)
+			b.AddStep("L4", trace.ActionDone, foundCaption, snapshot(foundCaption, i, nil, []int{i}), map[string]any{"i": i, "target": target, "result": i, "found": true})
 			return b.Steps()
 		}
 
-		b.AddStep("L3", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) == %d: not equal.", i, arr[i], target), renderers.ArrayState{
-			Values:    cloneSlice(arr),
-			Comparing: []int{i},
-			Current:   i,
-		}, map[string]any{"i": i, "target": target, "val": arr[i], "match": false})
+		mismatchCaption := fmt.Sprintf("arr[%d]=%d != target=%d; advance to next element", i, arr[i], target)
+		b.AddStep("L3", trace.ActionCompare, mismatchCaption, snapshot(mismatchCaption, i, []int{i}, nil), map[string]any{"i": i, "target": target, "val": arr[i], "match": false})
 	}
 
-	b.AddStep("L7", trace.ActionDone, fmt.Sprintf("Target %d not found in array. Return -1.", target), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"target": target, "result": -1})
+	notFoundCaption := fmt.Sprintf("Checked all %d elements; target %d not found. Return -1.", n, target)
+	b.AddStep("L7", trace.ActionDone, notFoundCaption, snapshot(notFoundCaption, -1, nil, nil), map[string]any{"target": target, "n": n, "result": -1, "found": false})
 
 	return b.Steps()
-}
-
-func cloneSlice(s []int) []int {
-	if s == nil {
-		return nil
-	}
-	c := make([]int, len(s))
-	copy(c, s)
-	return c
 }

@@ -1,7 +1,9 @@
 package kruskal
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -39,21 +41,53 @@ func (l Lesson) Source() []trace.SourceLine {
 		{ID: "L2", Number: 2, Code: "    sort.Slice(edges, func(i, j int) bool { return edges[i].Weight < edges[j].Weight })"},
 		{ID: "L3", Number: 3, Code: "    dsu := NewDSU(nodes); mst := []WeightedEdge{}"},
 		{ID: "L4", Number: 4, Code: "    for _, edge := range edges {"},
-		{ID: "L5", Number: 5, Code: "        if dsu.Find(edge.From) != dsu.Find(edge.To) {"},
-		{ID: "L6", Number: 6, Code: "            dsu.Union(edge.From, edge.To)"},
-		{ID: "L7", Number: 7, Code: "            mst = append(mst, edge)"},
-		{ID: "L8", Number: 8, Code: "        }"},
-		{ID: "L9", Number: 9, Code: "    }"},
-		{ID: "L10", Number: 10, Code: "    return mst"},
-		{ID: "L11", Number: 11, Code: "}"},
+		{ID: "L5", Number: 5, Code: "        if dsu.Find(edge.From) == dsu.Find(edge.To) {"},
+		{ID: "L6", Number: 6, Code: "            continue // Cycle detected: both endpoints in same component; reject edge"},
+		{ID: "L7", Number: 7, Code: "        }"},
+		{ID: "L8", Number: 8, Code: "        dsu.Union(edge.From, edge.To)"},
+		{ID: "L9", Number: 9, Code: "        mst = append(mst, edge)"},
+		{ID: "L10", Number: 10, Code: "    }"},
+		{ID: "L11", Number: 11, Code: "    return mst"},
+		{ID: "L12", Number: 12, Code: "}"},
 	}
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges := defaultGraph()
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Nodes) > 0 && len(custom.Edges) > 0 {
+		trimmed := bytes.TrimSpace(input)
+		if len(trimmed) > 0 {
+			if bytes.Equal(trimmed, []byte("null")) {
+				return nil, fmt.Errorf("input cannot be null")
+			}
+			var custom LessonInput
+			if err := json.Unmarshal(trimmed, &custom); err != nil {
+				return nil, fmt.Errorf("malformed JSON input: %w", err)
+			}
+			if len(custom.Nodes) == 0 {
+				return nil, fmt.Errorf("empty graph: nodes cannot be empty")
+			}
+			if len(custom.Edges) == 0 {
+				return nil, fmt.Errorf("empty graph: edges cannot be empty")
+			}
+
+			nodeIDs := make(map[string]bool, len(custom.Nodes))
+			for _, n := range custom.Nodes {
+				if n.ID == "" {
+					return nil, fmt.Errorf("node ID cannot be empty")
+				}
+				if nodeIDs[n.ID] {
+					return nil, fmt.Errorf("duplicate node ID: %q", n.ID)
+				}
+				nodeIDs[n.ID] = true
+			}
+
+			for _, e := range custom.Edges {
+				if !nodeIDs[e.From] || !nodeIDs[e.To] {
+					return nil, fmt.Errorf("edge (%s, %s) references non-existent node", e.From, e.To)
+				}
+			}
+
 			nodes = custom.Nodes
 			edges = custom.Edges
 			for i := range nodes {

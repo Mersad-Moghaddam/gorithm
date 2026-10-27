@@ -1,7 +1,9 @@
 package bfs
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -53,7 +55,7 @@ func (l Lesson) Source() []trace.SourceLine {
 type buildInput struct {
 	Nodes []renderers.GraphNode `json:"nodes"`
 	Edges []renderers.GraphEdge `json:"edges"`
-	Start string               `json:"start"`
+	Start *string               `json:"start"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
@@ -79,18 +81,53 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	start := "A"
 
 	if len(input) > 0 {
-		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil {
+		trimmed := bytes.TrimSpace(input)
+		if len(trimmed) > 0 {
+			if bytes.Equal(trimmed, []byte("null")) {
+				return nil, fmt.Errorf("input cannot be null")
+			}
+
+			var rawMap map[string]json.RawMessage
+			if err := json.Unmarshal(trimmed, &rawMap); err == nil {
+				if rawStart, ok := rawMap["start"]; ok && bytes.Equal(bytes.TrimSpace(rawStart), []byte("null")) {
+					return nil, fmt.Errorf("start node cannot be null")
+				}
+			}
+
+			var custom buildInput
+			if err := json.Unmarshal(trimmed, &custom); err != nil {
+				var startStr string
+				if strErr := json.Unmarshal(trimmed, &startStr); strErr == nil {
+					custom.Start = &startStr
+				} else {
+					return nil, fmt.Errorf("malformed JSON input: %w", err)
+				}
+			}
+
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
+				if custom.Start == nil {
+					start = nodes[0].ID
+				}
 			}
 			if len(custom.Edges) > 0 {
 				edges = custom.Edges
 			}
-			if custom.Start != "" {
-				start = custom.Start
+			if custom.Start != nil {
+				start = *custom.Start
 			}
 		}
+	}
+
+	startFound := false
+	for _, n := range nodes {
+		if n.ID == start {
+			startFound = true
+			break
+		}
+	}
+	if !startFound {
+		return nil, fmt.Errorf("unknown start node: %q", start)
 	}
 
 	return Trace(nodes, edges, start), nil

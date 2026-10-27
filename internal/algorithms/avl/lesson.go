@@ -1,7 +1,9 @@
 package avl
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -25,7 +27,7 @@ func (l Lesson) Meta() catalog.Meta {
 				"Single & Double Rotations",
 				"Height-Balanced Invariant",
 			},
-			HowItWorks: "Inserts keys recursively like a standard BST while maintaining node heights. When unwinding recursion, each ancestor checks its balance factor (left height minus right height). If balance factor exceeds [-1, 1], one of four rotation cases restores balance: Left-Left (Right rotation), Right-Right (Left rotation), Left-Right (Left rotation on child, Right rotation on root), or Right-Left (Right rotation on child, Left rotation on root).",
+			HowItWorks: "Inserts keys recursively like a standard BST while maintaining node heights. When unwinding recursion, each ancestor checks its balance factor (bf = left.Height - right.Height). If balance factor exceeds [-1, 1], one of four rotation cases restores balance while preserving BST order: Left-Left (Right rotation where pivot rises and root descends right), Right-Right (Left rotation where pivot rises and root descends left), Left-Right (Left rotation on child, then Right rotation on root), or Right-Left (Right rotation on child, then Left rotation on root). Rotations maintain in-order key ordering because the inner transferred subtree sits strictly between the pivot and root values.",
 		},
 		DefaultInput: "[10, 20, 30, 40, 50, 25]",
 	}
@@ -62,23 +64,50 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 type buildInput struct {
-	Values []int `json:"values"`
+	Values *[]int `json:"values"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	values := []int{10, 20, 30, 40, 50, 25}
-	if len(input) > 0 {
-		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Values) > 0 {
-			values = custom.Values
-		} else {
-			var customArr []int
-			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
-				values = customArr
-			}
-		}
+	if input == nil {
+		return Trace([]int{10, 20, 30, 40, 50, 25}), nil
 	}
-	return Trace(values), nil
+
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("avl: input cannot be empty")
+	}
+	if string(trimmed) == "null" {
+		return nil, fmt.Errorf("avl: input cannot be null")
+	}
+
+	if trimmed[0] == '[' {
+		var arr []int
+		if err := json.Unmarshal(trimmed, &arr); err != nil {
+			return nil, fmt.Errorf("avl: invalid integer array: %w", err)
+		}
+		if len(arr) == 0 {
+			return nil, fmt.Errorf("avl: values array cannot be empty")
+		}
+		return Trace(arr), nil
+	}
+
+	if trimmed[0] == '{' {
+		var custom buildInput
+		dec := json.NewDecoder(bytes.NewReader(trimmed))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&custom); err != nil {
+			return nil, fmt.Errorf("avl: invalid input object: %w", err)
+		}
+		if custom.Values == nil {
+			return nil, fmt.Errorf("avl: values field cannot be null or missing")
+		}
+		if len(*custom.Values) == 0 {
+			return nil, fmt.Errorf("avl: values array cannot be empty")
+		}
+		return Trace(*custom.Values), nil
+	}
+
+	return nil, fmt.Errorf("avl: input must be a JSON array or object with values field")
 }
 
 func init() {

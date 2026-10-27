@@ -1,8 +1,12 @@
 package astar
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math"
+	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -61,9 +65,23 @@ func (l Lesson) Source() []trace.SourceLine {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges, start, goal := defaultGraph()
-	if len(input) > 0 {
+
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 {
+		if bytes.Equal(trimmed, []byte("null")) {
+			return nil, errors.New("input cannot be null")
+		}
+
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Nodes) > 0 {
+		if err := json.Unmarshal(trimmed, &custom); err != nil {
+			return nil, fmt.Errorf("malformed JSON input: %w", err)
+		}
+
+		if len(custom.Nodes) == 0 && len(custom.Edges) == 0 && custom.Start == "" && custom.Goal == "" {
+			return nil, errors.New("input cannot be empty object")
+		}
+
+		if len(custom.Nodes) > 0 {
 			nodes = custom.Nodes
 			edges = custom.Edges
 			if custom.Start != "" {
@@ -87,8 +105,61 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 					nodes[i].Y = 225 + 130*math.Sin(angle)
 				}
 			}
+		} else {
+			if custom.Start != "" {
+				start = custom.Start
+			}
+			if custom.Goal != "" {
+				goal = custom.Goal
+			}
 		}
 	}
+
+	if len(nodes) == 0 {
+		return nil, errors.New("graph must contain at least one node")
+	}
+
+	nodeMap := make(map[string]AStarNode, len(nodes))
+	for _, n := range nodes {
+		if strings.TrimSpace(n.ID) == "" {
+			return nil, errors.New("node ID cannot be empty")
+		}
+		if _, exists := nodeMap[n.ID]; exists {
+			return nil, fmt.Errorf("duplicate node ID %q", n.ID)
+		}
+		nodeMap[n.ID] = n
+	}
+
+	if _, ok := nodeMap[start]; !ok {
+		return nil, fmt.Errorf("unknown start node %q", start)
+	}
+	if _, ok := nodeMap[goal]; !ok {
+		return nil, fmt.Errorf("unknown goal node %q", goal)
+	}
+
+	degree := make(map[string]int, len(nodes))
+	for _, e := range edges {
+		if _, ok := nodeMap[e.From]; !ok {
+			return nil, fmt.Errorf("edge references unknown node %q", e.From)
+		}
+		if _, ok := nodeMap[e.To]; !ok {
+			return nil, fmt.Errorf("edge references unknown node %q", e.To)
+		}
+		if e.Weight < 0 {
+			return nil, fmt.Errorf("edge weight cannot be negative: %d", e.Weight)
+		}
+		degree[e.From]++
+		degree[e.To]++
+	}
+
+	if len(nodes) > 1 {
+		for _, n := range nodes {
+			if degree[n.ID] == 0 {
+				return nil, fmt.Errorf("disconnected node %q: node has no incident edges", n.ID)
+			}
+		}
+	}
+
 	return Trace(nodes, edges, start, goal), nil
 }
 

@@ -14,6 +14,8 @@ func buildTableState(
 	filled [][]bool,
 	activeRow, activeCol int,
 	sources [][2]int,
+	dependencies []renderers.TableDependency,
+	caption string,
 	lcsCells map[[2]int]bool,
 ) renderers.TableState {
 	m := len(s1)
@@ -45,11 +47,13 @@ func buildTableState(
 			}
 
 			state := "normal"
+			if isSource[[2]int{r, c}] {
+				state = "source"
+			}
 			if lcsCells != nil && lcsCells[[2]int{r, c}] {
 				state = "computed"
-			} else if isSource[[2]int{r, c}] {
-				state = "source"
-			} else if r == activeRow && c == activeCol {
+			}
+			if r == activeRow && c == activeCol {
 				state = "active"
 			}
 
@@ -62,10 +66,18 @@ func buildTableState(
 		}
 	}
 
+	var deps []renderers.TableDependency
+	if len(dependencies) > 0 {
+		deps = make([]renderers.TableDependency, len(dependencies))
+		copy(deps, dependencies)
+	}
+
 	return renderers.TableState{
-		RowHeaders: rowHeaders,
-		ColHeaders: colHeaders,
-		Cells:      cells,
+		Caption:      caption,
+		Dependencies: deps,
+		RowHeaders:   rowHeaders,
+		ColHeaders:   colHeaders,
+		Cells:        cells,
 	}
 }
 
@@ -89,11 +101,12 @@ func Trace(s1, s2 string) []trace.Step {
 		filled[0][j] = true
 	}
 
+	initDesc := fmt.Sprintf("Initialize (%d+1)x(%d+1) DP table with 0s for base cases.", m, n)
 	b.AddStep(
 		"L3",
 		trace.ActionInit,
-		fmt.Sprintf("Initialize (%d+1)x(%d+1) DP table with 0s for base cases.", m, n),
-		buildTableState(s1, s2, dp, filled, -1, -1, nil, nil),
+		initDesc,
+		buildTableState(s1, s2, dp, filled, -1, -1, nil, nil, initDesc, nil),
 		map[string]any{"m": m, "n": n, "s1": s1, "s2": s2},
 	)
 
@@ -105,11 +118,14 @@ func Trace(s1, s2 string) []trace.Step {
 
 			if char1 == char2 {
 				sources := [][2]int{{i - 1, j - 1}}
+				deps := []renderers.TableDependency{{FromRow: i - 1, FromCol: j - 1, ToRow: i, ToCol: j}}
+				caption := fmt.Sprintf("Match '%c' == '%c': extend diagonal LCS length by 1", char1, char2)
+
 				b.AddStep(
 					"L7",
 					trace.ActionCompare,
-					fmt.Sprintf("s1[%d] ('%c') == s2[%d] ('%c'): match! Source is diagonal dp[%d][%d].", i-1, char1, j-1, char2, i-1, j-1),
-					buildTableState(s1, s2, dp, filled, i, j, sources, nil),
+					caption,
+					buildTableState(s1, s2, dp, filled, i, j, sources, deps, caption, nil),
 					map[string]any{"i": i, "j": j, "char1": string(char1), "char2": string(char2)},
 				)
 
@@ -120,33 +136,39 @@ func Trace(s1, s2 string) []trace.Step {
 					"L8",
 					trace.ActionSet,
 					fmt.Sprintf("Set dp[%d][%d] = dp[%d][%d] + 1 = %d.", i, j, i-1, j-1, dp[i][j]),
-					buildTableState(s1, s2, dp, filled, i, j, sources, nil),
+					buildTableState(s1, s2, dp, filled, i, j, sources, deps, caption, nil),
 					map[string]any{"i": i, "j": j, "val": dp[i][j]},
 				)
 			} else {
 				topVal := dp[i-1][j]
 				leftVal := dp[i][j-1]
+				maxVal := topVal
+				if leftVal > maxVal {
+					maxVal = leftVal
+				}
 				sources := [][2]int{{i - 1, j}, {i, j - 1}}
+				deps := []renderers.TableDependency{
+					{FromRow: i - 1, FromCol: j, ToRow: i, ToCol: j},
+					{FromRow: i, FromCol: j - 1, ToRow: i, ToCol: j},
+				}
+				caption := fmt.Sprintf("Mismatch '%c' != '%c': take max(top=%d, left=%d) = %d", char1, char2, topVal, leftVal, maxVal)
+
 				b.AddStep(
 					"L7",
 					trace.ActionCompare,
-					fmt.Sprintf("s1[%d] ('%c') != s2[%d] ('%c'): mismatch. Compare top dp[%d][%d]=%d and left dp[%d][%d]=%d.", i-1, char1, j-1, char2, i-1, j, topVal, i, j-1, leftVal),
-					buildTableState(s1, s2, dp, filled, i, j, sources, nil),
+					caption,
+					buildTableState(s1, s2, dp, filled, i, j, sources, deps, caption, nil),
 					map[string]any{"i": i, "j": j, "char1": string(char1), "char2": string(char2)},
 				)
 
-				if topVal >= leftVal {
-					dp[i][j] = topVal
-				} else {
-					dp[i][j] = leftVal
-				}
+				dp[i][j] = maxVal
 				filled[i][j] = true
 				b.IncOperations()
 				b.AddStep(
 					"L10",
 					trace.ActionSet,
 					fmt.Sprintf("Set dp[%d][%d] = max(top %d, left %d) = %d.", i, j, topVal, leftVal, dp[i][j]),
-					buildTableState(s1, s2, dp, filled, i, j, sources, nil),
+					buildTableState(s1, s2, dp, filled, i, j, sources, deps, caption, nil),
 					map[string]any{"i": i, "j": j, "val": dp[i][j]},
 				)
 			}
@@ -157,11 +179,12 @@ func Trace(s1, s2 string) []trace.Step {
 	var lcsChars []byte
 	bi, bj := m, n
 
+	backtrackInitCaption := fmt.Sprintf("Begin backtracking from dp[%d][%d] = %d to reconstruct LCS.", bi, bj, dp[bi][bj])
 	b.AddStep(
 		"L14",
 		trace.ActionInit,
-		fmt.Sprintf("Begin backtracking from dp[%d][%d] = %d to reconstruct LCS.", bi, bj, dp[bi][bj]),
-		buildTableState(s1, s2, dp, filled, bi, bj, nil, lcsCells),
+		backtrackInitCaption,
+		buildTableState(s1, s2, dp, filled, bi, bj, nil, nil, backtrackInitCaption, lcsCells),
 		map[string]any{"i": bi, "j": bj, "lcs": ""},
 	)
 
@@ -170,54 +193,63 @@ func Trace(s1, s2 string) []trace.Step {
 		c1 := s1[bi-1]
 		c2 := s2[bj-1]
 
+		compCaption := fmt.Sprintf("Backtrack at (%d, %d): compare s1[%d] ('%c') with s2[%d] ('%c').", bi, bj, bi-1, c1, bj-1, c2)
 		b.AddStep(
 			"L16",
 			trace.ActionCompare,
-			fmt.Sprintf("Backtrack at (%d, %d): compare s1[%d] ('%c') with s2[%d] ('%c').", bi, bj, bi-1, c1, bj-1, c2),
-			buildTableState(s1, s2, dp, filled, bi, bj, nil, lcsCells),
-			map[string]any{"i": bi, "j": bj, "char1": string(c1), "char2": string(c2)},
+			compCaption,
+			buildTableState(s1, s2, dp, filled, bi, bj, nil, nil, compCaption, lcsCells),
+			map[string]any{"i": bi, "j": bj, "char1": string(c1), "char2": string(c2), "lcs": string(lcsChars)},
 		)
 
 		if c1 == c2 {
 			lcsChars = append([]byte{c1}, lcsChars...)
 			lcsCells[[2]int{bi, bj}] = true
 			b.IncOperations()
+
+			arrow := []renderers.TableDependency{{FromRow: bi, FromCol: bj, ToRow: bi - 1, ToCol: bj - 1}}
+			matchCaption := fmt.Sprintf("Match '%c'! Part of LCS. Current sequence: %q. Move diagonally to (%d, %d).", c1, string(lcsChars), bi-1, bj-1)
 			b.AddStep(
 				"L17",
 				trace.ActionHighlight,
-				fmt.Sprintf("Match '%c'! Part of LCS. Current sequence: %q. Move diagonally to (%d, %d).", c1, string(lcsChars), bi-1, bj-1),
-				buildTableState(s1, s2, dp, filled, bi, bj, nil, lcsCells),
-				map[string]any{"i": bi, "j": bj, "lcs": string(lcsChars)},
+				matchCaption,
+				buildTableState(s1, s2, dp, filled, bi, bj, nil, arrow, matchCaption, lcsCells),
+				map[string]any{"i": bi, "j": bj, "char": string(c1), "lcs": string(lcsChars)},
 			)
 			bi--
 			bj--
 		} else if dp[bi-1][bj] >= dp[bi][bj-1] {
+			arrow := []renderers.TableDependency{{FromRow: bi, FromCol: bj, ToRow: bi - 1, ToCol: bj}}
+			upCaption := fmt.Sprintf("dp[%d][%d] (%d) >= dp[%d][%d] (%d). Move up to row %d.", bi-1, bj, dp[bi-1][bj], bi, bj-1, dp[bi][bj-1], bi-1)
 			b.AddStep(
 				"L19",
 				trace.ActionVisit,
-				fmt.Sprintf("dp[%d][%d] (%d) >= dp[%d][%d] (%d). Move up to row %d.", bi-1, bj, dp[bi-1][bj], bi, bj-1, dp[bi][bj-1], bi-1),
-				buildTableState(s1, s2, dp, filled, bi-1, bj, [][2]int{{bi, bj}}, lcsCells),
-				map[string]any{"i": bi, "j": bj},
+				upCaption,
+				buildTableState(s1, s2, dp, filled, bi-1, bj, [][2]int{{bi, bj}}, arrow, upCaption, lcsCells),
+				map[string]any{"i": bi, "j": bj, "lcs": string(lcsChars)},
 			)
 			bi--
 		} else {
+			arrow := []renderers.TableDependency{{FromRow: bi, FromCol: bj, ToRow: bi, ToCol: bj - 1}}
+			leftCaption := fmt.Sprintf("dp[%d][%d] (%d) < dp[%d][%d] (%d). Move left to col %d.", bi-1, bj, dp[bi-1][bj], bi, bj-1, dp[bi][bj-1], bj-1)
 			b.AddStep(
 				"L21",
 				trace.ActionVisit,
-				fmt.Sprintf("dp[%d][%d] (%d) < dp[%d][%d] (%d). Move left to col %d.", bi-1, bj, dp[bi-1][bj], bi, bj-1, dp[bi][bj-1], bj-1),
-				buildTableState(s1, s2, dp, filled, bi, bj-1, [][2]int{{bi, bj}}, lcsCells),
-				map[string]any{"i": bi, "j": bj},
+				leftCaption,
+				buildTableState(s1, s2, dp, filled, bi, bj-1, [][2]int{{bi, bj}}, arrow, leftCaption, lcsCells),
+				map[string]any{"i": bi, "j": bj, "lcs": string(lcsChars)},
 			)
 			bj--
 		}
 	}
 
 	finalLCS := string(lcsChars)
+	doneCaption := fmt.Sprintf("Completed! Longest Common Subsequence is %q (length %d).", finalLCS, len(finalLCS))
 	b.AddStep(
 		"L24",
 		trace.ActionDone,
-		fmt.Sprintf("Completed! Longest Common Subsequence is %q (length %d).", finalLCS, len(finalLCS)),
-		buildTableState(s1, s2, dp, filled, -1, -1, nil, lcsCells),
+		doneCaption,
+		buildTableState(s1, s2, dp, filled, -1, -1, nil, nil, doneCaption, lcsCells),
 		map[string]any{
 			"lcs":       finalLCS,
 			"lcsLength": len(finalLCS),

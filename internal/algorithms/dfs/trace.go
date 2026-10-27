@@ -44,14 +44,21 @@ func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start strin
 		adj[e.From] = append(adj[e.From], e.To)
 	}
 
-	snapshot := func() renderers.GraphState {
+	var worklist []renderers.WorklistItem
+
+	snapshot := func(caption string) renderers.GraphState {
 		snNodes := make([]renderers.GraphNode, len(clonedNodes))
 		copy(snNodes, clonedNodes)
 		snEdges := make([]renderers.GraphEdge, len(clonedEdges))
 		copy(snEdges, clonedEdges)
+		snWorklist := make([]renderers.WorklistItem, len(worklist))
+		copy(snWorklist, worklist)
 		return renderers.GraphState{
-			Nodes: snNodes,
-			Edges: snEdges,
+			Caption:       caption,
+			WorklistLabel: "Call Stack (LIFO)",
+			Worklist:      snWorklist,
+			Nodes:         snNodes,
+			Edges:         snEdges,
 		}
 	}
 
@@ -70,42 +77,50 @@ func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start strin
 		}
 	}
 
-	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Start DFS traversal from start node %s.", start), snapshot(), map[string]any{
+	clearActiveEdges := func() {
+		for i := range clonedEdges {
+			clonedEdges[i].Active = false
+		}
+	}
+
+	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Start DFS traversal from start node %s.", start), snapshot(fmt.Sprintf("Start DFS traversal from node %s", start)), map[string]any{
 		"start": start,
 	})
 
 	visited := make(map[string]bool, len(clonedNodes))
-	b.AddStep("L2", trace.ActionSet, "Initialize visited map to track visited vertices.", snapshot(), map[string]any{
+	b.AddStep("L2", trace.ActionSet, "Initialize visited map to track visited vertices.", snapshot("Initialize visited set"), map[string]any{
 		"visited": []string{},
 	})
 
 	order := make([]string, 0, len(clonedNodes))
-	b.AddStep("L3", trace.ActionSet, "Initialize order slice to record traversal sequence.", snapshot(), map[string]any{
+	b.AddStep("L3", trace.ActionSet, "Initialize order slice to record traversal sequence.", snapshot("Initialize traversal order"), map[string]any{
 		"order": []string{},
 	})
 
-	b.AddStep("L14", trace.ActionVisit, fmt.Sprintf("Call dfs(%s) to begin exploration.", start), snapshot(), map[string]any{
+	worklist = append(worklist, renderers.WorklistItem{ID: start, Label: fmt.Sprintf("dfs(%s)", start)})
+	clonedNodes[nodeIdx[start]].State = "visiting"
+	b.AddStep("L14", trace.ActionVisit, fmt.Sprintf("Call dfs(%s) to begin exploration.", start), snapshot(fmt.Sprintf("Call DFS(%s) to begin exploration", start)), map[string]any{
 		"target": start,
 	})
 
 	var dfs func(u string)
 	dfs = func(u string) {
+		clearActiveEdges()
 		visited[u] = true
-		clonedNodes[nodeIdx[u]].State = "visiting"
 		b.IncOperations()
-		b.AddStep("L6", trace.ActionVisit, fmt.Sprintf("Mark node %s as visiting.", u), snapshot(), map[string]any{
+		b.AddStep("L6", trace.ActionVisit, fmt.Sprintf("Mark node %s as visiting.", u), snapshot(fmt.Sprintf("Visiting %s (active on top of stack)", u)), map[string]any{
 			"u":     u,
 			"state": "visiting",
 		})
 
 		order = append(order, u)
-		b.AddStep("L7", trace.ActionPush, fmt.Sprintf("Append node %s to traversal order: %v.", u, order), snapshot(), map[string]any{
+		b.AddStep("L7", trace.ActionPush, fmt.Sprintf("Append node %s to traversal order: %v.", u, order), snapshot(fmt.Sprintf("Append %s to traversal order", u)), map[string]any{
 			"u":     u,
 			"order": cloneSlice(order),
 		})
 
 		neighbors := adj[u]
-		b.AddStep("L8", trace.ActionHighlight, fmt.Sprintf("Explore outgoing edges from node %s: %v.", u, neighbors), snapshot(), map[string]any{
+		b.AddStep("L8", trace.ActionHighlight, fmt.Sprintf("Explore outgoing edges from node %s: %v.", u, neighbors), snapshot(fmt.Sprintf("Explore outgoing edges from %s", u)), map[string]any{
 			"u":         u,
 			"neighbors": cloneSlice(neighbors),
 		})
@@ -122,33 +137,38 @@ func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start strin
 			if visited[v] {
 				vState := clonedNodes[vIdx].State
 				var reason string
+				var caption string
 				if vState == "visiting" {
 					reason = fmt.Sprintf("Neighbor %s is currently visiting (cycle detected). Skip edge (%s -> %s).", v, u, v)
+					caption = fmt.Sprintf("Cycle detected: neighbor %s is currently on stack", v)
 				} else {
 					reason = fmt.Sprintf("Neighbor %s is already visited. Skip edge (%s -> %s).", v, u, v)
+					caption = fmt.Sprintf("Neighbor %s is already visited; skip edge", v)
 				}
-				b.AddStep("L9", trace.ActionCompare, reason, snapshot(), map[string]any{
+				b.AddStep("L9", trace.ActionCompare, reason, snapshot(caption), map[string]any{
 					"u":       u,
 					"v":       v,
 					"visited": true,
 				})
 				setEdgeActive(u, v, false)
 			} else {
-				b.AddStep("L9", trace.ActionCompare, fmt.Sprintf("Neighbor %s is unvisited. Traverse edge (%s -> %s).", v, u, v), snapshot(), map[string]any{
+				b.AddStep("L9", trace.ActionCompare, fmt.Sprintf("Neighbor %s is unvisited. Traverse edge (%s -> %s).", v, u, v), snapshot(fmt.Sprintf("Neighbor %s is unvisited: descend", v)), map[string]any{
 					"u":       u,
 					"v":       v,
 					"visited": false,
 				})
 
-				b.AddStep("L10", trace.ActionPush, fmt.Sprintf("Recursively call dfs(%s).", v), snapshot(), map[string]any{
+				worklist = append(worklist, renderers.WorklistItem{ID: v, Label: fmt.Sprintf("dfs(%s)", v)})
+				clonedNodes[vIdx].State = "visiting"
+				b.AddStep("L10", trace.ActionPush, fmt.Sprintf("Dive deeper: call dfs(%s); push to stack.", v), snapshot("Dive deeper: call DFS(neighbor); push to stack"), map[string]any{
 					"from": u,
 					"to":   v,
 				})
 
 				dfs(v)
 
-				setEdgeActive(u, v, false)
-				b.AddStep("L11", trace.ActionPop, fmt.Sprintf("Backtrack to node %s from node %s.", u, v), snapshot(), map[string]any{
+				clearActiveEdges()
+				b.AddStep("L11", trace.ActionPop, fmt.Sprintf("Backtrack to node %s from node %s.", u, v), snapshot(fmt.Sprintf("Backtrack to %s from %s", u, v)), map[string]any{
 					"u":        u,
 					"backFrom": v,
 				})
@@ -156,8 +176,11 @@ func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start strin
 		}
 
 		clonedNodes[nodeIdx[u]].State = "visited"
+		if len(worklist) > 0 {
+			worklist = worklist[:len(worklist)-1]
+		}
 		b.IncOperations()
-		b.AddStep("L12", trace.ActionSet, fmt.Sprintf("All neighbors of %s explored. Mark %s as visited.", u, u), snapshot(), map[string]any{
+		b.AddStep("L12", trace.ActionPop, fmt.Sprintf("All neighbors of %s explored. Mark %s as visited and pop from stack.", u, u), snapshot("No unvisited neighbors: backtrack; pop from stack"), map[string]any{
 			"u":     u,
 			"state": "visited",
 		})
@@ -165,7 +188,7 @@ func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start strin
 
 	dfs(start)
 
-	b.AddStep("L15", trace.ActionDone, fmt.Sprintf("DFS traversal complete. Visited order: %v.", order), snapshot(), map[string]any{
+	b.AddStep("L15", trace.ActionDone, fmt.Sprintf("DFS traversal complete. Visited order: %v.", order), snapshot("DFS traversal complete"), map[string]any{
 		"order":  cloneSlice(order),
 		"status": "complete",
 	})

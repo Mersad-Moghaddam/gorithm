@@ -11,3 +11,6 @@ dist/
 # Testing
 *.out
 *.test
+
+# Superpowers scratch
+.superpowers/

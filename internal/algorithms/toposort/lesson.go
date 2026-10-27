@@ -1,7 +1,9 @@
 package toposort
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -56,8 +58,8 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 type buildInput struct {
-	Nodes []renderers.GraphNode `json:"nodes"`
-	Edges []renderers.GraphEdge `json:"edges"`
+	Nodes *[]renderers.GraphNode `json:"nodes"`
+	Edges *[]renderers.GraphEdge `json:"edges"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
@@ -72,24 +74,54 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 
 	edges := []renderers.GraphEdge{
-		{From: "clean", To: "lint"},
-		{From: "clean", To: "compile"},
-		{From: "compile", To: "test"},
-		{From: "compile", To: "docs"},
-		{From: "lint", To: "package"},
-		{From: "test", To: "package"},
-		{From: "docs", To: "package"},
-		{From: "package", To: "deploy"},
+		{From: "clean", To: "lint", Directed: true},
+		{From: "clean", To: "compile", Directed: true},
+		{From: "compile", To: "test", Directed: true},
+		{From: "compile", To: "docs", Directed: true},
+		{From: "lint", To: "package", Directed: true},
+		{From: "test", To: "package", Directed: true},
+		{From: "docs", To: "package", Directed: true},
+		{From: "package", To: "deploy", Directed: true},
 	}
 
 	if len(input) > 0 {
+		trimmed := bytes.TrimSpace(input)
+		if len(trimmed) == 0 {
+			return Trace(nodes, edges), nil
+		}
+		if bytes.Equal(trimmed, []byte("null")) {
+			return nil, fmt.Errorf("toposort input cannot be null")
+		}
+		if trimmed[0] != '{' {
+			return nil, fmt.Errorf("toposort input must be a JSON object")
+		}
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if len(custom.Nodes) > 0 {
-				nodes = custom.Nodes
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, err
+		}
+		if custom.Nodes != nil {
+			nodes = *custom.Nodes
+			if custom.Edges == nil {
+				edges = nil
 			}
-			if len(custom.Edges) > 0 {
-				edges = custom.Edges
+		}
+		if custom.Edges != nil {
+			edges = *custom.Edges
+		}
+		nodeIDs := make(map[string]bool, len(nodes))
+		for _, n := range nodes {
+			if n.ID == "" {
+				return nil, fmt.Errorf("node ID cannot be empty")
+			}
+			nodeIDs[n.ID] = true
+		}
+		for i := range edges {
+			edges[i].Directed = true
+			if edges[i].From == "" || edges[i].To == "" {
+				return nil, fmt.Errorf("edge endpoints cannot be empty")
+			}
+			if !nodeIDs[edges[i].From] || !nodeIDs[edges[i].To] {
+				return nil, fmt.Errorf("edge references unknown node (%s -> %s)", edges[i].From, edges[i].To)
 			}
 		}
 	}

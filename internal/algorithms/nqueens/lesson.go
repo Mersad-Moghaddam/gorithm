@@ -1,7 +1,9 @@
 package nqueens
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -10,7 +12,7 @@ import (
 type Lesson struct{}
 
 type lessonInput struct {
-	N int `json:"n"`
+	N *int `json:"n"`
 }
 
 func (l Lesson) Meta() catalog.Meta {
@@ -68,19 +70,36 @@ func (l Lesson) Source() []trace.SourceLine {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	n := 4
-	if len(input) > 0 {
-		var in lessonInput
-		if err := json.Unmarshal(input, &in); err == nil && in.N > 0 {
-			n = in.N
-		} else {
-			var num int
-			if err := json.Unmarshal(input, &num); err == nil && num > 0 {
-				n = num
-			}
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) > 0 {
+		if bytes.Equal(trimmed, []byte("null")) {
+			return nil, fmt.Errorf("input cannot be null")
 		}
-	}
-	if n > 8 {
-		n = 8
+
+		if trimmed[0] == '{' {
+			var in lessonInput
+			if err := json.Unmarshal(trimmed, &in); err != nil {
+				return nil, fmt.Errorf("malformed JSON object: %w", err)
+			}
+			if in.N == nil {
+				return nil, fmt.Errorf("field 'n' is required and cannot be null")
+			}
+			if *in.N < 1 || *in.N > 8 {
+				return nil, fmt.Errorf("n must be between 1 and 8, got %d", *in.N)
+			}
+			n = *in.N
+		} else if (trimmed[0] >= '0' && trimmed[0] <= '9') || trimmed[0] == '-' {
+			var num int
+			if err := json.Unmarshal(trimmed, &num); err != nil {
+				return nil, fmt.Errorf("malformed JSON integer: %w", err)
+			}
+			if num < 1 || num > 8 {
+				return nil, fmt.Errorf("n must be between 1 and 8, got %d", num)
+			}
+			n = num
+		} else {
+			return nil, fmt.Errorf("malformed JSON input: expected JSON object or integer")
+		}
 	}
 	return Trace(n), nil
 }

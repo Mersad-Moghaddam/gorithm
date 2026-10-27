@@ -113,6 +113,28 @@ func SelectTournament(pop []Individual, k int, rng *rand.Rand) Individual {
 	return best
 }
 
+// SelectTournamentIndex selects the best individual from a random subset of size k and returns its index.
+func SelectTournamentIndex(pop []Individual, k int, rng *rand.Rand) int {
+	if len(pop) == 0 {
+		return -1
+	}
+	if k <= 1 || len(pop) == 1 {
+		return rng.Intn(len(pop))
+	}
+	if k > len(pop) {
+		k = len(pop)
+	}
+
+	bestIdx := rng.Intn(len(pop))
+	for i := 1; i < k; i++ {
+		contenderIdx := rng.Intn(len(pop))
+		if pop[contenderIdx].Fitness > pop[bestIdx].Fitness {
+			bestIdx = contenderIdx
+		}
+	}
+	return bestIdx
+}
+
 // SelectRoulette selects an individual with probability proportional to fitness.
 func SelectRoulette(pop []Individual, rng *rand.Rand) Individual {
 	if len(pop) == 0 {
@@ -170,6 +192,29 @@ func Mutate(ind Individual, rate float64, charset string, rng *rand.Rand) Indivi
 		}
 	}
 	return Individual{Genes: string(b)}
+}
+
+// MutateTracked applies point mutations with the specified probability and returns mutated gene indices.
+func MutateTracked(ind Individual, rate float64, charset string, rng *rand.Rand) (Individual, []int) {
+	if len(charset) == 0 || rate <= 0 {
+		return ind, nil
+	}
+	b := []byte(ind.Genes)
+	var mutated []int
+	for i := 0; i < len(b); i++ {
+		if rate >= 1.0 || rng.Float64() < rate {
+			old := b[i]
+			choice := charset[rng.Intn(len(charset))]
+			if len(charset) > 1 && choice == old {
+				choice = charset[(rng.Intn(len(charset)-1)+1+strings.IndexByte(charset, old))%len(charset)]
+			}
+			b[i] = choice
+			if choice != old {
+				mutated = append(mutated, i)
+			}
+		}
+	}
+	return Individual{Genes: string(b)}, mutated
 }
 
 // Evolve runs the genetic algorithm with the provided configuration.

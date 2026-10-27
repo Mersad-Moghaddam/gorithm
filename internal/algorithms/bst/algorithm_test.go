@@ -1,8 +1,10 @@
 package bst
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -256,5 +258,243 @@ func TestBSTCustomInput(t *testing.T) {
 
 	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
 		t.Fatalf("line validation failed on custom input: %v", err)
+	}
+}
+
+func TestBSTSnapshotImmutability(t *testing.T) {
+	lesson := Lesson{}
+	steps, err := lesson.Build(nil)
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	if len(steps) < 2 {
+		t.Fatalf("expected at least 2 steps, got %d", len(steps))
+	}
+
+	// Capture initial node states
+	type nodeSnapshot struct {
+		id    string
+		val   int
+		state string
+	}
+	stepSnapshots := make([][]nodeSnapshot, len(steps))
+	for i, step := range steps {
+		ts, ok := step.State.(renderers.TreeState)
+		if !ok {
+			t.Fatalf("step %d state is %T, want renderers.TreeState", i, step.State)
+		}
+		stepSnapshots[i] = make([]nodeSnapshot, len(ts.Nodes))
+		for j, n := range ts.Nodes {
+			stepSnapshots[i][j] = nodeSnapshot{id: n.ID, val: n.Val, state: n.State}
+		}
+	}
+
+	// Mutate all node objects in all steps
+	for _, step := range steps {
+		ts := step.State.(renderers.TreeState)
+		for j := range ts.Nodes {
+			ts.Nodes[j].Val = -9999
+			ts.Nodes[j].State = "corrupted"
+		}
+	}
+
+	// Verify that fresh steps from Build are unaffected
+	freshSteps, err := lesson.Build(nil)
+	if err != nil {
+		t.Fatalf("fresh Build failed: %v", err)
+	}
+	for i, step := range freshSteps {
+		ts := step.State.(renderers.TreeState)
+		if len(ts.Nodes) != len(stepSnapshots[i]) {
+			t.Fatalf("step %d node count mismatch", i)
+		}
+		for j, n := range ts.Nodes {
+			if n.Val != stepSnapshots[i][j].val || n.State != stepSnapshots[i][j].state {
+				t.Fatalf("step %d node %d was corrupted: got val=%d state=%s, want val=%d state=%s",
+					i, j, n.Val, n.State, stepSnapshots[i][j].val, stepSnapshots[i][j].state)
+			}
+		}
+	}
+
+	// Verify each step in freshSteps has unique Nodes slice backing array
+	for i := 0; i < len(freshSteps); i++ {
+		tsI := freshSteps[i].State.(renderers.TreeState)
+		if len(tsI.Nodes) == 0 {
+			continue
+		}
+		for j := i + 1; j < len(freshSteps); j++ {
+			tsJ := freshSteps[j].State.(renderers.TreeState)
+			if len(tsJ.Nodes) == 0 {
+				continue
+			}
+			if &tsI.Nodes[0] == &tsJ.Nodes[0] {
+				t.Errorf("steps %d and %d share same Nodes slice memory", i, j)
+			}
+		}
+	}
+}
+
+func TestBSTInputValidation(t *testing.T) {
+	lesson := Lesson{}
+
+	// Test null
+	if _, err := lesson.Build(json.RawMessage("null")); err == nil {
+		t.Errorf("expected error for null input, got nil")
+	}
+	if _, err := lesson.Build(json.RawMessage("  null  \n")); err == nil {
+		t.Errorf("expected error for whitespace null input, got nil")
+	}
+
+	// Test malformed JSON
+	malformed := []string{
+		"{bad json",
+		`{"initial": [10, 20], "ops": [}`,
+		`[1, 2, 3]`,
+		`"not an object"`,
+		`123`,
+	}
+	for _, m := range malformed {
+		if _, err := lesson.Build(json.RawMessage(m)); err == nil {
+			t.Errorf("expected error for malformed input %q, got nil", m)
+		}
+	}
+
+	// Test empty ops
+	emptyOps := []string{
+		`{}`,
+		`{"ops": []}`,
+		`{"initial": [10, 20]}`,
+		`{"initial": [10, 20], "ops": []}`,
+	}
+	for _, e := range emptyOps {
+		if _, err := lesson.Build(json.RawMessage(e)); err == nil {
+			t.Errorf("expected error for empty ops input %q, got nil", e)
+		}
+	}
+
+	// Test invalid op type
+	if _, err := lesson.Build(json.RawMessage(`{"ops": [{"type": "rotate", "value": 10}]}`)); err == nil {
+		t.Errorf("expected error for invalid op type, got nil")
+	}
+
+	// Test valid empty initial with ops
+	validEmptyInitial := json.RawMessage(`{"initial": [], "ops": [{"type": "insert", "value": 42}]}`)
+	steps, err := lesson.Build(validEmptyInitial)
+	if err != nil {
+		t.Fatalf("unexpected error for valid empty initial: %v", err)
+	}
+	if len(steps) == 0 {
+		t.Fatalf("expected steps for valid empty initial, got 0")
+	}
+	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+		t.Fatalf("line validation failed: %v", err)
+	}
+
+	// Test omitted initial uses default initial
+	validOmittedInitial := json.RawMessage(`{"ops": [{"type": "search", "value": 50}]}`)
+	steps2, err := lesson.Build(validOmittedInitial)
+	if err != nil {
+		t.Fatalf("unexpected error for omitted initial: %v", err)
+	}
+	if len(steps2) == 0 {
+		t.Fatalf("expected steps for omitted initial, got 0")
+	}
+	if err := catalog.ValidateSourceLineIDs(lesson, steps2); err != nil {
+		t.Fatalf("line validation failed: %v", err)
+	}
+}
+
+func TestBSTTeachingRequirements(t *testing.T) {
+	lesson := Lesson{}
+
+	// Scenario covering:
+	// 1. Insert path descent & newly placed leaf
+	// 2. Search found & search not found (reaching nil)
+	// 3. Deletion Case 1 (leaf)
+	// 4. Deletion Case 2 (one child: right)
+	// 5. Deletion Case 2 (one child: left)
+	// 6. Deletion Case 3 (two children: in-order successor)
+	input := json.RawMessage(`{
+		"initial": [50, 30, 70, 20, 40, 60, 80],
+		"ops": [
+			{"type": "insert", "value": 25},
+			{"type": "search", "value": 25},
+			{"type": "search", "value": 999},
+			{"type": "delete", "value": 40},
+			{"type": "delete", "value": 20},
+			{"type": "insert", "value": 15},
+			{"type": "delete", "value": 25},
+			{"type": "delete", "value": 50}
+		]
+	}`)
+
+	steps, err := lesson.Build(input)
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+		t.Fatalf("line ID validation failed: %v", err)
+	}
+
+	var hasInsertLeaf bool
+	var hasSearchFound bool
+	var hasSearchNotFound bool
+	var hasDeleteLeaf bool
+	var hasDeleteOneChildRight bool
+	var hasDeleteOneChildLeft bool
+	var hasDeleteTwoChild bool
+	var hasInvariantExplanation bool
+
+	for _, step := range steps {
+		expl := step.Explanation
+		if strings.Contains(expl, "BST property dictates") {
+			hasInvariantExplanation = true
+		}
+		if strings.Contains(expl, "newly placed leaf") {
+			hasInsertLeaf = true
+		}
+		if strings.Contains(expl, "matched!") && strings.Contains(expl, "25") {
+			hasSearchFound = true
+		}
+		if strings.Contains(expl, "Reached nil") && strings.Contains(expl, "999") {
+			hasSearchNotFound = true
+		}
+		if strings.Contains(expl, "Case 1 (Leaf)") && strings.Contains(expl, "40") {
+			hasDeleteLeaf = true
+		}
+		if strings.Contains(expl, "Case 2 (One Child)") && strings.Contains(expl, "no left child") {
+			hasDeleteOneChildRight = true
+		}
+		if strings.Contains(expl, "Case 2 (One Child)") && strings.Contains(expl, "no right child") {
+			hasDeleteOneChildLeft = true
+		}
+		if strings.Contains(expl, "Case 3 (Two Children)") && strings.Contains(expl, "in-order successor") {
+			hasDeleteTwoChild = true
+		}
+	}
+
+	if !hasInvariantExplanation {
+		t.Errorf("missing BST invariant explanation along traversal path")
+	}
+	if !hasInsertLeaf {
+		t.Errorf("missing newly placed leaf explanation during insert")
+	}
+	if !hasSearchFound {
+		t.Errorf("missing search found step for 25")
+	}
+	if !hasSearchNotFound {
+		t.Errorf("missing search not found / reached nil step for 999")
+	}
+	if !hasDeleteLeaf {
+		t.Errorf("missing Case 1 (Leaf) deletion explanation for 40")
+	}
+	if !hasDeleteOneChildRight {
+		t.Errorf("missing Case 2 (One Child: right) deletion explanation")
+	}
+	if !hasDeleteOneChildLeft {
+		t.Errorf("missing Case 2 (One Child: left) deletion explanation")
+	}
+	if !hasDeleteTwoChild {
+		t.Errorf("missing Case 3 (Two Children / in-order successor) deletion explanation")
 	}
 }

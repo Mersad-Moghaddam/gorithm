@@ -1,7 +1,10 @@
 package kmeans
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -79,14 +82,26 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	k := 3
 
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if len(custom.Points) > 0 {
-				pts = custom.Points
+		trimmed := bytes.TrimSpace(input)
+		if len(trimmed) > 0 {
+			if string(trimmed) == "null" {
+				return nil, errors.New("input cannot be null")
 			}
-			if custom.K > 0 {
-				k = custom.K
+			var custom LessonInput
+			if err := json.Unmarshal(trimmed, &custom); err != nil {
+				return nil, fmt.Errorf("malformed JSON input: %w", err)
 			}
+			if len(custom.Points) == 0 {
+				return nil, errors.New("points cannot be empty")
+			}
+			if custom.K <= 0 {
+				return nil, errors.New("k must be greater than 0")
+			}
+			if custom.K > len(custom.Points) {
+				return nil, errors.New("k cannot be greater than the number of points")
+			}
+			pts = custom.Points
+			k = custom.K
 		}
 	}
 

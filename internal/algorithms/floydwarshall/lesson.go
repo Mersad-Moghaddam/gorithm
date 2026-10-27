@@ -1,7 +1,10 @@
 package floydwarshall
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -65,8 +68,8 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
-	nodes := []string{"A", "B", "C", "D"}
-	edges := []WeightedEdge{
+	defaultNodes := []string{"A", "B", "C", "D"}
+	defaultEdges := []WeightedEdge{
 		{From: "A", To: "B", Weight: 3, Directed: true},
 		{From: "A", To: "C", Weight: 8, Directed: true},
 		{From: "B", To: "C", Weight: 2, Directed: true},
@@ -75,30 +78,50 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		{From: "D", To: "A", Weight: 2, Directed: true},
 	}
 
-	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if len(custom.Nodes) > 0 {
-				nodes = custom.Nodes
-			} else if len(custom.GraphNodes) > 0 {
-				nodes = make([]string, len(custom.GraphNodes))
-				for i, gn := range custom.GraphNodes {
-					nodes[i] = gn.ID
-				}
-			}
+	trimmed := bytes.TrimSpace(input)
+	if len(trimmed) == 0 {
+		return Trace(defaultNodes, defaultEdges), nil
+	}
+	if string(trimmed) == "null" {
+		return nil, fmt.Errorf("input cannot be null")
+	}
 
-			if len(custom.Edges) > 0 {
-				edges = custom.Edges
-			} else if len(custom.GraphEdges) > 0 {
-				edges = make([]WeightedEdge, len(custom.GraphEdges))
-				for i, ge := range custom.GraphEdges {
-					edges[i] = WeightedEdge{
-						From:     ge.From,
-						To:       ge.To,
-						Weight:   ge.Weight,
-						Directed: true,
-					}
-				}
+	var custom LessonInput
+	if err := json.Unmarshal(trimmed, &custom); err != nil {
+		return nil, fmt.Errorf("malformed JSON: %w", err)
+	}
+
+	var nodes []string
+	if len(custom.Nodes) > 0 {
+		nodes = custom.Nodes
+	} else if len(custom.GraphNodes) > 0 {
+		nodes = make([]string, len(custom.GraphNodes))
+		for i, gn := range custom.GraphNodes {
+			nodes[i] = gn.ID
+		}
+	}
+
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("nodes cannot be empty")
+	}
+
+	for _, n := range nodes {
+		if strings.TrimSpace(n) == "" {
+			return nil, fmt.Errorf("node identifier cannot be empty")
+		}
+	}
+
+	var edges []WeightedEdge
+	if len(custom.Edges) > 0 {
+		edges = custom.Edges
+	} else if len(custom.GraphEdges) > 0 {
+		edges = make([]WeightedEdge, len(custom.GraphEdges))
+		for i, ge := range custom.GraphEdges {
+			edges[i] = WeightedEdge{
+				From:     ge.From,
+				To:       ge.To,
+				Weight:   ge.Weight,
+				Directed: true,
 			}
 		}
 	}

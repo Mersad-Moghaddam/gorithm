@@ -2,8 +2,11 @@ package countingsort
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -93,6 +96,26 @@ func TestSortStability(t *testing.T) {
 	// input index 4 must map to lower output index than input index 5.
 	if out4, out5 := targetIndices[4], targetIndices[5]; out4 >= out5 {
 		t.Fatalf("stability violated for value 3: inIdx 4 -> %d, inIdx 5 -> %d (expected out4 < out5)", out4, out5)
+	}
+
+	// Verify final step state IDs reflect duplicate stability
+	first := steps[0].State.(renderers.ArrayState)
+	last := steps[len(steps)-1].State.(renderers.ArrayState)
+	for _, val := range []int{2, 3} {
+		var before, after []string
+		for i, v := range first.Values {
+			if v == val {
+				before = append(before, first.IDs[i])
+			}
+		}
+		for i, v := range last.Values {
+			if v == val {
+				after = append(after, last.IDs[i])
+			}
+		}
+		if !slices.Equal(before, after) {
+			t.Fatalf("stability violated for val %d: before=%v after=%v", val, before, after)
+		}
 	}
 }
 
@@ -216,5 +239,323 @@ func TestCountingSortTraceCustomInput(t *testing.T) {
 	}
 	if !reflect.DeepEqual(state.Values, []int{1, 2, 3, 4, 5}) {
 		t.Fatalf("expected [1 2 3 4 5], got %v", state.Values)
+	}
+}
+
+func TestCountingSortStrictInputValidation(t *testing.T) {
+	lesson := Lesson{}
+
+	// Valid inputs
+	validInputs := []struct {
+		name  string
+		input json.RawMessage
+		want  int
+	}{
+		{"nil input", nil, 7},
+		{"empty raw message", json.RawMessage(""), 7},
+		{"whitespace message", json.RawMessage("   "), 7},
+		{"empty array", json.RawMessage("[]"), 0},
+		{"single element", json.RawMessage("[42]"), 1},
+		{"valid numbers", json.RawMessage("[3, 1, 2]"), 3},
+	}
+	for _, tc := range validInputs {
+		t.Run(tc.name, func(t *testing.T) {
+			steps, err := lesson.Build(tc.input)
+			if err != nil {
+				t.Fatalf("expected success for %s, got error: %v", tc.name, err)
+			}
+			last := steps[len(steps)-1].State.(renderers.ArrayState)
+			if len(last.Values) != tc.want {
+				t.Fatalf("expected %d elements, got %d", tc.want, len(last.Values))
+			}
+		})
+	}
+
+	// Invalid inputs to reject strictly
+	invalidInputs := []struct {
+		name  string
+		input json.RawMessage
+	}{
+		{"null literal", json.RawMessage("null")},
+		{"number scalar", json.RawMessage("123")},
+		{"string scalar", json.RawMessage(`"hello"`)},
+		{"boolean scalar", json.RawMessage("true")},
+		{"object", json.RawMessage(`{"arr": [1, 2]}`)},
+		{"malformed json unclosed", json.RawMessage("[1, 2,")},
+		{"malformed json trailing comma", json.RawMessage("[1, 2,]")},
+		{"non-integer float", json.RawMessage("[1, 2.5, 3]")},
+		{"non-number element", json.RawMessage(`[1, "two", 3]`)},
+		{"negative number", json.RawMessage("[4, -2, 3]")},
+		{"trailing data", json.RawMessage("[1, 2] 3")},
+	}
+	for _, tc := range invalidInputs {
+		t.Run(tc.name, func(t *testing.T) {
+			steps, err := lesson.Build(tc.input)
+			if err == nil {
+				t.Fatalf("expected rejection for %s (%s), but got %d steps", tc.name, string(tc.input), len(steps))
+			}
+		})
+	}
+}
+
+func TestCountingSortUniqueIDsAcrossSteps(t *testing.T) {
+	testCases := [][]int{
+		{},
+		{42},
+		{4, 2, 2, 8, 3, 3, 1},
+		{1, 2, 3, 4},
+		{5, 4, 3, 2, 1},
+		{0, 0, 0},
+		{7, 7, 7, 7},
+	}
+
+	for _, input := range testCases {
+		t.Run(fmt.Sprintf("input_%v", input), func(t *testing.T) {
+			steps := Trace(input)
+			if len(steps) == 0 {
+				t.Fatal("trace produced 0 steps")
+			}
+			for stepIdx, step := range steps {
+				state, ok := step.State.(renderers.ArrayState)
+				if !ok {
+					t.Fatalf("step %d state is not ArrayState: %T", stepIdx, step.State)
+				}
+				if len(state.IDs) != len(state.Values) {
+					t.Fatalf("step %d (%s): len(IDs)=%d != len(Values)=%d", stepIdx, step.LineID, len(state.IDs), len(state.Values))
+				}
+				seen := make(map[string]bool)
+				for i, id := range state.IDs {
+					if id == "" {
+						t.Fatalf("step %d (%s) index %d has empty ID", stepIdx, step.LineID, i)
+					}
+					if seen[id] {
+						t.Fatalf("step %d (%s) duplicate ID %q at index %d", stepIdx, step.LineID, id, i)
+					}
+					seen[id] = true
+				}
+			}
+		})
+	}
+}
+
+func TestCountingSortDuplicateStability(t *testing.T) {
+	testCases := [][]int{
+		{4, 2, 2, 8, 3, 3, 1},
+		{2, 1, 2, 1},
+		{5, 5, 5, 5},
+		{0, 3, 0, 2, 3, 0},
+	}
+
+	for _, input := range testCases {
+		t.Run(fmt.Sprintf("input_%v", input), func(t *testing.T) {
+			steps := Trace(input)
+			first := steps[0].State.(renderers.ArrayState)
+			last := steps[len(steps)-1].State.(renderers.ArrayState)
+
+			expected := Sort(input)
+			if !slices.Equal(last.Values, expected) {
+				t.Fatalf("final values mismatch: got %v, want %v", last.Values, expected)
+			}
+
+			// For each unique value, extract IDs in initial and final state
+			valSet := make(map[int]bool)
+			for _, v := range input {
+				valSet[v] = true
+			}
+
+			for val := range valSet {
+				var before, after []string
+				for i, v := range first.Values {
+					if v == val {
+						before = append(before, first.IDs[i])
+					}
+				}
+				for i, v := range last.Values {
+					if v == val {
+						after = append(after, last.IDs[i])
+					}
+				}
+				if !slices.Equal(before, after) {
+					t.Fatalf("stability violated for value %d: before=%v after=%v", val, before, after)
+				}
+			}
+		})
+	}
+}
+
+func TestCountingSortSnapshotImmutability(t *testing.T) {
+	steps := Trace([]int{4, 2, 2, 8, 3, 3, 1})
+	if len(steps) < 5 {
+		t.Fatalf("too few steps: %d", len(steps))
+	}
+
+	first := steps[0].State.(renderers.ArrayState)
+	firstValuesCopy := slices.Clone(first.Values)
+	firstIDsCopy := slices.Clone(first.IDs)
+
+	midIdx := len(steps) / 2
+	mid := steps[midIdx].State.(renderers.ArrayState)
+	midValuesCopy := slices.Clone(mid.Values)
+	midIDsCopy := slices.Clone(mid.IDs)
+
+	last := steps[len(steps)-1].State.(renderers.ArrayState)
+
+	// Mutate last snapshot
+	last.Values[0] = 9999
+	last.IDs[0] = "corrupted"
+	if len(last.Sorted) > 0 {
+		last.Sorted[0] = 9999
+	}
+
+	// Verify first snapshot was not altered
+	if !slices.Equal(first.Values, firstValuesCopy) {
+		t.Fatalf("first snapshot Values mutated: got %v, want %v", first.Values, firstValuesCopy)
+	}
+	if !slices.Equal(first.IDs, firstIDsCopy) {
+		t.Fatalf("first snapshot IDs mutated: got %v, want %v", first.IDs, firstIDsCopy)
+	}
+
+	// Verify mid snapshot was not altered
+	if !slices.Equal(mid.Values, midValuesCopy) {
+		t.Fatalf("mid snapshot Values mutated: got %v, want %v", mid.Values, midValuesCopy)
+	}
+	if !slices.Equal(mid.IDs, midIDsCopy) {
+		t.Fatalf("mid snapshot IDs mutated: got %v, want %v", mid.IDs, midIDsCopy)
+	}
+}
+
+func TestCountingSortEdgeCases(t *testing.T) {
+	lesson := Lesson{}
+
+	// Edge case 1: Empty slice
+	t.Run("empty", func(t *testing.T) {
+		steps := Trace([]int{})
+		if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+			t.Fatalf("validation failed: %v", err)
+		}
+		if len(steps) != 3 {
+			t.Fatalf("expected 3 steps for empty array, got %d", len(steps))
+		}
+		last := steps[len(steps)-1].State.(renderers.ArrayState)
+		if len(last.Values) != 0 || len(last.IDs) != 0 {
+			t.Fatalf("expected empty values and ids, got %+v", last)
+		}
+	})
+
+	// Edge case 2: Single element
+	t.Run("single_element", func(t *testing.T) {
+		steps := Trace([]int{42})
+		if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+			t.Fatalf("validation failed: %v", err)
+		}
+		if len(steps) != 4 {
+			t.Fatalf("expected 4 steps for single element, got %d", len(steps))
+		}
+		last := steps[len(steps)-1].State.(renderers.ArrayState)
+		if !reflect.DeepEqual(last.Values, []int{42}) {
+			t.Fatalf("expected [42], got %v", last.Values)
+		}
+		if !reflect.DeepEqual(last.IDs, []string{"countingsort-0"}) {
+			t.Fatalf("expected ['countingsort-0'], got %v", last.IDs)
+		}
+		if !reflect.DeepEqual(last.Sorted, []int{0}) {
+			t.Fatalf("expected Sorted [0], got %v", last.Sorted)
+		}
+	})
+
+	// Edge case 3: Already sorted
+	t.Run("already_sorted", func(t *testing.T) {
+		input := []int{1, 2, 3, 4, 5}
+		steps := Trace(input)
+		if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+			t.Fatalf("validation failed: %v", err)
+		}
+		last := steps[len(steps)-1].State.(renderers.ArrayState)
+		if !reflect.DeepEqual(last.Values, input) {
+			t.Fatalf("expected %v, got %v", input, last.Values)
+		}
+		expectedIDs := []string{
+			"countingsort-0", "countingsort-1", "countingsort-2", "countingsort-3", "countingsort-4",
+		}
+		if !reflect.DeepEqual(last.IDs, expectedIDs) {
+			t.Fatalf("expected IDs %v, got %v", expectedIDs, last.IDs)
+		}
+	})
+
+	// Edge case 4: Duplicates
+	t.Run("duplicates", func(t *testing.T) {
+		input := []int{2, 2, 2}
+		steps := Trace(input)
+		if err := catalog.ValidateSourceLineIDs(lesson, steps); err != nil {
+			t.Fatalf("validation failed: %v", err)
+		}
+		last := steps[len(steps)-1].State.(renderers.ArrayState)
+		if !reflect.DeepEqual(last.Values, input) {
+			t.Fatalf("expected %v, got %v", input, last.Values)
+		}
+		expectedIDs := []string{"countingsort-0", "countingsort-1", "countingsort-2"}
+		if !reflect.DeepEqual(last.IDs, expectedIDs) {
+			t.Fatalf("expected IDs %v, got %v", expectedIDs, last.IDs)
+		}
+	})
+}
+
+func TestCountingSortTeachingPhasesAndCaptions(t *testing.T) {
+	steps := Trace([]int{4, 2, 2, 8, 3, 3, 1})
+
+	var foundP1, foundP2, foundP3, foundP4 bool
+	for _, step := range steps {
+		state := step.State.(renderers.ArrayState)
+		if state.Caption == "" {
+			t.Fatalf("step %s has empty Caption", step.LineID)
+		}
+		if step.Explanation == "" {
+			t.Fatalf("step %s has empty Explanation", step.LineID)
+		}
+
+		if strings.Contains(state.Caption, "Phase 1") {
+			foundP1 = true
+		}
+		if strings.Contains(state.Caption, "Phase 2") {
+			foundP2 = true
+		}
+		if strings.Contains(state.Caption, "Phase 3") {
+			foundP3 = true
+		}
+		if strings.Contains(state.Caption, "Phase 4") {
+			foundP4 = true
+		}
+	}
+
+	if !foundP1 || !foundP2 || !foundP3 || !foundP4 {
+		t.Fatalf("missing phases in captions: P1=%v P2=%v P3=%v P4=%v", foundP1, foundP2, foundP3, foundP4)
+	}
+
+	// Verify descriptive content requirements
+	hasCountStoreExplanation := false
+	hasPrefixSumPositionExplanation := false
+	hasOutputStabilityExplanation := false
+
+	for _, step := range steps {
+		state := step.State.(renderers.ArrayState)
+		if strings.Contains(state.Caption, "tally") || strings.Contains(state.Caption, "frequency") {
+			hasCountStoreExplanation = true
+		}
+		if strings.Contains(state.Caption, "1-based") || strings.Contains(state.Caption, "prefix sum") {
+			hasPrefixSumPositionExplanation = true
+		}
+		if strings.Contains(state.Caption, "stability") || strings.Contains(state.Caption, "stable") {
+			hasOutputStabilityExplanation = true
+		}
+	}
+
+	if !hasCountStoreExplanation {
+		t.Fatal("expected caption explaining what count array stores")
+	}
+	if !hasPrefixSumPositionExplanation {
+		t.Fatal("expected caption explaining prefix sums and 1-based positions")
+	}
+	if !hasOutputStabilityExplanation {
+		t.Fatal("expected caption explaining output placement and stability")
 	}
 }

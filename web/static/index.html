@@ -289,8 +289,8 @@
         <button class="preset-chip" type="button" data-preset="sorted">Nearly Sorted</button>
         <button class="preset-chip" type="button" data-preset="small">Small Edge</button>
       </div>
-      <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]" aria-label="Custom dataset input">
-      <div id="modal-error" class="modal-error" style="display: none;"></div>
+      <input type="text" id="custom-input-val" class="modal-input" placeholder="e.g. [54, 26, 93, 17, 77, 31, 44, 55]" aria-label="Custom dataset input" aria-describedby="modal-error">
+      <div id="modal-error" class="modal-error" role="alert" style="display: none;"></div>
       <div class="modal-foot">
         <button class="dock-btn" id="btn-modal-cancel" type="button">Cancel</button>
         <button class="dock-btn dock-btn-primary" id="btn-modal-apply" type="button">Apply &amp; Visualize</button>
@@ -298,6 +298,7 @@
     </div>
   </div>
 
+  <script src="/static/scene.js"></script>
   <script>
     const go = new Go();
     WebAssembly.instantiateStreaming(fetch("/static/app.wasm"), go.importObject)
