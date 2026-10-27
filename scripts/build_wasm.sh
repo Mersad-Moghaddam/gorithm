@@ -9,7 +9,7 @@ GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o "$DIR/web/static/app.wasm" "$DI
 GOROOT="$(go env GOROOT)"
 if [ -f "$GOROOT/lib/wasm/wasm_exec.js" ]; then
   cp "$GOROOT/lib/wasm/wasm_exec.js" "$DIR/web/static/wasm_exec.js"
-else
+elif [ -f "$GOROOT/misc/wasm/wasm_exec.js" ]; then
   cp "$GOROOT/misc/wasm/wasm_exec.js" "$DIR/web/static/wasm_exec.js"
 fi
 echo "WebAssembly binary built successfully: web/static/app.wasm ($(du -h "$DIR/web/static/app.wasm" | cut -f1))"
