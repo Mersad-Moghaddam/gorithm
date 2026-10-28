@@ -140,6 +140,41 @@ func TestKruskalMaximumParallelEdgesStayInGraph(t *testing.T) {
 	}
 }
 
+func TestKruskalDenseParallelFocusAndLedger(t *testing.T) {
+	s := KruskalLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "A", X: 1, Y: 1}, {ID: "B", X: 9, Y: 1}}}, ActiveEdge: 127, Cursor: 127, SelectedEdges: []int{0}, RejectedEdges: []int{126}}
+	for i := 0; i < 128; i++ {
+		s.Edges = append(s.Edges, GraphEdge{From: "A", To: "B", Weight: i})
+		s.SortedEdgeIndices = append(s.SortedEdgeIndices, i)
+	}
+	for _, width := range []int{320, 960} {
+		got := RenderKruskalLessonSVG(trace.Step{State: s}, width, 640)
+		if strings.Count(got, `data-edge-index=`) != 2 || !strings.Contains(got, `data-edge-index="0"`) || !strings.Contains(got, `data-edge-index="127"`) {
+			t.Errorf("width %d: dense group must show selected and active edges only", width)
+		}
+		if !strings.Contains(got, `data-edge-label="0"`) || !strings.Contains(got, `data-edge-label="127"`) || !strings.Contains(got, "Parallel edges · graph shows focus") {
+			t.Errorf("width %d: missing focus explanation or identities", width)
+		}
+		for _, want := range []string{"Edge #0 A — B, weight 0: accepted", "Edge #126 A — B, weight 126: rejected", "Edge #127 A — B, weight 127: active"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("width %d: missing accessible ledger description %q", width, want)
+			}
+		}
+		for i := 0; i < 128; i++ {
+			if !strings.Contains(got, fmt.Sprintf(`data-entity="kruskal-edge-chip:%d"`, i)) {
+				t.Fatalf("width %d: missing edge %d", width, i)
+			}
+		}
+		s.ActiveEdge = -1
+		s.SelectedEdges = nil
+		before := RenderKruskalLessonSVG(trace.Step{State: s}, width, 640)
+		if strings.Count(before, `data-edge-index=`) != 1 || !strings.Contains(before, `data-edge-index="0"`) {
+			t.Errorf("width %d: unselected group needs one representative", width)
+		}
+		s.ActiveEdge = 127
+		s.SelectedEdges = []int{0}
+	}
+}
+
 func TestKruskalSortingMotionAndParentPointers(t *testing.T) {
 	s := KruskalLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "A", Label: "A"}, {ID: "B", Label: "B"}}, Edges: []GraphEdge{{From: "A", To: "B", Weight: 9}, {From: "A", To: "B", Weight: 0}}}, SortedEdgeIndices: []int{0, 1}, Parent: map[string]string{"A": "A", "B": "B"}, Components: [][]string{{"A"}, {"B"}}, ActiveEdge: -1, Cursor: -1}
 	before := RenderKruskalLessonSVG(trace.Step{State: s, LineID: "L1"}, 320, 640)

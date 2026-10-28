@@ -116,6 +116,7 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 		x, y float64
 	}
 	var labels []edgeLabel
+	focusedGroups := false
 	// Draw active edge last so other paths cannot obscure it.
 	edgeOrder := make([]int, 0, len(s.Edges))
 	for i := range s.Edges {
@@ -128,6 +129,35 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 	}
 	for _, i := range edgeOrder {
 		e := s.Edges[i]
+		count, ordinal, shownCount, shownOrdinal := 0, 0, 0, 0
+		for j, other := range s.Edges {
+			if (other.From == e.From && other.To == e.To) || (other.From == e.To && other.To == e.From) {
+				count++
+				if j < i {
+					ordinal++
+				}
+				if j == s.ActiveEdge || slices.Contains(s.SelectedEdges, j) {
+					shownCount++
+					if j < i {
+						shownOrdinal++
+					}
+				}
+			}
+		}
+		if count > 4 && e.From != e.To {
+			focusedGroups = true
+			if shownCount == 0 {
+				if ordinal != 0 {
+					continue
+				}
+				count, ordinal = 1, 0
+			} else {
+				if i != s.ActiveEdge && !slices.Contains(s.SelectedEdges, i) {
+					continue
+				}
+				count, ordinal = shownCount, shownOrdinal
+			}
+		}
 		if dense && e.From == e.To {
 			shown := i
 			for j, other := range s.Edges {
@@ -185,21 +215,12 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 			my = a[1] + direction*(4+0.75*reach)
 		} else if length > 0 {
 			// Parallel edge offsets depend on original identity, never current state.
-			count, ordinal := 0, 0
-			for j, other := range s.Edges {
-				if (other.From == e.From && other.To == e.To) || (other.From == e.To && other.To == e.From) {
-					if j < i {
-						ordinal++
-					}
-					count++
-				}
-			}
 			nx, ny := -dy/length, dx/length
 			if index[e.From] > index[e.To] {
 				nx = -nx
 				ny = -ny
 			}
-			// ponytail: compress parallel curves to canvas; use an expanded graph layout if individual curves must remain distinguishable at high counts.
+			// Keep focused curves within the graph panel.
 			limit := math.Inf(1)
 			if nx != 0 {
 				limit = math.Min(limit, math.Min(mx-gx, gx+gw-mx)/math.Abs(nx))
@@ -336,6 +357,9 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 	if omitted > 0 {
 		queueTitle = fmt.Sprintf("Edges · %d IDs in queue only", omitted)
 	}
+	if focusedGroups {
+		queueTitle = "Parallel edges · graph shows focus"
+	}
 	kruskalText(&b, 24, stripY, queueTitle)
 	for slot, edgeIndex := range s.SortedEdgeIndices {
 		if edgeIndex < 0 || edgeIndex >= len(s.Edges) {
@@ -356,9 +380,17 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 			color = "#9bf0bb"
 			marker = " ✓"
 		}
-		fmt.Fprintf(&b, `<g data-entity="kruskal-edge-chip:%d" data-x="%.0f" data-y="%.0f" transform="translate(%.0f %.0f)"><rect width="136" height="36" rx="8" fill="#192923" stroke="%s" stroke-width="2"/>`, edgeIndex, x, y, x, y, color)
+		e := s.Edges[edgeIndex]
+		edgeStatus := "pending"
+		if slices.Contains(s.SelectedEdges, edgeIndex) {
+			edgeStatus = "accepted"
+		} else if slices.Contains(s.RejectedEdges, edgeIndex) {
+			edgeStatus = "rejected"
+		} else if edgeIndex == s.ActiveEdge {
+			edgeStatus = "active"
+		}
+		fmt.Fprintf(&b, `<g data-entity="kruskal-edge-chip:%d" data-x="%.0f" data-y="%.0f" transform="translate(%.0f %.0f)"><title>%s</title><rect width="136" height="36" rx="8" fill="#192923" stroke="%s" stroke-width="2"/>`, edgeIndex, x, y, x, y, html.EscapeString(fmt.Sprintf("Edge #%d %s — %s, weight %d: %s", edgeIndex, e.From, e.To, e.Weight, edgeStatus)), color)
 		if dense {
-			e := s.Edges[edgeIndex]
 			kruskalText(&b, 5, 15, fmt.Sprintf("#%d: #%d → #%d", edgeIndex, index[e.From], index[e.To]))
 			kruskalText(&b, 5, 31, fmt.Sprintf("%d%s", e.Weight, marker))
 		} else {
