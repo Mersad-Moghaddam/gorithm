@@ -79,10 +79,9 @@ func RenderSudokuLessonSVG(step trace.Step, width, height int) string {
 				color := palette[(r*9+c)%5]
 				weight := "500"
 				if s.Given[r][c] {
-					color = "#eff5ed"
 					weight = "700"
 				}
-				fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" text-anchor="middle" fill="%s" font-size="14" font-weight="%s">%d</text>`, cell/2, cell/2+5, color, weight, s.Board[r][c])
+				fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" text-anchor="middle" fill="#eff5ed" font-size="14" font-weight="%s">%d</text>`, cell/2, cell/2+5, weight, s.Board[r][c])
 				if s.Given[r][c] {
 					fmt.Fprintf(&b, `<circle cx="%.1f" cy="5" r="1.5" fill="#bbcab9"/>`, cell-5)
 				} else {
@@ -104,9 +103,10 @@ func RenderSudokuLessonSVG(step trace.Step, width, height int) string {
 		fmt.Fprintf(&b, `<g data-emphasis="compare"><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#ffe29a" stroke-width="2"/><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#ffe29a" stroke-dasharray="4 3"/><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="none" stroke="#ffe29a" stroke-dasharray="2 3"/></g>`, x, y+float64(s.Row)*cell, boardSize, cell, x+float64(s.Col)*cell, y, cell, boardSize, x+float64(s.Col/3*3)*cell, y+float64(s.Row/3*3)*cell, cell*3, cell*3)
 	}
 	stripY := y + boardSize + 30
+	fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="30" rx="4" fill="#192923"/>`, x, stripY-21, boardSize)
 	for n := 1; n <= 9; n++ {
 		cx := x + float64(n-1)*cell
-		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" fill="%s" font-size="14" text-anchor="middle">%d</text>`, cx+cell/2, stripY, palette[(n-1)%5], n)
+		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" fill="#eff5ed" font-size="14" text-anchor="middle">%d</text>`, cx+cell/2, stripY, n)
 	}
 	if s.HasCandidate && active {
 		cx, cy := x+float64(s.Candidate-1)*cell+cell/2, stripY
@@ -137,7 +137,7 @@ func RenderSudokuLessonSVG(step trace.Step, width, height int) string {
 		}
 	}
 	if s.Phase == "exhausted" {
-		reason = "All 9 rejected; return to parent"
+		reason = "All candidates exhausted; backtrack"
 	}
 	if s.Phase == "place" {
 		reason = "Fits all three checks; placed"

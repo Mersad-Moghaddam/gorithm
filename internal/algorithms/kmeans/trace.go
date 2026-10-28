@@ -17,6 +17,9 @@ func validateKMeansInput(points []Point, k int) error {
 		if math.IsNaN(p.X) || math.IsInf(p.X, 0) || math.IsNaN(p.Y) || math.IsInf(p.Y, 0) {
 			return fmt.Errorf("points must be finite")
 		}
+		if math.Abs(p.X) > math.MaxFloat64/4 || math.Abs(p.Y) > math.MaxFloat64/4 {
+			return fmt.Errorf("point domain padding would overflow")
+		}
 		if math.IsInf(p.X*p.X, 0) || math.IsInf(p.Y*p.Y, 0) {
 			return fmt.Errorf("coordinates overflow squared distance")
 		}

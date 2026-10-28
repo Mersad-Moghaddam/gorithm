@@ -51,19 +51,23 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		if bytes.Contains(input, []byte("null")) {
 			return nil, fmt.Errorf("selection input must contain integers, not null")
 		}
-		var custom []int
+		var custom []*int
 		if err := json.Unmarshal(input, &custom); err != nil {
 			return nil, fmt.Errorf("selection input must be an array of integers: %w", err)
 		}
 		if len(custom) == 0 || len(custom) > 64 {
 			return nil, fmt.Errorf("selection input must contain 1–64 integers")
 		}
-		for _, value := range custom {
-			if value < -1000000 || value > 1000000 {
+		arr = make([]int, len(custom))
+		for i, value := range custom {
+			if value == nil {
+				return nil, fmt.Errorf("selection input must contain integers, not null")
+			}
+			if *value < -1000000 || *value > 1000000 {
 				return nil, fmt.Errorf("selection values must be between -1000000 and 1000000")
 			}
+			arr[i] = *value
 		}
-		arr = custom
 	}
 	return Trace(arr), nil
 }

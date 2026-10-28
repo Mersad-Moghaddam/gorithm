@@ -8,6 +8,40 @@ import (
 	"testing"
 )
 
+func TestSudokuExhaustedAfterRollbackCaption(t *testing.T) {
+	steps := Trace(sampleSolvableBoard())
+	for i, step := range steps {
+		s := step.State.(renderers.SudokuLessonState)
+		if s.Phase != "exhausted" {
+			continue
+		}
+		removed, placed := false, false
+		for j := i - 1; j >= 0; j-- {
+			prev := steps[j].State.(renderers.SudokuLessonState)
+			if prev.Depth < s.Depth {
+				break
+			}
+			if prev.Row != s.Row || prev.Col != s.Col || prev.Depth != s.Depth {
+				continue
+			}
+			if prev.Phase == "select" {
+				break
+			}
+			removed = removed || prev.Phase == "remove"
+			placed = placed || prev.Phase == "place"
+		}
+		if !removed || !placed {
+			continue
+		}
+		svg := renderers.RenderSudokuLessonSVG(step, 320, 450)
+		if !strings.Contains(svg, "All candidates exhausted; backtrack") || strings.Contains(svg, "All 9 rejected") {
+			t.Fatal("exhausted caption misstates recursive branch failure")
+		}
+		return
+	}
+	t.Fatal("fixture lacks exhausted cell with earlier placement and rollback")
+}
+
 func TestSudokuBuildRejectsInvalidJSONAndShape(t *testing.T) {
 	for _, raw := range []string{`null`, `{`, `{"board":null}`, `[]`, `[[1]]`, `{"board":"bad"}`, `{"board":[[1.5]]}`} {
 		if _, err := (Lesson{}).Build(json.RawMessage(raw)); err == nil {

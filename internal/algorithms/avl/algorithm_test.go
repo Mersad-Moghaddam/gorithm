@@ -272,52 +272,144 @@ func TestAVLCustomInput(t *testing.T) {
 }
 
 func TestAVLLessonRotationCases(t *testing.T) {
-	for name, input := range map[string][]int{"LL": {30,20,10}, "RR": {10,20,30}, "LR": {30,10,20}, "RL": {10,30,20}} {
+	for name, input := range map[string][]int{"LL": {30, 20, 10}, "RR": {10, 20, 30}, "LR": {30, 10, 20}, "RL": {10, 30, 20}} {
 		t.Run(name, func(t *testing.T) {
 			steps := Trace(input)
-			if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil { t.Fatal(err) }
+			if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
+				t.Fatal(err)
+			}
 			identities := map[int]string{}
 			var rewires []renderers.AVLLessonState
 			for i, step := range steps {
-				s, ok := step.State.(renderers.AVLLessonState); if !ok { t.Fatalf("frame %d: %T",i,step.State) }
-				for j,n := range s.Nodes {
-					if old := identities[n.Val]; old != "" && old != n.ID { t.Fatal("identity changed") }; identities[n.Val]=n.ID
+				s, ok := step.State.(renderers.AVLLessonState)
+				if !ok {
+					t.Fatalf("frame %d: %T", i, step.State)
+				}
+				for j, n := range s.Nodes {
+					if old := identities[n.Val]; old != "" && old != n.ID {
+						t.Fatal("identity changed")
+					}
+					identities[n.Val] = n.ID
 					if s.Phase == "height" || s.Phase == "balance" {
-						if n.ID != s.ActiveID {continue}; lh,rh := 0,0
-						for k,c := range s.Nodes { if c.ID==s.LeftIDs[j] {lh=s.Heights[k]}; if c.ID==s.RightIDs[j] {rh=s.Heights[k]} }
-						if s.Heights[j]!=1+max(lh,rh) || s.Balances[j]!=lh-rh { t.Fatalf("bad height/balance: %+v",s) }
+						if n.ID != s.ActiveID {
+							continue
+						}
+						lh, rh := 0, 0
+						for k, c := range s.Nodes {
+							if c.ID == s.LeftIDs[j] {
+								lh = s.Heights[k]
+							}
+							if c.ID == s.RightIDs[j] {
+								rh = s.Heights[k]
+							}
+						}
+						if s.Heights[j] != 1+max(lh, rh) || s.Balances[j] != lh-rh {
+							t.Fatalf("bad height/balance: %+v", s)
+						}
 					}
 				}
-				if step.LineID=="L19" || step.LineID=="L23" { if !s.HeightsPending {t.Fatal("rewire heights not pending")}; rewires=append(rewires,s); t.Logf("rewire frame=%d source=%s case=%s part=%d",i,step.LineID,s.Case,s.RotationPart) }
+				if step.LineID == "L19" || step.LineID == "L23" {
+					if !s.HeightsPending {
+						t.Fatal("rewire heights not pending")
+					}
+					rewires = append(rewires, s)
+					t.Logf("rewire frame=%d source=%s case=%s part=%d", i, step.LineID, s.Case, s.RotationPart)
+				}
 			}
-			last:=steps[len(steps)-1].State.(renderers.AVLLessonState)
-			if len(identities)!=3 || len(last.Nodes)!=3 {t.Fatal("lost nodes")}
-			for i,n:=range last.Nodes { if n.ParentID=="" && (n.Val!=20 || last.Heights[i]!=2) {t.Fatal("wrong root")}; if last.Balances[i] < -1 || last.Balances[i]>1 {t.Fatal("unbalanced")} }
-			want:=1; if name=="LR"||name=="RL" {want=2}; if len(rewires)!=want {t.Fatalf("rewires %d want %d",len(rewires),want)}
-			if want==2 && (rewires[0].RotationPart!=1 || rewires[1].RotationPart!=2 || reflect.DeepEqual(rewires[0].Nodes,rewires[1].Nodes)) {t.Fatal("double rotation missing intermediate topology")}
+			last := steps[len(steps)-1].State.(renderers.AVLLessonState)
+			if len(identities) != 3 || len(last.Nodes) != 3 {
+				t.Fatal("lost nodes")
+			}
+			for i, n := range last.Nodes {
+				if n.ParentID == "" && (n.Val != 20 || last.Heights[i] != 2) {
+					t.Fatal("wrong root")
+				}
+				if last.Balances[i] < -1 || last.Balances[i] > 1 {
+					t.Fatal("unbalanced")
+				}
+			}
+			want := 1
+			if name == "LR" || name == "RL" {
+				want = 2
+			}
+			if len(rewires) != want {
+				t.Fatalf("rewires %d want %d", len(rewires), want)
+			}
+			if want == 2 && (rewires[0].RotationPart != 1 || rewires[1].RotationPart != 2 || reflect.DeepEqual(rewires[0].Nodes, rewires[1].Nodes)) {
+				t.Fatal("double rotation missing intermediate topology")
+			}
 		})
 	}
 }
 
 func TestAVLLessonTransferSubtree(t *testing.T) {
-	steps:=Trace([]int{30,20,40,10,25,5}); found:=false
-	for _,step:=range steps {s:=step.State.(renderers.AVLLessonState); if step.LineID!="L19" {continue}; for _,n:=range s.Nodes {if n.Val==25 && n.ID==s.TransferID {for _,p:=range s.Nodes {if p.ID==n.ParentID && p.Val==30 {found=true}}}}}
-	if !found {t.Fatal("transfer 25 not preserved")}
+	steps := Trace([]int{30, 20, 40, 10, 25, 5})
+	found := false
+	for _, step := range steps {
+		s := step.State.(renderers.AVLLessonState)
+		if step.LineID != "L19" {
+			continue
+		}
+		for _, n := range s.Nodes {
+			if n.Val == 25 && n.ID == s.TransferID {
+				for _, p := range s.Nodes {
+					if p.ID == n.ParentID && p.Val == 30 {
+						found = true
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("transfer 25 not preserved")
+	}
 }
 
 func TestAVLLessonSnapshotsAndDefaults(t *testing.T) {
-	if !reflect.DeepEqual(Trace(nil),Trace([]int{10,20,30,40,50,25})) {t.Fatal("default mismatch")}
-	input:=[]int{5,5,5}; steps:=Trace(input); input[0]=999
-	if steps[0].Variables["values"].([]int)[0]!=5 {t.Fatal("input aliases snapshot")}
-	last:=steps[len(steps)-1].State.(renderers.AVLLessonState); if len(last.Nodes)!=1 {t.Fatal("duplicate allocated node")}
-	first:=steps[2].State.(renderers.AVLLessonState); last.Nodes[0].Val=999; last.Heights[0]=99
-	if first.Nodes[0].Val!=5 || first.Heights[0]!=1 {t.Fatal("snapshots alias")}
+	if !reflect.DeepEqual(Trace(nil), Trace([]int{10, 20, 30, 40, 50, 25})) {
+		t.Fatal("default mismatch")
+	}
+	input := []int{5, 5, 5}
+	steps := Trace(input)
+	input[0] = 999
+	if steps[0].Variables["values"].([]int)[0] != 5 {
+		t.Fatal("input aliases snapshot")
+	}
+	last := steps[len(steps)-1].State.(renderers.AVLLessonState)
+	if len(last.Nodes) != 1 {
+		t.Fatal("duplicate allocated node")
+	}
+	first := steps[2].State.(renderers.AVLLessonState)
+	last.Nodes[0].Val = 999
+	last.Heights[0] = 99
+	if first.Nodes[0].Val != 5 || first.Heights[0] != 1 {
+		t.Fatal("snapshots alias")
+	}
 }
 
 func TestAVLLessonInputBoundaries(t *testing.T) {
-	for _,input:=range []string{`null`,`{"values":null}`,`{"values":[1000001]}`,`[true]`,`{`, `{"values":[-1000001]}`} {if _,err:=(Lesson{}).Build([]byte(input));err==nil {t.Errorf("accepted %s",input)}}
-	for _,input:=range []string{`[-1000000,1000000]`,`{}`,`[]`,`{"values":[]}`} {if _,err:=(Lesson{}).Build([]byte(input));err!=nil {t.Errorf("rejected %s: %v",input,err)}}
-	raw:=`[`; for i:=0;i<32;i++ {if i>0 {raw+=","};raw+="0"};raw+=`]`
-	if _,err:=(Lesson{}).Build([]byte(raw));err!=nil {t.Fatal(err)}
-	if _,err:=(Lesson{}).Build([]byte(raw[:len(raw)-1]+`,0]`));err==nil {t.Fatal("accepted 33 values")}
+	for _, input := range []string{`null`, `{"values":null}`, `{"values":[1000001]}`, `[true]`, `{`, `{"values":[-1000001]}`} {
+		if _, err := (Lesson{}).Build([]byte(input)); err == nil {
+			t.Errorf("accepted %s", input)
+		}
+	}
+	for _, input := range []string{`[-1000000,1000000]`, `{}`, `[]`, `{"values":[]}`} {
+		if _, err := (Lesson{}).Build([]byte(input)); err != nil {
+			t.Errorf("rejected %s: %v", input, err)
+		}
+	}
+	raw := `[`
+	for i := 0; i < 32; i++ {
+		if i > 0 {
+			raw += ","
+		}
+		raw += "0"
+	}
+	raw += `]`
+	if _, err := (Lesson{}).Build([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Lesson{}).Build([]byte(raw[:len(raw)-1] + `,0]`)); err == nil {
+		t.Fatal("accepted 33 values")
+	}
 }

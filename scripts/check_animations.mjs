@@ -341,6 +341,9 @@ try {
     await page.evaluate(()=>document.documentElement.dataset.theme='lab');
     await page.screenshot({path:`/tmp/opencode/bubble-pilot-${width}.png`,fullPage:true});
   }
+  await page.setViewportSize({width:1440,height:1000});
+  await input('[7,3,5,2,4]');
+  await page.screenshot({path:'/tmp/opencode/bubble-pilot-reference-values.png',fullPage:true});
   assert.deepEqual(errors,[]);
   console.log('PASS shared animation fixtures plus actual Bubble source/phase/results, duplicates, deterministic arcs, cancellation, eight themes, responsive scrolling');
 } finally { await browser.close(); }

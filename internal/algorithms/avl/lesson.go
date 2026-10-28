@@ -69,18 +69,41 @@ type buildInput struct {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	values := []int{10, 20, 30, 40, 50, 25}
-	if len(input)>0 {
-		raw:=bytes.TrimSpace(input)
-		if len(raw)==0 || bytes.Equal(raw,[]byte("null")) {return nil,fmt.Errorf("AVL input must be an array or object")}
-		var custom []int
-		if raw[0]=='[' {if err:=json.Unmarshal(raw,&custom);err!=nil {return nil,fmt.Errorf("invalid AVL values: %w",err)}} else {
-			var fields map[string]json.RawMessage
-			if err:=json.Unmarshal(raw,&fields);err!=nil || fields==nil {return nil,fmt.Errorf("AVL input must be an array or object")}
-			if v,exists:=fields["values"];exists {if bytes.Equal(bytes.TrimSpace(v),[]byte("null")) {return nil,fmt.Errorf("AVL values must be an integer array")};if err:=json.Unmarshal(v,&custom);err!=nil {return nil,fmt.Errorf("invalid AVL values: %w",err)}}
+	if len(input) > 0 {
+		raw := bytes.TrimSpace(input)
+		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+			return nil, fmt.Errorf("AVL input must be an array or object")
 		}
-		if len(custom)>32 {return nil,fmt.Errorf("AVL supports at most 32 values")}
-		for _,v:=range custom {if v < -1000000 || v > 1000000 {return nil,fmt.Errorf("AVL values must be within ±1000000")}}
-		if len(custom)>0 {values=custom}
+		var custom []int
+		if raw[0] == '[' {
+			if err := json.Unmarshal(raw, &custom); err != nil {
+				return nil, fmt.Errorf("invalid AVL values: %w", err)
+			}
+		} else {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+				return nil, fmt.Errorf("AVL input must be an array or object")
+			}
+			if v, exists := fields["values"]; exists {
+				if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+					return nil, fmt.Errorf("AVL values must be an integer array")
+				}
+				if err := json.Unmarshal(v, &custom); err != nil {
+					return nil, fmt.Errorf("invalid AVL values: %w", err)
+				}
+			}
+		}
+		if len(custom) > 32 {
+			return nil, fmt.Errorf("AVL supports at most 32 values")
+		}
+		for _, v := range custom {
+			if v < -1000000 || v > 1000000 {
+				return nil, fmt.Errorf("AVL values must be within ±1000000")
+			}
+		}
+		if len(custom) > 0 {
+			values = custom
+		}
 	}
 	return Trace(values), nil
 }
