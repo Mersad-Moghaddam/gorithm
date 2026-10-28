@@ -1,10 +1,13 @@
 package gradientdescent
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
+	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
 type Lesson struct{}
@@ -61,28 +64,51 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	lr := 0.05
 	epochs := 10
 
-	if len(input) > 0 {
+	if len(bytes.TrimSpace(input)) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil || fields == nil {
+			return nil, fmt.Errorf("gradient descent input must be a JSON object")
+		}
+		for _, key := range []string{"x", "y", "lr", "epochs"} {
+			if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("%s must not be null", key)
+			}
+		}
+		_, hasX := fields["x"]
+		_, hasY := fields["y"]
+		if hasX != hasY {
+			return nil, fmt.Errorf("x and y must be supplied together")
+		}
 		var custom struct {
 			X      []float64 `json:"x"`
 			Y      []float64 `json:"y"`
 			LR     *float64  `json:"lr"`
 			Epochs *int      `json:"epochs"`
 		}
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if len(custom.X) > 0 && len(custom.X) == len(custom.Y) {
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid gradient descent input: %w", err)
+		} else {
+			if hasX {
 				x = custom.X
 				y = custom.Y
 			}
-			if custom.LR != nil && *custom.LR > 0 {
+			if custom.LR != nil {
 				lr = *custom.LR
 			}
-			if custom.Epochs != nil && *custom.Epochs > 0 {
+			if custom.Epochs != nil {
 				epochs = *custom.Epochs
 			}
 		}
 	}
 
-	return Trace(x, y, lr, epochs), nil
+	if err := gradientDescentValidate(x, y, lr, epochs); err != nil {
+		return nil, err
+	}
+	steps := Trace(x, y, lr, epochs)
+	if s := steps[len(steps)-1].State.(renderers.GradientDescentLessonState); s.StopReason == "numerical-error" {
+		return nil, fmt.Errorf("numerical overflow during regression; reduce data magnitude, learning rate or epochs")
+	}
+	return steps, nil
 }
 
 func init() {

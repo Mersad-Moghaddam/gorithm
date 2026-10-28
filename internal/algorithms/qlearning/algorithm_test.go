@@ -161,10 +161,11 @@ func TestQLearningTraceAndSourceLineIDs(t *testing.T) {
 		}
 
 		// Check TableState
-		tbl, ok := step.State.(renderers.TableState)
+		typed, ok := step.State.(renderers.QLearningLessonState)
 		if !ok {
-			t.Fatalf("step %d state is %T, want renderers.TableState", i, step.State)
+			t.Fatalf("step %d state is %T, want renderers.QLearningLessonState", i, step.State)
 		}
+		tbl := typed.TableState
 		if len(tbl.RowHeaders) != 9 {
 			t.Errorf("step %d table row count = %d, want 9", i, len(tbl.RowHeaders))
 		}
@@ -176,7 +177,7 @@ func TestQLearningTraceAndSourceLineIDs(t *testing.T) {
 		}
 
 		// Verify SVG rendering
-		svg := renderers.RenderTableSVG(step, 800, 600)
+		svg := renderers.RenderQLearningLessonSVG(step, 800, 600)
 		if !strings.Contains(svg, "<svg") && !strings.Contains(svg, "<defs>") && !strings.Contains(svg, "<text") {
 			t.Errorf("step %d RenderTableSVG output missing expected SVG elements", i)
 		}
@@ -199,7 +200,7 @@ func TestQLearningTraceAndSourceLineIDs(t *testing.T) {
 	}
 
 	lastStep := steps[len(steps)-1]
-	lastTbl := lastStep.State.(renderers.TableState)
+	lastTbl := lastStep.State.(renderers.QLearningLessonState).TableState
 	hasLearnedVal := false
 	for _, cell := range lastTbl.Cells {
 		if cell.Value != "0.00" {

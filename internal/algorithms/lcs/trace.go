@@ -15,7 +15,7 @@ func buildTableState(
 	activeRow, activeCol int,
 	sources [][2]int,
 	lcsCells map[[2]int]bool,
-) renderers.TableState {
+) renderers.LCSLessonState {
 	m := len(s1)
 	n := len(s2)
 
@@ -62,11 +62,24 @@ func buildTableState(
 		}
 	}
 
-	return renderers.TableState{
+	table := renderers.TableState{
 		RowHeaders: rowHeaders,
 		ColHeaders: colHeaders,
 		Cells:      cells,
 	}
+	state := renderers.LCSLessonState{TableState: table, S1: s1, S2: s2, Row: activeRow, Col: activeCol,
+		From: [2]int{activeRow, activeCol}, To: [2]int{activeRow, activeCol}, Sources: append([][2]int(nil), sources...)}
+	for r := range dpTable {
+		state.DP = append(state.DP, append([]int(nil), dpTable[r]...))
+		state.Filled = append(state.Filled, append([]bool(nil), filled[r]...))
+		for c := range dpTable[r] {
+			if lcsCells[[2]int{r, c}] && r > 0 && c > 0 {
+				state.Matches = append(state.Matches, [2]int{r - 1, c - 1})
+				state.Sequence += s1[r-1 : r]
+			}
+		}
+	}
+	return state
 }
 
 // Trace simulates the LCS dynamic programming algorithm step by step.
@@ -226,5 +239,42 @@ func Trace(s1, s2 string) []trace.Step {
 		},
 	)
 
-	return b.Steps()
+	steps := b.Steps()
+	for i := range steps {
+		step := &steps[i]
+		s := step.State.(renderers.LCSLessonState)
+		switch step.LineID {
+		case "L3":
+			s.Phase = "allocate"
+		case "L7":
+			s.Phase = "compare"
+			step.HoldMS = 600
+		case "L8", "L10":
+			s.Phase = "write"
+			step.HoldMS = 1200
+		case "L14", "L16":
+			s.Phase = "backtrack"
+			if step.LineID == "L16" {
+				step.HoldMS = 600
+			}
+		case "L17":
+			s.Phase = "match"
+			s.To = [2]int{s.Row - 1, s.Col - 1}
+			step.HoldMS = 1200
+		case "L19", "L21":
+			s.From = [2]int{step.Variables["i"].(int), step.Variables["j"].(int)}
+			s.Phase = "up"
+			if step.LineID == "L21" {
+				s.Phase = "left"
+			}
+			step.HoldMS = 1200
+		case "L24":
+			s.Phase = "done"
+		}
+		if s.From[0] > 0 && s.From[1] > 0 {
+			s.Match = s1[s.From[0]-1] == s2[s.From[1]-1]
+		}
+		step.State = s
+	}
+	return steps
 }

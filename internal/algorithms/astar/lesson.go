@@ -1,8 +1,11 @@
 package astar
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -62,8 +65,26 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges, start, goal := defaultGraph()
 	if len(input) > 0 {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("input must be an object")
+		}
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Nodes) > 0 {
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid A* input: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		for key, value := range fields {
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return nil, fmt.Errorf("%s cannot be null", key)
+			}
+		}
+		if _, supplied := fields["nodes"]; supplied && len(custom.Nodes) == 0 {
+			return nil, fmt.Errorf("nodes must contain 1–32 nodes")
+		}
+		if len(custom.Nodes) > 0 {
 			nodes = custom.Nodes
 			edges = custom.Edges
 			if custom.Start != "" {
@@ -81,12 +102,42 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				if nodes[i].Label == "" {
 					nodes[i].Label = nodes[i].ID
 				}
-				if nodes[i].X == 0 && nodes[i].Y == 0 {
-					angle := 2 * math.Pi * float64(i) / float64(len(nodes))
-					nodes[i].X = 400 + 180*math.Cos(angle)
-					nodes[i].Y = 225 + 130*math.Sin(angle)
-				}
 			}
+		}
+		if len(custom.Nodes) == 0 {
+			if _, ok := fields["start"]; ok {
+				start = custom.Start
+			}
+			if _, ok := fields["goal"]; ok {
+				goal = custom.Goal
+			}
+		}
+		if _, supplied := fields["start"]; supplied && custom.Start == "" {
+			return nil, fmt.Errorf("supplied start must exist")
+		}
+		if _, supplied := fields["goal"]; supplied && custom.Goal == "" {
+			return nil, fmt.Errorf("supplied goal must exist")
+		}
+	}
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("A* accepts at most 32 nodes and 128 edges")
+	}
+	seen := map[string]bool{}
+	for _, n := range nodes {
+		if n.ID == "" || seen[n.ID] || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node IDs must be unique, nonempty; IDs/labels at most 64 characters")
+		}
+		if math.IsNaN(n.X) || math.IsInf(n.X, 0) || math.IsNaN(n.Y) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+			return nil, fmt.Errorf("coordinates must be finite within ±1000000")
+		}
+		seen[n.ID] = true
+	}
+	if !seen[start] || !seen[goal] {
+		return nil, fmt.Errorf("start and goal must exist")
+	}
+	for _, e := range edges {
+		if !seen[e.From] || !seen[e.To] || e.Weight < 0 || e.Weight > 10000 {
+			return nil, fmt.Errorf("edges need existing endpoints and weights within 0–10000")
 		}
 	}
 	return Trace(nodes, edges, start, goal), nil

@@ -1,8 +1,11 @@
 package kosaraju
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -65,7 +68,25 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges := defaultGraph()
 	if len(input) > 0 {
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Nodes) > 0 {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("graph must be an object")
+		}
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid graph: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, fmt.Errorf("graph must be an object: %w", err)
+		}
+		for _, key := range []string{"nodes", "edges"} {
+			if value, present := fields[key]; present && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return nil, fmt.Errorf("%s must be an array, not null", key)
+			}
+		}
+		if custom.Nodes != nil && len(custom.Nodes) == 0 {
+			return nil, fmt.Errorf("graph needs at least one node")
+		}
+		if len(custom.Nodes) > 0 {
 			nodes = custom.Nodes
 			edges = custom.Edges
 			for i := range nodes {
@@ -81,6 +102,24 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 					nodes[i].Y = 225 + 130*math.Sin(angle)
 				}
 			}
+		}
+	}
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("graph limit: 32 nodes, 128 edges")
+	}
+	ids := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		if n.ID == "" || ids[n.ID] || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node IDs must be unique, nonempty; IDs and labels limited to 64 characters")
+		}
+		if math.IsNaN(n.X) || math.IsInf(n.X, 0) || math.IsNaN(n.Y) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+			return nil, fmt.Errorf("node coordinates must be finite within ±1000000")
+		}
+		ids[n.ID] = true
+	}
+	for _, e := range edges {
+		if !ids[e.From] || !ids[e.To] || e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("edges need known endpoints and weights within ±10000")
 		}
 	}
 	return Trace(nodes, edges), nil

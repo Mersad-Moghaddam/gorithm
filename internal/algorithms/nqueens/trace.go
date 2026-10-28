@@ -59,12 +59,33 @@ func Trace(n int) []trace.Step {
 	}
 
 	solutionsCount := 0
+	var lastSolution []int
+	snapshot := func(phase string, row, col int, candidate, conflict [2]int) renderers.NQueensLessonState {
+		var cand *[2]int
+		if candidate[0] >= 0 {
+			cand = &candidate
+		}
+		s := renderers.NQueensLessonState{
+			TableState: buildTableState(n, board, nil, cand), N: n,
+			Board: append([]int(nil), board...), Row: row, Col: col,
+			Candidate: candidate, Conflict: conflict, Depth: row, Solutions: solutionsCount,
+			Phase: phase, LastSolution: append([]int(nil), lastSolution...),
+		}
+		if conflict[0] >= 0 {
+			s.ConflictKind = "diagonal"
+			if conflict[1] == col {
+				s.ConflictKind = "column"
+			}
+		}
+		return s
+	}
+	absent := [2]int{-1, -1}
 
 	b.AddStep(
 		"L2",
 		trace.ActionInit,
 		fmt.Sprintf("Initialize %dx%d chessboard with no queens placed", n, n),
-		buildTableState(n, board, nil, nil),
+		snapshot("init", 0, -1, absent, absent),
 		map[string]any{"row": 0, "col": 0, "solutions": 0, "n": n},
 	)
 
@@ -74,17 +95,18 @@ func Trace(n int) []trace.Step {
 			"L6",
 			trace.ActionCompare,
 			fmt.Sprintf("Row %d: check if all %d queens have been placed", row, n),
-			buildTableState(n, board, nil, nil),
+			snapshot("base-check", row, -1, absent, absent),
 			map[string]any{"row": row, "solutions": solutionsCount, "n": n},
 		)
 
 		if row == n {
 			solutionsCount++
+			lastSolution = append([]int(nil), board...)
 			b.AddStep(
 				"L7",
 				trace.ActionDone,
 				fmt.Sprintf("Solution #%d found! All %d queens placed safely", solutionsCount, n),
-				buildTableState(n, board, nil, nil),
+				snapshot("solution", row, -1, absent, absent),
 				map[string]any{"row": row, "solutions": solutionsCount, "n": n},
 			)
 			return
@@ -96,7 +118,7 @@ func Trace(n int) []trace.Step {
 				"L10",
 				trace.ActionVisit,
 				fmt.Sprintf("Row %d: inspect column %d as potential queen placement", row, col),
-				buildTableState(n, board, nil, cand),
+				snapshot("try", row, col, *cand, absent),
 				map[string]any{"row": row, "col": col, "solutions": solutionsCount, "n": n},
 			)
 
@@ -122,15 +144,11 @@ func Trace(n int) []trace.Step {
 			b.IncComparisons()
 
 			if confRow != -1 {
-				conflictMap := map[[2]int]string{
-					{confRow, confCol}: "active",
-					{row, col}:         "active",
-				}
 				b.AddStep(
 					"L21",
 					trace.ActionCompare,
 					fmt.Sprintf("Conflict detected between (row %d, col %d) and existing queen at (row %d, col %d)", row, col, confRow, confCol),
-					buildTableState(n, board, conflictMap, cand),
+					snapshot("conflict", row, col, *cand, [2]int{confRow, confCol}),
 					map[string]any{"row": row, "col": col, "conflictRow": confRow, "conflictCol": confCol, "solutions": solutionsCount, "n": n},
 				)
 				continue
@@ -140,7 +158,7 @@ func Trace(n int) []trace.Step {
 				"L24",
 				trace.ActionCompare,
 				fmt.Sprintf("Position (row %d, col %d) is safe; no column or diagonal conflicts", row, col),
-				buildTableState(n, board, nil, cand),
+				snapshot("safe", row, col, *cand, absent),
 				map[string]any{"row": row, "col": col, "solutions": solutionsCount, "n": n},
 			)
 
@@ -150,7 +168,7 @@ func Trace(n int) []trace.Step {
 				"L12",
 				trace.ActionSet,
 				fmt.Sprintf("Place queen at row %d, col %d", row, col),
-				buildTableState(n, board, nil, nil),
+				snapshot("place", row, col, absent, absent),
 				map[string]any{"row": row, "col": col, "solutions": solutionsCount, "n": n},
 			)
 
@@ -158,7 +176,7 @@ func Trace(n int) []trace.Step {
 				"L13",
 				trace.ActionPush,
 				fmt.Sprintf("Recurse to row %d to place next queen", row+1),
-				buildTableState(n, board, nil, nil),
+				snapshot("descend", row+1, -1, absent, absent),
 				map[string]any{"row": row + 1, "col": 0, "solutions": solutionsCount, "n": n},
 			)
 
@@ -170,7 +188,7 @@ func Trace(n int) []trace.Step {
 				"L14",
 				trace.ActionPop,
 				fmt.Sprintf("Backtrack: remove queen from row %d, col %d", row, col),
-				buildTableState(n, board, nil, nil),
+				snapshot("remove", row, col, absent, absent),
 				map[string]any{"row": row, "col": col, "solutions": solutionsCount, "n": n},
 			)
 		}
@@ -179,12 +197,23 @@ func Trace(n int) []trace.Step {
 	backtrack(0)
 
 	b.AddStep(
-		"L1",
+		"L4",
 		trace.ActionDone,
 		fmt.Sprintf("N-Queens backtracking complete. Found %d valid solutions", solutionsCount),
-		buildTableState(n, board, nil, nil),
+		snapshot("done", 0, -1, absent, absent),
 		map[string]any{"solutions": solutionsCount, "n": n},
 	)
 
-	return b.Steps()
+	steps := b.Steps()
+	for i := range steps {
+		switch steps[i].LineID {
+		case "L2", "L6", "L13":
+			steps[i].HoldMS = 350
+		case "L24":
+			steps[i].HoldMS = 600
+		case "L12":
+			steps[i].HoldMS = 1200
+		}
+	}
+	return steps
 }

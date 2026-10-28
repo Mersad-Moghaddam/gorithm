@@ -44,14 +44,34 @@ func buildTableState(n int, values map[int]int, cellStates map[int]string) rende
 	}
 }
 
+func fibonacciSnapshot(n, index int, phase string, values map[int]int, states map[int]string) renderers.FibonacciLessonState {
+	s := renderers.FibonacciLessonState{TableState: buildTableState(n, values, states), N: n, Index: index, Phase: phase, Sources: [2]int{-1, -1}}
+	s.Values = make([]int, len(s.Cells))
+	s.Known = make([]bool, len(s.Cells))
+	for i, v := range values {
+		if i >= 0 && i < len(s.Values) {
+			s.Values[i] = v
+			s.Known[i] = true
+		}
+	}
+	if phase == "read" || phase == "write" {
+		s.Sources = [2]int{index - 2, index - 1}
+	}
+	if phase == "done" {
+		s.HasResult = true
+		s.Result = s.Values[index]
+	}
+	return s
+}
+
 // Trace records the execution steps of bottom-up Fibonacci DP tabulation.
 func Trace(n int) []trace.Step {
 	b := trace.NewBuilder()
 
 	if n <= 0 {
-		state0 := buildTableState(0, map[int]int{0: 0}, map[int]string{0: "normal"})
+		state0 := fibonacciSnapshot(n, -1, "base", map[int]int{0: 0}, map[int]string{0: "normal"})
 		b.AddStep("L2", trace.ActionInit, "n <= 0: check base condition.", state0, map[string]any{"n": n})
-		stateDone := buildTableState(0, map[int]int{0: 0}, map[int]string{0: "computed"})
+		stateDone := fibonacciSnapshot(n, 0, "done", map[int]int{0: 0}, map[int]string{0: "computed"})
 		b.AddStep("L3", trace.ActionDone, "Return 0 for n <= 0.", stateDone, map[string]any{"n": n, "result": 0})
 		return b.Steps()
 	}
@@ -60,21 +80,21 @@ func Trace(n int) []trace.Step {
 	cellStates := make(map[int]string, n+1)
 
 	// Step 1: L5 - Allocate DP table
-	initState := buildTableState(n, values, cellStates)
+	initState := fibonacciSnapshot(n, -1, "allocate", values, cellStates)
 	b.AddStep("L5", trace.ActionInit, fmt.Sprintf("Initialize DP table of size %d.", n+1), initState, map[string]any{"n": n})
 
 	// Step 2: L6 - Base case dp[0] = 0
 	values[0] = 0
 	cellStates[0] = "computed"
 	b.IncOperations()
-	base0State := buildTableState(n, values, cellStates)
+	base0State := fibonacciSnapshot(n, 0, "base", values, cellStates)
 	b.AddStep("L6", trace.ActionSet, "Set base case: dp[0] = 0.", base0State, map[string]any{"n": n, "dp[0]": 0})
 
 	// Step 3: L7 - Base case dp[1] = 1
 	values[1] = 1
 	cellStates[1] = "computed"
 	b.IncOperations()
-	base1State := buildTableState(n, values, cellStates)
+	base1State := fibonacciSnapshot(n, 1, "base", values, cellStates)
 	b.AddStep("L7", trace.ActionSet, "Set base case: dp[1] = 1.", base1State, map[string]any{"n": n, "dp[1]": 1})
 
 	dp := make([]int, n+1)
@@ -94,7 +114,7 @@ func Trace(n int) []trace.Step {
 		iterStates[i] = "active"
 
 		b.IncOperations()
-		hlState := buildTableState(n, values, iterStates)
+		hlState := fibonacciSnapshot(n, i, "read", values, iterStates)
 		b.AddStep(
 			"L8",
 			trace.ActionHighlight,
@@ -110,7 +130,7 @@ func Trace(n int) []trace.Step {
 		cellStates[i] = "computed"
 
 		b.IncOperations()
-		setState := buildTableState(n, values, cellStates)
+		setState := fibonacciSnapshot(n, i, "write", values, cellStates)
 		b.AddStep(
 			"L9",
 			trace.ActionSet,
@@ -120,7 +140,7 @@ func Trace(n int) []trace.Step {
 		)
 	}
 
-	doneState := buildTableState(n, values, cellStates)
+	doneState := fibonacciSnapshot(n, n, "done", values, cellStates)
 	b.AddStep(
 		"L11",
 		trace.ActionDone,
@@ -129,5 +149,14 @@ func Trace(n int) []trace.Step {
 		map[string]any{"n": n, "result": dp[n]},
 	)
 
-	return b.Steps()
+	steps := b.Steps()
+	for i := range steps {
+		if steps[i].LineID == "L8" {
+			steps[i].HoldMS = 600
+		}
+		if steps[i].LineID == "L9" {
+			steps[i].HoldMS = 1200
+		}
+	}
+	return steps
 }

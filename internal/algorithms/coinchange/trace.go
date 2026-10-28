@@ -75,7 +75,7 @@ func Trace(coins []int, amount int) []trace.Step {
 			emptyState,
 			map[string]any{"amount": amount, "minCoins": -1, "result": -1},
 		)
-		return b.Steps()
+		return coinChangeSnapshots(b.Steps(), coins, amount)
 	}
 
 	dp := make([]int, amount+1)
@@ -117,7 +117,7 @@ func Trace(coins []int, amount int) []trace.Step {
 
 	// Outer loop: iterate over subproblem amounts 1..amount
 	for i := 1; i <= amount; i++ {
-		for _, c := range coins {
+		for coinIndex, c := range coins {
 			b.IncComparisons()
 			if c <= i {
 				subproblem := i - c
@@ -140,6 +140,7 @@ func Trace(coins []int, amount int) []trace.Step {
 					compState,
 					map[string]any{
 						"i":          i,
+						"coinIndex": coinIndex,
 						"coin":       c,
 						"subproblem": subproblem,
 						"subVal":     subVal,
@@ -160,6 +161,7 @@ func Trace(coins []int, amount int) []trace.Step {
 						setState,
 						map[string]any{
 							"i":          i,
+							"coinIndex": coinIndex,
 							"coin":       c,
 							"subproblem": subproblem,
 							"newMin":     dp[i],
@@ -175,6 +177,7 @@ func Trace(coins []int, amount int) []trace.Step {
 					compState,
 					map[string]any{
 						"i":       i,
+						"coinIndex": coinIndex,
 						"coin":    c,
 						"canTake": false,
 					},
@@ -204,5 +207,56 @@ func Trace(coins []int, amount int) []trace.Step {
 		)
 	}
 
-	return b.Steps()
+	return coinChangeSnapshots(b.Steps(), coins, amount)
+}
+
+// coinChangeSnapshots decorates recorded operations without rerunning the recurrence.
+func coinChangeSnapshots(steps []trace.Step, coins []int, amount int) []trace.Step {
+	for i := range steps {
+		step := &steps[i]
+		table := step.State.(renderers.TableState)
+		s := renderers.CoinChangeLessonState{TableState: table, Coins: append([]int(nil), coins...), Amount: amount, Index: -1, CoinIndex: -1, SourceIndex: -1}
+		if amount >= 0 {
+			s.DP = make([]int, amount+1)
+			for j, cell := range table.Cells {
+				if cell.Value == "∞" {
+					s.DP[j] = amount + 1
+				} else {
+					s.DP[j], _ = strconv.Atoi(cell.Value)
+				}
+			}
+		}
+		s.Initialized = step.LineID != "L1" && step.LineID != "L3" && step.LineID != "L2"
+		switch step.LineID {
+		case "L1": s.Phase = "init"
+		case "L3": s.Phase, s.Index = "base", 0
+		case "L4": s.Phase = "infinity"
+		case "L7", "L8":
+			s.Phase = "compare"
+			s.Index = step.Variables["i"].(int)
+			s.CoinIndex = step.Variables["coinIndex"].(int)
+			if step.LineID == "L8" {
+				previous := steps[i-1].State.(renderers.CoinChangeLessonState)
+				s.CoinIndex, s.Previous = previous.CoinIndex, previous.Previous
+				s.Phase = "update"
+				step.HoldMS, steps[i-1].HoldMS = 1200, 600
+			} else {
+				s.Previous = s.DP[s.Index]
+			}
+			coin := coins[s.CoinIndex]
+			s.CanTake = coin <= s.Index
+			if s.CanTake {
+				s.SourceIndex = s.Index - coin
+				s.HasCandidate = s.DP[s.SourceIndex] <= amount
+				s.Candidate = s.DP[s.SourceIndex] + 1
+			}
+		case "L2", "L12", "L13":
+			s.Phase, s.HasResult = "done", true
+			s.Result = step.Variables["result"].(int)
+			s.Index = amount
+		}
+		if value, ok := step.Variables["coins"].([]int); ok { step.Variables["coins"] = append([]int(nil), value...) }
+		step.State = s
+	}
+	return steps
 }

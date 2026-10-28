@@ -2,120 +2,91 @@ package binarysearch
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// Trace generates execution steps of binary search on the given array and target.
+// Trace preserves Search's midpoint semantics, including for unsorted direct input.
 func Trace(initial []int, target int) []trace.Step {
 	b := trace.NewBuilder()
 	arr := cloneSlice(initial)
-	n := len(arr)
-
-	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Initialize Binary Search for target %d in array of %d elements.", target, n), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"target": target, "n": n})
-
-	if n == 0 {
-		b.AddStep("L2", trace.ActionSet, "Array is empty; search bounds low = 0, high = -1.", renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"low": 0, "high": -1, "target": target})
-
-		b.AddStep("L3", trace.ActionCompare, "Check condition low (0) <= high (-1): false. Search space is empty.", renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"low": 0, "high": -1, "target": target})
-
-		b.AddStep("L13", trace.ActionDone, fmt.Sprintf("Target %d not found in array. Return -1.", target), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"low": 0, "high": -1, "target": target, "found": false, "result": -1})
-
-		return b.Steps()
+	s := renderers.BinarySearchLessonState{ArrayState: renderers.ArrayState{Current: -1}, Target: target, Low: 0, High: len(arr) - 1, Mid: -1, Result: -1, PreviousLow: 0, PreviousHigh: len(arr) - 1, DiscardLow: -1, DiscardHigh: -1, SortedInput: slices.IsSorted(arr)}
+	add := func(line, phase string, action trace.ActionType, text string) {
+		s.Phase = phase
+		s.Values = cloneSlice(arr)
+		s.Current = s.Mid
+		s.Comparing = nil
+		s.Sorted = nil
+		if phase == "compare" && s.Mid >= 0 {
+			s.Comparing = []int{s.Mid}
+		}
+		if s.ResultKnown && s.Result >= 0 {
+			s.Sorted = []int{s.Result}
+		}
+		vars := map[string]any{"target": target, "n": len(arr), "low": s.Low, "high": s.High}
+		if s.Mid >= 0 {
+			vars["mid"] = s.Mid
+			vars["midValue"] = arr[s.Mid]
+		}
+		if s.ResultKnown {
+			vars["found"] = s.Result >= 0
+			vars["result"] = s.Result
+		}
+		b.AddStep(line, action, text, s, vars)
 	}
-
-	low := 0
-	high := n - 1
-
-	b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Set search bounds: low = 0, high = %d.", high), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"low": low, "high": high, "target": target})
-
-	for low <= high {
-		b.AddStep("L3", trace.ActionCompare, fmt.Sprintf("Check condition low (%d) <= high (%d): true. Search range [%d, %d] has %d element(s).", low, high, low, high, high-low+1), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"low": low, "high": high, "target": target})
-
-		mid := low + (high-low)/2
-		b.AddStep("L4", trace.ActionHighlight, fmt.Sprintf("Calculate middle index mid = %d + (%d - %d)/2 = %d (value = %d).", low, high, low, mid, arr[mid]), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: mid,
-		}, map[string]any{"low": low, "high": high, "mid": mid, "target": target, "midValue": arr[mid]})
-
+	finish := func() []trace.Step {
+		steps := b.Steps()
+		for i := range steps {
+			if steps[i].LineID == "L1" || steps[i].LineID == "L3" {
+				steps[i].HoldMS = 350
+			}
+			if i+1 < len(steps) && ((steps[i].LineID == "L7" && steps[i+1].LineID == "L8") || (steps[i].LineID == "L9" && steps[i+1].LineID == "L10") || (steps[i].LineID == "L5" && steps[i+1].LineID == "L6")) {
+				steps[i].HoldMS = 600
+				steps[i+1].HoldMS = 1200
+			}
+		}
+		return steps
+	}
+	add("L1", "init", trace.ActionInit, fmt.Sprintf("Search for %d in %d values. Input must be sorted.", target, len(arr)))
+	add("L2", "bounds", trace.ActionSet, fmt.Sprintf("Set inclusive bounds [%d, %d].", s.Low, s.High))
+	for s.Low <= s.High {
+		add("L3", "bounds", trace.ActionCompare, fmt.Sprintf("Bounds [%d, %d] are nonempty.", s.Low, s.High))
+		s.Mid = s.Low + (s.High-s.Low)/2
+		add("L4", "midpoint", trace.ActionHighlight, fmt.Sprintf("mid = %d + (%d - %d)/2 = %d; value %d.", s.Low, s.High, s.Low, s.Mid, arr[s.Mid]))
 		b.IncComparisons()
-		b.AddStep("L5", trace.ActionCompare, fmt.Sprintf("Compare arr[%d] (%d) with target (%d).", mid, arr[mid], target), renderers.ArrayState{
-			Values:    cloneSlice(arr),
-			Comparing: []int{mid},
-			Current:   mid,
-		}, map[string]any{"low": low, "high": high, "mid": mid, "target": target, "midValue": arr[mid]})
-
-		if arr[mid] == target {
-			b.AddStep("L6", trace.ActionDone, fmt.Sprintf("Target %d found at index %d! Return %d.", target, mid, mid), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Sorted:  []int{mid},
-				Current: mid,
-			}, map[string]any{"low": low, "high": high, "mid": mid, "target": target, "found": true, "result": mid})
-			return b.Steps()
+		add("L5", "compare", trace.ActionCompare, fmt.Sprintf("Compare value %d with target %d.", arr[s.Mid], target))
+		if arr[s.Mid] == target {
+			s.ResultKnown = true
+			s.Result = s.Mid
+			add("L6", "done", trace.ActionDone, fmt.Sprintf("Target %d found at index %d.", target, s.Result))
+			return finish()
 		}
-
-		if arr[mid] < target {
-			b.AddStep("L7", trace.ActionHighlight, fmt.Sprintf("arr[%d] (%d) < target (%d): target is in the right subarray.", mid, arr[mid], target), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: mid,
-			}, map[string]any{"low": low, "high": high, "mid": mid, "target": target})
-
-			low = mid + 1
-			b.AddStep("L8", trace.ActionSet, fmt.Sprintf("Update low = mid + 1 = %d. Discard left half.", low), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: -1,
-			}, map[string]any{"low": low, "high": high, "target": target})
+		s.PreviousLow = s.Low
+		s.PreviousHigh = s.High
+		if arr[s.Mid] < target {
+			add("L7", "compare", trace.ActionHighlight, fmt.Sprintf("%d < %d. Move low past midpoint; exclusion requires sorted input.", arr[s.Mid], target))
+			s.DiscardLow = s.Low
+			s.DiscardHigh = s.Mid
+			s.Low = s.Mid + 1
+			s.Mid = -1
+			add("L8", "discard", trace.ActionSet, fmt.Sprintf("low = %d; remove interval [%d, %d] from search.", s.Low, s.DiscardLow, s.DiscardHigh))
 		} else {
-			b.AddStep("L9", trace.ActionHighlight, fmt.Sprintf("arr[%d] (%d) > target (%d): target is in the left subarray.", mid, arr[mid], target), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: mid,
-			}, map[string]any{"low": low, "high": high, "mid": mid, "target": target})
-
-			high = mid - 1
-			b.AddStep("L10", trace.ActionSet, fmt.Sprintf("Update high = mid - 1 = %d. Discard right half.", high), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: -1,
-			}, map[string]any{"low": low, "high": high, "target": target})
+			add("L9", "compare", trace.ActionHighlight, fmt.Sprintf("%d > %d. Move high before midpoint; exclusion requires sorted input.", arr[s.Mid], target))
+			s.DiscardLow = s.Mid
+			s.DiscardHigh = s.High
+			s.High = s.Mid - 1
+			s.Mid = -1
+			add("L10", "discard", trace.ActionSet, fmt.Sprintf("high = %d; remove interval [%d, %d] from search.", s.High, s.DiscardLow, s.DiscardHigh))
 		}
+		s.DiscardLow = -1
+		s.DiscardHigh = -1
 	}
-
-	b.AddStep("L3", trace.ActionCompare, fmt.Sprintf("Check condition low (%d) <= high (%d): false. Search range exhausted.", low, high), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"low": low, "high": high, "target": target})
-
-	b.AddStep("L13", trace.ActionDone, fmt.Sprintf("Target %d not found in array. Return -1.", target), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"low": low, "high": high, "target": target, "found": false, "result": -1})
-
-	return b.Steps()
+	add("L3", "bounds", trace.ActionCompare, "low > high: empty interval.")
+	s.ResultKnown = true
+	add("L13", "done", trace.ActionDone, fmt.Sprintf("Search returns -1 for target %d.", target))
+	return finish()
 }
 
-func cloneSlice(s []int) []int {
-	if s == nil {
-		return []int{}
-	}
-	c := make([]int, len(s))
-	copy(c, s)
-	return c
-}
+func cloneSlice(s []int) []int { c := make([]int, len(s)); copy(c, s); return c }

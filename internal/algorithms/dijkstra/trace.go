@@ -9,25 +9,14 @@ import (
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-func cloneNodes(nodes []renderers.GraphNode) []renderers.GraphNode {
-	c := make([]renderers.GraphNode, len(nodes))
-	copy(c, nodes)
-	return c
-}
+// Same distance-only comparison as the native heap; serial records identity, not priority.
+type dijkstraTraceHeap []renderers.DijkstraQueueEntry
 
-func cloneEdges(edges []renderers.GraphEdge) []renderers.GraphEdge {
-	c := make([]renderers.GraphEdge, len(edges))
-	copy(c, edges)
-	return c
-}
-
-func cloneDist(dist map[string]int) map[string]int {
-	c := make(map[string]int, len(dist))
-	for k, v := range dist {
-		c[k] = v
-	}
-	return c
-}
+func (h dijkstraTraceHeap) Len() int           { return len(h) }
+func (h dijkstraTraceHeap) Less(i, j int) bool { return h[i].Distance < h[j].Distance }
+func (h dijkstraTraceHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *dijkstraTraceHeap) Push(x any)        { *h = append(*h, x.(renderers.DijkstraQueueEntry)) }
+func (h *dijkstraTraceHeap) Pop() any          { n := len(*h) - 1; x := (*h)[n]; *h = (*h)[:n]; return x }
 
 func findNodeIndex(nodes []renderers.GraphNode, id string) int {
 	for i, n := range nodes {
@@ -38,240 +27,185 @@ func findNodeIndex(nodes []renderers.GraphNode, id string) int {
 	return -1
 }
 
-func findEdgeIndex(edges []renderers.GraphEdge, u, v string) int {
-	for i, e := range edges {
-		if (e.From == u && e.To == v) || (e.From == v && e.To == u) {
-			return i
-		}
-	}
-	return -1
-}
-
-// Trace executes Dijkstra's algorithm and records each step for visualization.
+// Trace follows edge direction and stops when the target is settled.
 func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start, target string) []trace.Step {
 	b := trace.NewBuilder()
-	currNodes := cloneNodes(nodes)
-	currEdges := cloneEdges(edges)
-
-	dist := make(map[string]int, len(nodes))
-	prev := make(map[string]string, len(nodes))
+	s := renderers.DijkstraLessonState{GraphState: renderers.GraphState{Nodes: append([]renderers.GraphNode(nil), nodes...), Edges: append([]renderers.GraphEdge(nil), edges...)}, Start: start, Target: target, EdgeIndex: -1, PoppedSerial: -1, Distance: map[string]int{}, Previous: map[string]string{}, Settled: map[string]bool{}}
 	for _, n := range nodes {
-		dist[n.ID] = math.MaxInt
+		s.Distance[n.ID] = math.MaxInt
 	}
-
-	startIdx := findNodeIndex(currNodes, start)
-	if startIdx < 0 {
-		b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Start node %q not found in graph.", start), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist)})
-		b.AddStep("L17", trace.ActionDone, "Search terminated: invalid start node.", renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist)})
+	pq := &dijkstraTraceHeap{}
+	prevEdge := map[string]int{}
+	serial := 0
+	add := func(line string, action trace.ActionType, text string) {
+		c := s
+		c.Nodes = append([]renderers.GraphNode(nil), s.Nodes...)
+		c.Edges = append([]renderers.GraphEdge(nil), s.Edges...)
+		c.Distance = map[string]int{}
+		for k, v := range s.Distance {
+			c.Distance[k] = v
+		}
+		c.Previous = map[string]string{}
+		for k, v := range s.Previous {
+			c.Previous[k] = v
+		}
+		c.Settled = map[string]bool{}
+		for k, v := range s.Settled {
+			c.Settled[k] = v
+		}
+		c.Queue = append([]renderers.DijkstraQueueEntry(nil), (*pq)...)
+		c.Path = append([]string(nil), s.Path...)
+		vars := map[string]any{"distances": c.Distance, "current": s.Current, "target": target}
+		// Variables must not alias typed state, either.
+		d := map[string]int{}
+		for k, v := range c.Distance {
+			d[k] = v
+		}
+		vars["distances"] = d
+		if s.HasCandidate {
+			vars["alt"] = s.Candidate
+			vars["neighbor"] = s.Neighbor
+		}
+		if s.Found {
+			vars["path"] = append([]string(nil), s.Path...)
+			vars["totalDistance"] = s.Distance[target]
+		}
+		b.AddStep(line, action, text, c, vars)
+	}
+	if _, ok := s.Distance[start]; !ok {
+		s.InvalidStart = true
+		add("L1", trace.ActionInit, fmt.Sprintf("Start %q is absent.", start))
+		add("L17", trace.ActionDone, "Invalid start; no path.")
 		return b.Steps()
 	}
-
-	dist[start] = 0
-
-	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Initialize Dijkstra's Shortest Path from start node %s to target %s.", start, target), renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"current": "", "target": target, "distances": cloneDist(dist)})
-
-	b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Set initial distance to start node %s = 0, all other nodes = ∞.", start), renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"current": start, "target": target, "distances": cloneDist(dist)})
-
-	currNodes[startIdx].State = "queued"
+	add("L1", trace.ActionInit, "Initialize distances and predecessor ledger.")
+	s.Distance[start] = 0
+	add("L2", trace.ActionSet, fmt.Sprintf("Distance to %s = 0; others = ∞.", start))
+	heap.Push(pq, renderers.DijkstraQueueEntry{Node: start, Distance: 0, Serial: serial})
+	serial++
+	s.Nodes[findNodeIndex(s.Nodes, start)].State = "queued"
 	b.IncOperations()
-	b.AddStep("L4", trace.ActionPush, fmt.Sprintf("Push start node %s (distance 0) into priority queue.", start), renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"current": start, "target": target, "distances": cloneDist(dist)})
-
-	pq := &minHeap{}
-	heap.Init(pq)
-	heap.Push(pq, pqItem{node: start, dist: 0})
-
-	visited := make(map[string]bool, len(nodes))
-
+	add("L4", trace.ActionPush, "Push start into the minimum heap.")
 	for pq.Len() > 0 {
-		b.AddStep("L5", trace.ActionHighlight, "Priority queue is non-empty: selecting next candidate vertex.", renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist)})
-
-		item := heap.Pop(pq).(pqItem)
-		u := item.node
-		d := item.dist
+		s.Current = ""
+		s.Neighbor = ""
+		s.EdgeIndex = -1
+		s.HasCandidate = false
+		s.Improved = false
+		s.Stale = false
+		s.PoppedSerial = -1
+		add("L5", trace.ActionHighlight, "Heap is nonempty; extract its root.")
+		item := heap.Pop(pq).(renderers.DijkstraQueueEntry)
+		u := item.Node
+		s.Current = u
+		s.PoppedDistance = item.Distance
+		s.PoppedSerial = item.Serial
+		s.Stale = s.Settled[u]
 		b.IncOperations()
-
-		if visited[u] {
-			b.AddStep("L6", trace.ActionPop, fmt.Sprintf("Extracted vertex %s (distance %d). Node already visited, skipping outdated queue entry.", u, d), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"current": u, "distances": cloneDist(dist)})
+		if s.Stale {
+			add("L6", trace.ActionPop, fmt.Sprintf("Skip %s:%d: already settled.", u, item.Distance))
 			continue
 		}
-
-		uIdx := findNodeIndex(currNodes, u)
-		if uIdx >= 0 {
-			currNodes[uIdx].State = "visiting"
-		}
-
-		b.AddStep("L6", trace.ActionPop, fmt.Sprintf("Extracted vertex %s with minimum tentative distance %d from priority queue.", u, d), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"current": u, "distances": cloneDist(dist)})
-
+		s.Settled[u] = true
+		s.Nodes[findNodeIndex(s.Nodes, u)].State = "visiting"
+		add("L6", trace.ActionPop, fmt.Sprintf("Extract %s:%d; minimum distance is now final.", u, item.Distance))
 		b.IncComparisons()
-		b.AddStep("L7", trace.ActionCompare, fmt.Sprintf("Check if current vertex %s matches target %s.", u, target), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"current": u, "target": target, "distances": cloneDist(dist)})
-
+		add("L7", trace.ActionCompare, fmt.Sprintf("Check %s against target %s.", u, target))
 		if target != "" && u == target {
-			b.AddStep("L7", trace.ActionHighlight, fmt.Sprintf("Target vertex %s reached with shortest distance %d!", target, dist[target]), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"current": u, "target": target, "distances": cloneDist(dist)})
+			add("L7", trace.ActionHighlight, "Target settled; stop before exploring its neighbors.")
 			break
 		}
-
-		// Inspect all incident edges
-		for eIdx := range currEdges {
-			edge := currEdges[eIdx]
-			var v string
-			if edge.From == u {
-				v = edge.To
-			} else if edge.To == u {
-				v = edge.From
+		for i, e := range s.Edges {
+			v := ""
+			if e.From == u {
+				v = e.To
+			} else if !e.Directed && e.To == u {
+				v = e.From
 			} else {
 				continue
 			}
-
-			if visited[v] {
+			old, exists := s.Distance[v]
+			if !exists || s.Settled[v] {
 				continue
 			}
-
-			currEdges[eIdx].Active = true
-			b.AddStep("L8", trace.ActionVisit, fmt.Sprintf("Inspecting neighbor %s via edge (%s-%s, weight %d).", v, edge.From, edge.To, edge.Weight), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"current": u, "neighbor": v, "edgeWeight": edge.Weight, "distances": cloneDist(dist)})
-
-			alt := dist[u] + edge.Weight
-			b.AddStep("L9", trace.ActionSet, fmt.Sprintf("Calculate alternative distance to %s: dist[%s] (%d) + weight (%d) = %d.", v, u, dist[u], edge.Weight, alt), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"current": u, "neighbor": v, "alt": alt, "distances": cloneDist(dist)})
-
+			s.Neighbor = v
+			s.EdgeIndex = i
+			s.HasCandidate = false
+			s.Improved = false
+			s.Edges[i].Active = true
+			add("L8", trace.ActionVisit, fmt.Sprintf("Inspect %s to %s, weight %d.", u, v, e.Weight))
+			s.OldDistance = old
+			s.Candidate = s.Distance[u] + e.Weight
+			s.HasCandidate = true
+			add("L9", trace.ActionSet, fmt.Sprintf("Candidate = %d + %d = %d.", s.Distance[u], e.Weight, s.Candidate))
 			b.IncComparisons()
-			if alt < dist[v] {
-				oldDistStr := "∞"
-				if dist[v] != math.MaxInt {
-					oldDistStr = fmt.Sprintf("%d", dist[v])
-				}
-				b.AddStep("L10", trace.ActionCompare, fmt.Sprintf("Relaxation check: alt (%d) < dist[%s] (%s): condition holds.", alt, v, oldDistStr), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"current": u, "neighbor": v, "alt": alt, "relaxed": true, "distances": cloneDist(dist)})
-
-				dist[v] = alt
-				b.AddStep("L11", trace.ActionSet, fmt.Sprintf("Update shortest distance to %s = %d.", v, alt), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"current": u, "neighbor": v, "distances": cloneDist(dist)})
-
-				prev[v] = u
-				b.AddStep("L12", trace.ActionSet, fmt.Sprintf("Set predecessor of %s to %s.", v, u), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"current": u, "neighbor": v, "predecessor": u, "distances": cloneDist(dist)})
-
-				heap.Push(pq, pqItem{node: v, dist: alt})
+			s.Improved = s.Candidate < old
+			add("L10", trace.ActionCompare, fmt.Sprintf("Compare candidate %d with old distance %s.", s.Candidate, dijkstraDistance(old)))
+			if s.Improved {
+				s.Distance[v] = s.Candidate
+				add("L11", trace.ActionSet, fmt.Sprintf("Commit distance %s = %d.", v, s.Candidate))
+				s.Previous[v] = u
+				prevEdge[v] = i
+				add("L12", trace.ActionSet, fmt.Sprintf("Set predecessor of %s to %s.", v, u))
+				heap.Push(pq, renderers.DijkstraQueueEntry{Node: v, Distance: s.Candidate, Serial: serial})
+				serial++
+				s.Nodes[findNodeIndex(s.Nodes, v)].State = "queued"
 				b.IncOperations()
-
-				vIdx := findNodeIndex(currNodes, v)
-				if vIdx >= 0 && currNodes[vIdx].State != "visiting" && currNodes[vIdx].State != "visited" {
-					currNodes[vIdx].State = "queued"
-				}
-
-				b.AddStep("L13", trace.ActionPush, fmt.Sprintf("Push %s with updated distance %d into priority queue.", v, alt), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"current": u, "neighbor": v, "distances": cloneDist(dist)})
-			} else {
-				b.AddStep("L10", trace.ActionCompare, fmt.Sprintf("Relaxation check: alt (%d) >= dist[%s] (%d): existing distance is shorter or equal.", alt, v, dist[v]), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"current": u, "neighbor": v, "alt": alt, "relaxed": false, "distances": cloneDist(dist)})
+				add("L13", trace.ActionPush, fmt.Sprintf("Push %s:%d; keep older heap entries.", v, s.Candidate))
 			}
-
-			currEdges[eIdx].Active = false
+			s.Edges[i].Active = false
 		}
-
-		visited[u] = true
-		if uIdx >= 0 {
-			currNodes[uIdx].State = "visited"
-		}
-		b.AddStep("L15", trace.ActionHighlight, fmt.Sprintf("Finished exploring all neighbors for vertex %s. Node marked as visited.", u), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"current": u, "distances": cloneDist(dist)})
+		s.Nodes[findNodeIndex(s.Nodes, u)].State = "visited"
+		s.Neighbor = ""
+		s.EdgeIndex = -1
+		s.HasCandidate = false
+		add("L15", trace.ActionHighlight, fmt.Sprintf("Finished neighbors of %s.", u))
 	}
-
-	// Reconstruct path
-	var path []string
-	if target != "" && dist[target] != math.MaxInt {
-		curr := target
-		for curr != "" {
-			path = append([]string{curr}, path...)
-			if curr == start {
+	s.Neighbor = ""
+	s.EdgeIndex = -1
+	s.HasCandidate = false
+	s.Stale = false
+	if d, ok := s.Distance[target]; target != "" && ok && d != math.MaxInt {
+		for v := target; v != ""; v = s.Previous[v] {
+			s.Path = append([]string{v}, s.Path...)
+			if v == start {
 				break
 			}
-			curr = prev[curr]
 		}
+		s.Found = len(s.Path) > 0 && s.Path[0] == start
 	}
-
-	if len(path) > 0 && path[0] == start {
-		pathSet := make(map[string]bool, len(path))
-		for _, p := range path {
-			pathSet[p] = true
-		}
-		for i := range currNodes {
-			if pathSet[currNodes[i].ID] {
-				currNodes[i].State = "path"
+	if !s.Found {
+		s.Path = nil
+	}
+	for i := range s.Edges {
+		s.Edges[i].Active = false
+	}
+	if s.Found {
+		for _, v := range s.Path {
+			s.Nodes[findNodeIndex(s.Nodes, v)].State = "path"
+			if i, ok := prevEdge[v]; ok {
+				s.Edges[i].Active = true
 			}
 		}
-
-		for i := range currEdges {
-			currEdges[i].Active = false
-		}
-		for i := 0; i < len(path)-1; i++ {
-			eIdx := findEdgeIndex(currEdges, path[i], path[i+1])
-			if eIdx >= 0 {
-				currEdges[eIdx].Active = true
-			}
-		}
-
-		b.AddStep("L17", trace.ActionDone, fmt.Sprintf("Dijkstra completed! Shortest path from %s to %s is %v with total distance %d.", start, target, path, dist[target]), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist), "path": path, "target": target, "totalDistance": dist[target]})
+		add("L17", trace.ActionDone, fmt.Sprintf("Shortest path %v; cost %d.", s.Path, s.Distance[target]))
 	} else if target != "" {
-		b.AddStep("L17", trace.ActionDone, fmt.Sprintf("Dijkstra completed! Target %s is unreachable from %s.", target, start), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist), "path": []string{}})
+		add("L17", trace.ActionDone, "Target absent or unreachable; no path (∞).")
 	} else {
-		b.AddStep("L17", trace.ActionDone, fmt.Sprintf("Dijkstra completed! Computed shortest distances from %s to all reachable nodes.", start), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist)})
+		add("L17", trace.ActionDone, "All reachable distances settled.")
 	}
+	steps := b.Steps()
+	for i := 0; i+1 < len(steps); i++ {
+		if steps[i].LineID == "L10" && steps[i+1].LineID == "L11" {
+			steps[i].HoldMS = 600
+			steps[i+1].HoldMS = 1200
+		}
+	}
+	return steps
+}
 
-	return b.Steps()
+func dijkstraDistance(d int) string {
+	if d == math.MaxInt {
+		return "∞"
+	}
+	return fmt.Sprint(d)
 }

@@ -84,7 +84,7 @@ func TestHanoiTraceValidation(t *testing.T) {
 
 	// Verify all steps produce valid renderers.HanoiState
 	for i, step := range steps {
-		state, ok := step.State.(renderers.HanoiState)
+		state, ok := step.State.(renderers.HanoiTowerLessonState)
 		if !ok {
 			t.Fatalf("step %d state is not renderers.HanoiState: %T", i, step.State)
 		}
@@ -116,7 +116,7 @@ func TestHanoiCustomInput(t *testing.T) {
 	if err := catalog.ValidateSourceLineIDs(lesson, steps4); err != nil {
 		t.Fatalf("source line validation failed for n=4: %v", err)
 	}
-	lastState4 := steps4[len(steps4)-1].State.(renderers.HanoiState)
+	lastState4 := steps4[len(steps4)-1].State.(renderers.HanoiTowerLessonState)
 	if len(lastState4.Pegs[2]) != 4 {
 		t.Fatalf("peg 2 disks = %d, want 4", len(lastState4.Pegs[2]))
 	}
@@ -127,20 +127,16 @@ func TestHanoiCustomInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build failed for object input: %v", err)
 	}
-	lastState5 := steps5[len(steps5)-1].State.(renderers.HanoiState)
+	lastState5 := steps5[len(steps5)-1].State.(renderers.HanoiTowerLessonState)
 	if len(lastState5.Pegs[2]) != 5 {
 		t.Fatalf("peg 2 disks = %d, want 5", len(lastState5.Pegs[2]))
 	}
 
-	// Test out of range fallback to 3
+	// Explicit out-of-range lesson input must fail before trace allocation.
 	inputInvalid := []byte(`{"disks": 10}`)
-	stepsDefault, err := lesson.Build(inputInvalid)
-	if err != nil {
-		t.Fatalf("Build failed for invalid input: %v", err)
-	}
-	lastStateDef := stepsDefault[len(stepsDefault)-1].State.(renderers.HanoiState)
-	if len(lastStateDef.Pegs[2]) != 3 {
-		t.Fatalf("peg 2 disks = %d, want default 3", len(lastStateDef.Pegs[2]))
+	_, err = lesson.Build(inputInvalid)
+	if err == nil {
+		t.Fatal("Build accepted invalid disk count")
 	}
 }
 

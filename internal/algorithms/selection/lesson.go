@@ -1,7 +1,9 @@
 package selection
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -45,10 +47,26 @@ func (l Lesson) Source() []trace.SourceLine {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{64, 25, 12, 22, 11}
-	if len(input) > 0 {
-		var custom []int
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
-			arr = custom
+	if input != nil {
+		if bytes.Contains(input, []byte("null")) {
+			return nil, fmt.Errorf("selection input must contain integers, not null")
+		}
+		var custom []*int
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("selection input must be an array of integers: %w", err)
+		}
+		if len(custom) == 0 || len(custom) > 64 {
+			return nil, fmt.Errorf("selection input must contain 1–64 integers")
+		}
+		arr = make([]int, len(custom))
+		for i, value := range custom {
+			if value == nil {
+				return nil, fmt.Errorf("selection input must contain integers, not null")
+			}
+			if *value < -1000000 || *value > 1000000 {
+				return nil, fmt.Errorf("selection values must be between -1000000 and 1000000")
+			}
+			arr[i] = *value
 		}
 	}
 	return Trace(arr), nil

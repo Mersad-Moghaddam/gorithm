@@ -1,17 +1,15 @@
 package nqueens
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 )
 
 type Lesson struct{}
-
-type lessonInput struct {
-	N int `json:"n"`
-}
 
 func (l Lesson) Meta() catalog.Meta {
 	return catalog.Meta{
@@ -39,7 +37,7 @@ func (l Lesson) Meta() catalog.Meta {
 func (l Lesson) Source() []trace.SourceLine {
 	return []trace.SourceLine{
 		{ID: "L1", Number: 1, Code: "func solveNQueens(n int) [][]int {"},
-		{ID: "L2", Number: 2, Code: "    board := make([]int, n)"},
+		{ID: "L2", Number: 2, Code: "    board := make([]int, n); for i := range board { board[i] = -1 }"},
 		{ID: "L3", Number: 3, Code: "    backtrack(0, board, n)"},
 		{ID: "L4", Number: 4, Code: "}"},
 		{ID: "L5", Number: 5, Code: "func backtrack(row int, board []int, n int) {"},
@@ -68,19 +66,28 @@ func (l Lesson) Source() []trace.SourceLine {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	n := 4
-	if len(input) > 0 {
-		var in lessonInput
-		if err := json.Unmarshal(input, &in); err == nil && in.N > 0 {
-			n = in.N
-		} else {
-			var num int
-			if err := json.Unmarshal(input, &num); err == nil && num > 0 {
-				n = num
+	if len(bytes.TrimSpace(input)) > 0 {
+		raw := bytes.TrimSpace(input)
+		if raw[0] == '{' {
+			var object map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &object); err != nil {
+				return nil, fmt.Errorf("invalid N-Queens input: %w", err)
+			}
+			if value, ok := object["n"]; ok {
+				raw = bytes.TrimSpace(value)
+			} else {
+				return Trace(n), nil
 			}
 		}
-	}
-	if n > 8 {
-		n = 8
+		if bytes.Equal(raw, []byte("null")) {
+			return nil, fmt.Errorf("n must be an integer in [1,8]")
+		}
+		if err := json.Unmarshal(raw, &n); err != nil {
+			return nil, fmt.Errorf("n must be an integer in [1,8]: %w", err)
+		}
+		if n < 1 || n > 8 {
+			return nil, fmt.Errorf("n must be in [1,8]")
+		}
 	}
 	return Trace(n), nil
 }

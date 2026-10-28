@@ -189,9 +189,9 @@ func TestSudokuTraceValidation(t *testing.T) {
 
 	var foundCandidateVar bool
 	for i, step := range steps {
-		tableState, ok := step.State.(renderers.TableState)
+		tableState, ok := step.State.(renderers.SudokuLessonState)
 		if !ok {
-			t.Fatalf("step %d state is not renderers.TableState: %T", i, step.State)
+			t.Fatalf("step %d state is not renderers.SudokuLessonState: %T", i, step.State)
 		}
 		if len(tableState.RowHeaders) != 9 || len(tableState.ColHeaders) != 9 {
 			t.Fatalf("step %d table dimensions mismatch: %d rows, %d cols", i, len(tableState.RowHeaders), len(tableState.ColHeaders))

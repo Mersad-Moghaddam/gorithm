@@ -1,7 +1,10 @@
 package lcs
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -72,23 +75,64 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	s1 := "AGGTAB"
 	s2 := "GXTXAYB"
 
+	input = bytes.TrimSpace(input)
 	if len(input) > 0 {
+		if !utf8.Valid(input) || !json.Valid(input) || bytes.Equal(input, []byte("null")) {
+			return nil, fmt.Errorf("LCS input must be a JSON object or string array")
+		}
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if custom.S1 != "" || custom.S2 != "" {
+		if input[0] == '{' {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(input, &fields); err != nil {
+				return nil, err
+			}
+			for _, key := range []string{"s1", "s2", "text", "pattern"} {
+				if raw, ok := fields[key]; ok {
+					var value string
+					if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+						return nil, fmt.Errorf("%s must be a string", key)
+					}
+					if err := json.Unmarshal(raw, &value); err != nil {
+						return nil, fmt.Errorf("%s must be a string", key)
+					}
+					if len(value) > 32 {
+						return nil, fmt.Errorf("%s must be at most 32 bytes", key)
+					}
+				}
+			}
+			if err := json.Unmarshal(input, &custom); err != nil {
+				return nil, err
+			}
+			_, hasS1 := fields["s1"]
+			_, hasS2 := fields["s2"]
+			_, hasText := fields["text"]
+			_, hasPattern := fields["pattern"]
+			if custom.S1 != "" || custom.S2 != "" || ((hasS1 || hasS2) && custom.Text == "" && custom.Pattern == "") {
 				s1 = custom.S1
 				s2 = custom.S2
-			} else if custom.Text != "" || custom.Pattern != "" {
+			} else if hasText || hasPattern {
 				s1 = custom.Text
 				s2 = custom.Pattern
 			}
 		} else {
 			var sliceInput []string
-			if err := json.Unmarshal(input, &sliceInput); err == nil && len(sliceInput) >= 2 {
-				s1 = sliceInput[0]
-				s2 = sliceInput[1]
+			var entries []json.RawMessage
+			if err := json.Unmarshal(input, &entries); err != nil || len(entries) < 2 {
+				return nil, fmt.Errorf("LCS requires at least two strings")
 			}
+			for _, entry := range entries {
+				if bytes.Equal(bytes.TrimSpace(entry), []byte("null")) {
+					return nil, fmt.Errorf("LCS array entries must be strings")
+				}
+			}
+			if err := json.Unmarshal(input, &sliceInput); err != nil {
+				return nil, err
+			}
+			s1, s2 = sliceInput[0], sliceInput[1]
 		}
+	}
+	if len(s1) > 32 || len(s2) > 32 {
+		return nil, fmt.Errorf("LCS strings must be at most 32 bytes each")
 	}
 
 	return Trace(s1, s2), nil

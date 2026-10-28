@@ -8,29 +8,23 @@ import (
 )
 
 type Operation struct {
-	Type  string `json:"type"` // "insert", "search", "delete"
+	Type  string `json:"type"`
 	Value int    `json:"value"`
 }
 
 type tracer struct {
 	b         *trace.Builder
+	root      *Node
 	nodeIDs   map[*Node]string
 	nodeIDSeq int
-	root      *Node
-}
-
-func newTracer() *tracer {
-	return &tracer{
-		b:       trace.NewBuilder(),
-		nodeIDs: make(map[*Node]string),
-	}
+	s         renderers.BSTLessonState
 }
 
 func (tr *tracer) idFor(n *Node) string {
 	if n == nil {
 		return ""
 	}
-	if id, ok := tr.nodeIDs[n]; ok {
+	if id := tr.nodeIDs[n]; id != "" {
 		return id
 	}
 	tr.nodeIDSeq++
@@ -39,297 +33,215 @@ func (tr *tracer) idFor(n *Node) string {
 	return id
 }
 
-func (tr *tracer) treeState(states map[*Node]string) renderers.TreeState {
-	if tr.root == nil {
-		return renderers.TreeState{Nodes: []renderers.TreeNode{}}
-	}
-
-	var nodes []renderers.TreeNode
-	var layout func(n *Node, x, y, dx float64, parentID string)
-	layout = func(n *Node, x, y, dx float64, parentID string) {
+func (tr *tracer) emit(line, phase string, action trace.ActionType, explanation string) {
+	s := tr.s
+	s.Phase = phase
+	s.Nodes = nil
+	s.LeftIDs = nil
+	s.RightIDs = nil
+	s.PathIDs = append([]string(nil), tr.s.PathIDs...)
+	var walk func(*Node, string, int)
+	walk = func(n *Node, parent string, depth int) {
 		if n == nil {
 			return
 		}
 		id := tr.idFor(n)
-		st := "normal"
-		if states != nil {
-			if s, ok := states[n]; ok {
-				st = s
-			}
+		state := "normal"
+		if id == s.ActiveID {
+			state = "active"
 		}
-		nodes = append(nodes, renderers.TreeNode{
-			ID:       id,
-			Val:      n.Val,
-			X:        x,
-			Y:        y,
-			ParentID: parentID,
-			State:    st,
-		})
-
-		nextDx := dx / 2
-		if nextDx < 16 {
-			nextDx = 16
+		if id == s.ActiveID && (phase == "done" || phase == "duplicate") && s.Found {
+			state = "matched"
 		}
-
-		if n.Left != nil {
-			lx := x - dx
-			if lx < 30 {
-				lx = 30
-			}
-			layout(n.Left, lx, y+70, nextDx, id)
+		if id == s.ActiveID && phase == "insert" {
+			state = "inserted"
 		}
-		if n.Right != nil {
-			rx := x + dx
-			if rx > 770 {
-				rx = 770
-			}
-			layout(n.Right, rx, y+70, nextDx, id)
+		if id == s.ActiveID && phase == "successor" {
+			state = "deleted"
 		}
+		s.Nodes = append(s.Nodes, renderers.TreeNode{ID: id, Val: n.Val, ParentID: parent, State: state, Y: 88 + 76*float64(depth)})
+		s.LeftIDs = append(s.LeftIDs, tr.idFor(n.Left))
+		s.RightIDs = append(s.RightIDs, tr.idFor(n.Right))
+		walk(n.Left, id, depth+1)
+		walk(n.Right, id, depth+1)
 	}
+	walk(tr.root, "", 0)
+	// In-order slots use topology, including temporary equal-valued successor copies.
+	byID := make(map[string]int, len(s.Nodes))
+	for i, n := range s.Nodes {
+		byID[n.ID] = i
+	}
+	w := 800
+	if x := renderers.BSTNodeSpacing * (len(s.Nodes) + 1); x > w {
+		w = x
+	}
+	rank := 0
+	var place func(string)
+	place = func(id string) {
+		if id == "" {
+			return
+		}
+		i := byID[id]
+		place(s.LeftIDs[i])
+		s.Nodes[i].X = float64(renderers.BSTNodeSpacing*(rank+1) + (w-renderers.BSTNodeSpacing*(len(s.Nodes)+1))/2)
+		rank++
+		place(s.RightIDs[i])
+	}
+	if tr.root != nil {
+		place(tr.idFor(tr.root))
+	}
+	tr.b.AddStep(line, action, explanation, s, map[string]any{"op": s.Operation, "target": s.Target, "found": s.Found, "resultKnown": s.ResultKnown})
+}
 
-	layout(tr.root, 400, 60, 180, "")
-	return renderers.TreeState{Nodes: nodes}
+func (tr *tracer) begin(op string, val int, line string) {
+	tr.s = renderers.BSTLessonState{Operation: op, Target: val}
+	tr.emit(line, "init", trace.ActionInit, fmt.Sprintf("Begin %s(%d).", op, val))
+}
+
+func (tr *tracer) visit(n *Node, line string) {
+	tr.s.ActiveID = tr.idFor(n)
+	tr.s.PathIDs = append(tr.s.PathIDs, tr.s.ActiveID)
+	tr.b.IncComparisons()
+	tr.emit(line, "compare", trace.ActionCompare, fmt.Sprintf("Compare target %d with node %d.", tr.s.Target, n.Val))
+}
+
+func (tr *tracer) descend(n *Node, left bool, line string) {
+	tr.s.ParentID = tr.idFor(n)
+	tr.b.IncComparisons()
+	side := "right"
+	if left {
+		side = "left"
+	}
+	tr.emit(line, "descend", trace.ActionCompare, fmt.Sprintf("Target %d: take %s child of %d.", tr.s.Target, side, n.Val))
 }
 
 func (tr *tracer) traceInsert(val int) {
-	tr.b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Begin Insert(%d).", val),
-		tr.treeState(nil),
-		map[string]any{"val": val, "op": "insert"})
-
-	if tr.root == nil {
-		tr.b.IncComparisons()
-		newNode := &Node{Val: val}
-		tr.root = newNode
-		tr.b.IncOperations()
-		tr.b.AddStep("L5", trace.ActionPush, fmt.Sprintf("Tree empty. Insert %d as root node.", val),
-			tr.treeState(map[*Node]string{newNode: "inserted"}),
-			map[string]any{"val": val})
-		tr.b.AddStep("L8", trace.ActionDone, fmt.Sprintf("Node %d is now root.", val),
-			tr.treeState(nil),
-			map[string]any{"val": val})
-		return
-	}
-
-	curr := tr.root
-	for {
-		tr.b.IncComparisons()
-		tr.b.AddStep("L4", trace.ActionCompare, fmt.Sprintf("Inspect node %d for inserting %d.", curr.Val, val),
-			tr.treeState(map[*Node]string{curr: "active"}),
-			map[string]any{"val": val, "curr": curr.Val})
-
-		if val < curr.Val {
-			tr.b.IncComparisons()
-			tr.b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("%d < %d: traverse left.", val, curr.Val),
-				tr.treeState(map[*Node]string{curr: "active"}),
-				map[string]any{"val": val, "curr": curr.Val})
-
-			if curr.Left == nil {
-				newNode := &Node{Val: val}
-				curr.Left = newNode
-				tr.b.IncOperations()
-				tr.b.AddStep("L5", trace.ActionPush, fmt.Sprintf("Left child is nil. Insert %d as left child of %d.", val, curr.Val),
-					tr.treeState(map[*Node]string{newNode: "inserted"}),
-					map[string]any{"val": val, "parent": curr.Val})
-				tr.b.AddStep("L8", trace.ActionDone, fmt.Sprintf("Node %d successfully inserted.", val),
-					tr.treeState(nil),
-					map[string]any{"val": val})
-				return
-			}
-			curr = curr.Left
-		} else if val > curr.Val {
-			tr.b.IncComparisons()
-			tr.b.AddStep("L7", trace.ActionCompare, fmt.Sprintf("%d > %d: traverse right.", val, curr.Val),
-				tr.treeState(map[*Node]string{curr: "active"}),
-				map[string]any{"val": val, "curr": curr.Val})
-
-			if curr.Right == nil {
-				newNode := &Node{Val: val}
-				curr.Right = newNode
-				tr.b.IncOperations()
-				tr.b.AddStep("L5", trace.ActionPush, fmt.Sprintf("Right child is nil. Insert %d as right child of %d.", val, curr.Val),
-					tr.treeState(map[*Node]string{newNode: "inserted"}),
-					map[string]any{"val": val, "parent": curr.Val})
-				tr.b.AddStep("L8", trace.ActionDone, fmt.Sprintf("Node %d successfully inserted.", val),
-					tr.treeState(nil),
-					map[string]any{"val": val})
-				return
-			}
-			curr = curr.Right
-		} else {
-			tr.b.AddStep("L8", trace.ActionDone, fmt.Sprintf("Value %d already exists in BST (duplicates ignored).", val),
-				tr.treeState(map[*Node]string{curr: "matched"}),
-				map[string]any{"val": val})
-			tr.b.AddStep("L8", trace.ActionDone, "Tree unchanged.",
-				tr.treeState(nil),
-				map[string]any{"val": val})
+	tr.begin("insert", val, "L1")
+	link := &tr.root
+	for *link != nil {
+		n := *link
+		tr.visit(n, "L4")
+		if val == n.Val {
+			tr.s.Found = true
+			tr.s.ResultKnown = true
+			tr.emit("L8", "duplicate", trace.ActionDone, fmt.Sprintf("%d already exists; tree unchanged.", val))
 			return
 		}
+		if val < n.Val {
+			tr.descend(n, true, "L6")
+			link = &n.Left
+		} else {
+			tr.descend(n, false, "L7")
+			link = &n.Right
+		}
 	}
+	if tr.root == nil {
+		tr.b.IncComparisons()
+	}
+	n := &Node{Val: val}
+	*link = n
+	tr.s.ActiveID = tr.idFor(n)
+	tr.b.IncOperations()
+	tr.s.Found = true
+	tr.s.ResultKnown = true
+	tr.emit("L5", "insert", trace.ActionPush, fmt.Sprintf("Insert %d at nil child; new node identity.", val))
+	tr.emit("L8", "done", trace.ActionDone, fmt.Sprintf("Insert %d complete.", val))
 }
 
 func (tr *tracer) traceSearch(val int) {
-	tr.b.AddStep("L10", trace.ActionInit, fmt.Sprintf("Begin Search(%d).", val),
-		tr.treeState(nil),
-		map[string]any{"val": val, "op": "search"})
-
-	curr := tr.root
-	for curr != nil {
-		tr.b.IncComparisons()
-		tr.b.AddStep("L13", trace.ActionCompare, fmt.Sprintf("Compare target %d with node %d.", val, curr.Val),
-			tr.treeState(map[*Node]string{curr: "active"}),
-			map[string]any{"val": val, "curr": curr.Val})
-
-		if val == curr.Val {
+	tr.begin("search", val, "L10")
+	n := tr.root
+	for n != nil {
+		tr.visit(n, "L13")
+		if val == n.Val {
 			tr.b.IncComparisons()
-			tr.b.AddStep("L15", trace.ActionDone, fmt.Sprintf("Target %d matched at node %d!", val, curr.Val),
-				tr.treeState(map[*Node]string{curr: "matched"}),
-				map[string]any{"val": val, "found": true})
-			tr.b.AddStep("L15", trace.ActionDone, fmt.Sprintf("Search complete: %d is present.", val),
-				tr.treeState(nil),
-				map[string]any{"val": val, "found": true})
+			tr.s.Found = true
+			tr.s.ResultKnown = true
+			tr.emit("L15", "done", trace.ActionDone, fmt.Sprintf("Found %d.", val))
 			return
-		} else if val < curr.Val {
-			tr.b.IncComparisons()
-			tr.b.AddStep("L16", trace.ActionCompare, fmt.Sprintf("%d < %d: search left subtree.", val, curr.Val),
-				tr.treeState(map[*Node]string{curr: "active"}),
-				map[string]any{"val": val, "curr": curr.Val})
-			curr = curr.Left
+		}
+		if val < n.Val {
+			tr.descend(n, true, "L16")
+			n = n.Left
 		} else {
-			tr.b.IncComparisons()
-			tr.b.AddStep("L17", trace.ActionCompare, fmt.Sprintf("%d > %d: search right subtree.", val, curr.Val),
-				tr.treeState(map[*Node]string{curr: "active"}),
-				map[string]any{"val": val, "curr": curr.Val})
-			curr = curr.Right
+			tr.descend(n, false, "L17")
+			n = n.Right
 		}
 	}
-
-	tr.b.AddStep("L14", trace.ActionDone, fmt.Sprintf("Target %d not found in BST (reached nil).", val),
-		tr.treeState(nil),
-		map[string]any{"val": val, "found": false})
+	tr.s.ActiveID = ""
+	tr.s.ResultKnown = true
+	tr.emit("L14", "done", trace.ActionDone, fmt.Sprintf("%d not found: reached nil.", val))
 }
 
-func (tr *tracer) traceDelete(val int) {
-	tr.b.AddStep("L19", trace.ActionInit, fmt.Sprintf("Begin Delete(%d).", val),
-		tr.treeState(nil),
-		map[string]any{"val": val, "op": "delete"})
-
-	tr.root = tr.deleteHelper(tr.root, val)
-	tr.b.AddStep("L33", trace.ActionDone, fmt.Sprintf("Delete(%d) finished. BST invariant holds.", val),
-		tr.treeState(nil),
-		map[string]any{"val": val})
-}
-
-func (tr *tracer) deleteHelper(node *Node, val int) *Node {
-	if node == nil {
-		tr.b.AddStep("L23", trace.ActionDone, fmt.Sprintf("Node %d not found in tree.", val),
-			tr.treeState(nil),
-			map[string]any{"val": val})
-		return nil
+// deleteLink commits the owning link before recording a removal snapshot.
+func (tr *tracer) deleteLink(link **Node, val int) {
+	n := *link
+	if n == nil {
+		tr.s.ActiveID = ""
+		tr.s.ResultKnown = true
+		tr.emit("L23", "done", trace.ActionDone, fmt.Sprintf("%d absent: reached nil.", val))
+		return
 	}
-
-	tr.b.IncComparisons()
-	tr.b.AddStep("L22", trace.ActionCompare, fmt.Sprintf("Inspect node %d for deletion.", node.Val),
-		tr.treeState(map[*Node]string{node: "active"}),
-		map[string]any{"val": val, "curr": node.Val})
-
-	if val < node.Val {
-		tr.b.IncComparisons()
-		tr.b.AddStep("L24", trace.ActionCompare, fmt.Sprintf("%d < %d: descend left.", val, node.Val),
-			tr.treeState(map[*Node]string{node: "active"}),
-			map[string]any{"val": val, "curr": node.Val})
-		node.Left = tr.deleteHelper(node.Left, val)
-		return node
-	} else if val > node.Val {
-		tr.b.IncComparisons()
-		tr.b.AddStep("L25", trace.ActionCompare, fmt.Sprintf("%d > %d: descend right.", val, node.Val),
-			tr.treeState(map[*Node]string{node: "active"}),
-			map[string]any{"val": val, "curr": node.Val})
-		node.Right = tr.deleteHelper(node.Right, val)
-		return node
+	tr.visit(n, "L22")
+	if val < n.Val {
+		tr.descend(n, true, "L24")
+		tr.deleteLink(&n.Left, val)
+		return
 	}
-
-	// Found node to delete
-	tr.b.AddStep("L26", trace.ActionCompare, fmt.Sprintf("Found target node %d to delete.", node.Val),
-		tr.treeState(map[*Node]string{node: "deleted"}),
-		map[string]any{"val": val})
-
-	if node.Left == nil {
+	if val > n.Val {
+		tr.descend(n, false, "L25")
+		tr.deleteLink(&n.Right, val)
+		return
+	}
+	tr.s.Found = true
+	tr.s.ResultKnown = true
+	tr.emit("L26", "compare", trace.ActionCompare, fmt.Sprintf("Found node %d to delete.", val))
+	if n.Left == nil || n.Right == nil {
+		replacement := n.Right
+		line := "L27"
+		if n.Left != nil {
+			replacement = n.Left
+			line = "L28"
+		}
+		tr.s.RemovedID = tr.idFor(n)
+		tr.s.ReplacementID = tr.idFor(replacement)
+		*link = replacement
+		tr.s.ActiveID = tr.idFor(replacement)
 		tr.b.IncOperations()
-		tr.b.AddStep("L27", trace.ActionPop, fmt.Sprintf("Node %d has no left child. Replace with right child.", node.Val),
-			tr.treeState(map[*Node]string{node: "deleted"}),
-			map[string]any{"val": node.Val})
-		return node.Right
+		tr.emit(line, "remove", trace.ActionPop, fmt.Sprintf("Remove %d; reconnect parent to replacement (or nil).", val))
+		return
 	}
-	if node.Right == nil {
-		tr.b.IncOperations()
-		tr.b.AddStep("L28", trace.ActionPop, fmt.Sprintf("Node %d has no right child. Replace with left child.", node.Val),
-			tr.treeState(map[*Node]string{node: "deleted"}),
-			map[string]any{"val": node.Val})
-		return node.Left
-	}
-
-	// Node with two children
-	tr.b.AddStep("L29", trace.ActionVisit, fmt.Sprintf("Node %d has two children. Find in-order successor in right subtree.", node.Val),
-		tr.treeState(map[*Node]string{node: "deleted"}),
-		map[string]any{"val": node.Val})
-
-	minN := node.Right
-	for minN.Left != nil {
+	min := n.Right
+	for {
+		tr.s.ActiveID = tr.idFor(n)
+		tr.s.SuccessorID = tr.idFor(min)
+		tr.emit("L29", "successor", trace.ActionVisit, fmt.Sprintf("Inspect %d for minimum in right subtree.", min.Val))
+		if min.Left == nil {
+			break
+		}
 		tr.b.IncComparisons()
-		tr.b.AddStep("L29", trace.ActionVisit, fmt.Sprintf("Traverse right subtree to find minimum: visiting %d.", minN.Val),
-			tr.treeState(map[*Node]string{node: "deleted", minN: "active"}),
-			map[string]any{"val": node.Val, "min": minN.Val})
-		minN = minN.Left
+		min = min.Left
 	}
-
-	minVal := minN.Val
-	tr.b.AddStep("L29", trace.ActionVisit, fmt.Sprintf("In-order successor is %d.", minVal),
-		tr.treeState(map[*Node]string{node: "deleted", minN: "matched"}),
-		map[string]any{"val": node.Val, "successor": minVal})
-
+	tr.s.OldValue = n.Val
+	tr.s.HasOldValue = true
+	n.Val = min.Val
 	tr.b.IncSwaps()
-	node.Val = minVal
-	tr.b.AddStep("L30", trace.ActionSwap, fmt.Sprintf("Copy successor value %d into target node.", minVal),
-		tr.treeState(map[*Node]string{node: "active", minN: "deleted"}),
-		map[string]any{"newVal": minVal})
-
-	tr.b.AddStep("L31", trace.ActionCompare, fmt.Sprintf("Delete successor %d from right subtree.", minVal),
-		tr.treeState(map[*Node]string{node: "active", minN: "deleted"}),
-		map[string]any{"succ": minVal})
-	node.Right = tr.deleteHelper(node.Right, minVal)
-
-	return node
+	tr.emit("L30", "copy", trace.ActionSwap, fmt.Sprintf("Copy %d into target; keep target identity. Successor still exists.", min.Val))
+	tr.emit("L31", "descend", trace.ActionCompare, fmt.Sprintf("Delete original successor %d from right subtree.", min.Val))
+	tr.deleteLink(&n.Right, min.Val)
 }
 
-// Trace executes BST operations and produces execution steps.
-// ponytail: pointer tree with recursive descent; iterative traversal eliminates call stack overhead for depth > 1000.
+// Trace preserves direct empty-input defaults and ignores unknown operations.
 func Trace(initial []int, ops []Operation) []trace.Step {
-	tr := newTracer()
-
+	tr := &tracer{b: trace.NewBuilder(), nodeIDs: make(map[*Node]string)}
 	if len(initial) == 0 && len(ops) == 0 {
 		initial = []int{50, 30, 70, 20, 40, 60, 80}
-		ops = []Operation{
-			{Type: "insert", Value: 35},
-			{Type: "search", Value: 40},
-			{Type: "delete", Value: 30},
-		}
+		ops = []Operation{{"insert", 35}, {"search", 40}, {"delete", 30}}
 	}
-
 	for _, v := range initial {
 		tr.root = insert(tr.root, v)
 	}
-
-	var initExpl string
-	if len(initial) > 0 {
-		initExpl = fmt.Sprintf("Binary Search Tree initialized with %v.", initial)
-	} else {
-		initExpl = "Binary Search Tree initialized (empty)."
-	}
-
-	tr.b.AddStep("L1", trace.ActionInit, initExpl,
-		tr.treeState(nil),
-		map[string]any{"initial": initial})
-
+	tr.emit("L1", "init", trace.ActionInit, fmt.Sprintf("Initial tree prebuilt from %v; initialization inserts are not traced.", initial))
 	for _, op := range ops {
 		switch op.Type {
 		case "insert":
@@ -337,9 +249,18 @@ func Trace(initial []int, ops []Operation) []trace.Step {
 		case "search":
 			tr.traceSearch(op.Value)
 		case "delete":
-			tr.traceDelete(op.Value)
+			tr.begin("delete", op.Value, "L19")
+			tr.deleteLink(&tr.root, op.Value)
+			tr.emit("L33", "done", trace.ActionDone, fmt.Sprintf("Delete(%d) complete; links committed.", op.Value))
 		}
 	}
-
-	return tr.b.Steps()
+	steps := tr.b.Steps()
+	for i := 1; i < len(steps); i++ {
+		phase := steps[i].State.(renderers.BSTLessonState).Phase
+		if phase == "copy" || phase == "insert" || phase == "remove" {
+			steps[i-1].HoldMS = 600
+			steps[i].HoldMS = 1200
+		}
+	}
+	return steps
 }

@@ -2,6 +2,7 @@ package dijkstra
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -78,13 +79,26 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	target := "E"
 
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if custom.Start != "" {
-				start = custom.Start
-			}
-			if custom.Target != "" {
-				target = custom.Target
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		if fields == nil {
+			return nil, fmt.Errorf("input must be an object")
+		}
+		for key, dst := range map[string]*string{"start": &start, "target": &target} {
+			if raw, ok := fields[key]; ok {
+				var value *string
+				if err := json.Unmarshal(raw, &value); err != nil || value == nil {
+					return nil, fmt.Errorf("%s must be a string", key)
+				}
+				if *value == "" {
+					continue
+				} // Preserve existing omitted/empty defaults.
+				if findNodeIndex(nodes, *value) < 0 {
+					return nil, fmt.Errorf("%s must name an existing node", key)
+				}
+				*dst = *value
 			}
 		}
 	}

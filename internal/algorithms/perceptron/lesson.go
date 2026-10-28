@@ -1,10 +1,13 @@
 package perceptron
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
+	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
 type Lesson struct{}
@@ -74,23 +77,32 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	lr := 0.1
 	epochs := 10
 
-	if len(input) > 0 {
-		var payload PerceptronInput
-		if err := json.Unmarshal(input, &payload); err == nil {
-			if len(payload.Inputs) > 0 && len(payload.Labels) == len(payload.Inputs) {
-				inputs = payload.Inputs
-				labels = payload.Labels
-			}
-			if payload.LR > 0 {
-				lr = payload.LR
-			}
-			if payload.Epochs > 0 {
-				epochs = payload.Epochs
+	payload := PerceptronInput{Inputs: inputs, Labels: labels, LR: lr, Epochs: epochs}
+	if len(bytes.TrimSpace(input)) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		if fields == nil {
+			return nil, fmt.Errorf("perceptron input must be an object")
+		}
+		for name, value := range fields {
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return nil, fmt.Errorf("%s cannot be null", name)
 			}
 		}
+		if err := json.Unmarshal(input, &payload); err != nil {
+			return nil, err
+		}
 	}
-
-	return Trace(inputs, labels, lr, epochs), nil
+	if err := validateLessonInput(payload.Inputs, payload.Labels, payload.LR, payload.Epochs); err != nil {
+		return nil, err
+	}
+	steps := Trace(payload.Inputs, payload.Labels, payload.LR, payload.Epochs)
+	if steps[len(steps)-1].State.(renderers.PerceptronLessonState).StopReason == "numerical-error" {
+		return nil, fmt.Errorf("perceptron arithmetic overflow; use smaller features")
+	}
+	return steps, nil
 }
 
 func init() {

@@ -1,7 +1,9 @@
 package genetic
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -48,13 +50,13 @@ func (l Lesson) Source() []trace.SourceLine {
 		{ID: "L4", Number: 4, Code: "    for gen := 0; gen < maxGen; gen++ {"},
 		{ID: "L5", Number: 5, Code: "        best := FindBest(pop)"},
 		{ID: "L6", Number: 6, Code: "        if best.Fitness == len(target) { return best }"},
-		{ID: "L7", Number: 7, Code: "        nextGen := make([]Individual, 0, popSize)"},
+		{ID: "L7", Number: 7, Code: "        nextGen := []Individual{best} // elite retains identity"},
 		{ID: "L8", Number: 8, Code: "        for len(nextGen) < popSize {"},
 		{ID: "L9", Number: 9, Code: "            p1, p2 := Select(pop), Select(pop)"},
 		{ID: "L10", Number: 10, Code: "            c1, c2 := Crossover(p1, p2)"},
-		{ID: "L11", Number: 11, Code: "            nextGen = append(nextGen, Mutate(c1), Mutate(c2))"},
+		{ID: "L11", Number: 11, Code: "            nextGen = AppendMutatedWithinCapacity(nextGen, c1, c2, popSize)"},
 		{ID: "L12", Number: 12, Code: "        }"},
-		{ID: "L13", Number: 13, Code: "        pop = nextGen[:popSize]"},
+		{ID: "L13", Number: 13, Code: "        pop = nextGen // already capacity-limited"},
 		{ID: "L14", Number: 14, Code: "        EvaluateFitness(pop, target)"},
 		{ID: "L15", Number: 15, Code: "    }"},
 		{ID: "L16", Number: 16, Code: "    return FindBest(pop)"},
@@ -71,27 +73,42 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		TournamentSize: 3,
 	}
 
-	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if custom.Target != "" {
-				cfg.Target = custom.Target
-			}
-			if custom.PopSize != nil && *custom.PopSize > 0 {
-				cfg.PopSize = *custom.PopSize
-			}
-			if custom.MaxGenerations != nil && *custom.MaxGenerations > 0 {
-				cfg.MaxGenerations = *custom.MaxGenerations
-			}
-			if custom.MutationRate != nil && *custom.MutationRate > 0 {
-				cfg.MutationRate = *custom.MutationRate
-			}
-			if custom.TournamentSize != nil && *custom.TournamentSize > 0 {
-				cfg.TournamentSize = *custom.TournamentSize
+	if len(bytes.TrimSpace(input)) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil || fields == nil {
+			return nil, fmt.Errorf("genetic input must be a JSON object")
+		}
+		for _, key := range []string{"target", "popSize", "maxGenerations", "mutationRate", "tournamentSize"} {
+			if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("%s must not be null", key)
 			}
 		}
+		var custom LessonInput
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, err
+		}
+		if _, supplied := fields["target"]; supplied {
+			cfg.Target = custom.Target
+		}
+		if custom.PopSize != nil {
+			cfg.PopSize = *custom.PopSize
+		}
+		if custom.MaxGenerations != nil {
+			cfg.MaxGenerations = *custom.MaxGenerations
+		}
+		if custom.MutationRate != nil {
+			cfg.MutationRate = *custom.MutationRate
+		}
+		if custom.TournamentSize != nil {
+			cfg.TournamentSize = *custom.TournamentSize
+		}
 	}
-
+	if cfg.PopSize < 2 || cfg.TournamentSize < 1 || cfg.TournamentSize > cfg.PopSize {
+		return nil, fmt.Errorf("population must be 2–24; tournament must be 1–population")
+	}
+	if err := geneticValidate(cfg); err != nil {
+		return nil, err
+	}
 	return Trace(cfg), nil
 }
 

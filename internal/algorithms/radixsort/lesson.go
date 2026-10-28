@@ -2,6 +2,7 @@ package radixsort
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -57,11 +58,20 @@ func (l Lesson) Source() []trace.SourceLine {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{170, 45, 75, 90, 802, 24, 2, 66}
-	if len(input) > 0 {
+	if input != nil {
 		var custom []int
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
-			arr = custom
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("radix sort input must be an array of integers: %w", err)
 		}
+		if len(custom) == 0 || len(custom) > 64 {
+			return nil, fmt.Errorf("radix sort needs 1 to 64 integers")
+		}
+		for _, value := range custom {
+			if value < 0 || value > 1000000 {
+				return nil, fmt.Errorf("radix sort values must be between 0 and 1000000")
+			}
+		}
+		arr = custom
 	}
 	return Trace(arr), nil
 }

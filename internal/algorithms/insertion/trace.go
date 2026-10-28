@@ -13,29 +13,48 @@ func Trace(initial []int) []trace.Step {
 	arr := make([]int, len(initial))
 	copy(arr, initial)
 	n := len(arr)
+	ids := make([]int, n)
+	minValue, maxValue := 0, 0
+	for i, value := range arr {
+		ids[i] = i
+		if value < minValue {
+			minValue = value
+		}
+		if value > maxValue {
+			maxValue = value
+		}
+	}
+	pass, scan, keyValue, keyID, hole, prefixEnd := -1, -1, 0, -1, -1, -1
+	if n > 0 {
+		prefixEnd = 0
+	}
+	keyHeld := false
+	addStep := func(line string, action trace.ActionType, explanation string, state renderers.ArrayState, vars map[string]any) {
+		b.AddStep(line, action, explanation, renderers.InsertionLessonState{ArrayState: state, IDs: cloneSlice(ids), Pass: pass, Scan: scan, KeyValue: keyValue, KeyID: keyID, Hole: hole, PrefixEnd: prefixEnd, KeyHeld: keyHeld, MinValue: minValue, MaxValue: maxValue}, vars)
+	}
 
 	if n == 0 {
-		b.AddStep("L1", trace.ActionInit, "Initialize Insertion Sort with empty array.", renderers.ArrayState{
+		addStep("L1", trace.ActionInit, "Initialize Insertion Sort with empty array.", renderers.ArrayState{
 			Current: -1,
 		}, map[string]any{"n": 0})
-		b.AddStep("L12", trace.ActionDone, "Insertion Sort completed! Array is empty.", renderers.ArrayState{
+		addStep("L12", trace.ActionDone, "Insertion Sort completed! Array is empty.", renderers.ArrayState{
 			Current: -1,
 		}, map[string]any{"status": "complete"})
 		return b.Steps()
 	}
 
 	if n == 1 {
-		b.AddStep("L1", trace.ActionInit, "Initialize Insertion Sort with input array.", renderers.ArrayState{
+		addStep("L1", trace.ActionInit, "Initialize Insertion Sort with input array.", renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  []int{0},
 			Current: -1,
 		}, map[string]any{"n": 1})
-		b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), renderers.ArrayState{
+		addStep("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  []int{0},
 			Current: -1,
 		}, map[string]any{"n": 1})
-		b.AddStep("L12", trace.ActionDone, "Insertion Sort completed! Single element is sorted.", renderers.ArrayState{
+		addStep("L12", trace.ActionDone, "Insertion Sort completed! Single element is sorted.", renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  []int{0},
 			Current: -1,
@@ -43,34 +62,37 @@ func Trace(initial []int) []trace.Step {
 		return b.Steps()
 	}
 
-	b.AddStep("L1", trace.ActionInit, "Initialize Insertion Sort with input array.", renderers.ArrayState{
+	addStep("L1", trace.ActionInit, "Initialize Insertion Sort with input array.", renderers.ArrayState{
 		Values:  cloneSlice(arr),
 		Sorted:  []int{0},
 		Current: -1,
 	}, map[string]any{"n": n})
 
-	b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), renderers.ArrayState{
+	addStep("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), renderers.ArrayState{
 		Values:  cloneSlice(arr),
 		Sorted:  []int{0},
 		Current: -1,
 	}, map[string]any{"n": n})
 
 	for i := 1; i < n; i++ {
-		b.AddStep("L3", trace.ActionHighlight, fmt.Sprintf("Starting outer pass i = %d.", i), renderers.ArrayState{
+		pass, scan, keyID, hole, prefixEnd = i, -1, -1, -1, i-1
+		addStep("L3", trace.ActionHighlight, fmt.Sprintf("Starting outer pass i = %d.", i), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  makeRange(0, i-1),
 			Current: i,
 		}, map[string]any{"i": i})
 
 		key := arr[i]
-		b.AddStep("L4", trace.ActionSet, fmt.Sprintf("Picked key %d at index %d to insert into sorted sub-array.", key, i), renderers.ArrayState{
+		keyValue, keyID, hole, keyHeld = key, ids[i], i, true
+		addStep("L4", trace.ActionSet, fmt.Sprintf("Picked key %d at index %d to insert into sorted sub-array.", key, i), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  makeRange(0, i-1),
 			Current: i,
 		}, map[string]any{"i": i, "key": key})
 
 		j := i - 1
-		b.AddStep("L5", trace.ActionSet, fmt.Sprintf("Initialized j = %d to compare backwards.", j), renderers.ArrayState{
+		scan = j
+		addStep("L5", trace.ActionSet, fmt.Sprintf("Initialized j = %d to compare backwards.", j), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  makeRange(0, i-1),
 			Current: i,
@@ -78,7 +100,7 @@ func Trace(initial []int) []trace.Step {
 
 		for {
 			if j < 0 {
-				b.AddStep("L6", trace.ActionHighlight, "Index j < 0: reached start of array, ready to place key.", renderers.ArrayState{
+				addStep("L6", trace.ActionHighlight, "Index j < 0: reached start of array, ready to place key.", renderers.ArrayState{
 					Values:  cloneSlice(arr),
 					Sorted:  makeRange(0, i-1),
 					Current: i,
@@ -88,7 +110,7 @@ func Trace(initial []int) []trace.Step {
 
 			b.IncComparisons()
 			if arr[j] > key {
-				b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) > key (%d): condition is true, need to shift.", j, arr[j], key), renderers.ArrayState{
+				addStep("L6", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) > key (%d): condition is true, need to shift.", j, arr[j], key), renderers.ArrayState{
 					Values:    cloneSlice(arr),
 					Comparing: []int{j},
 					Sorted:    makeRange(0, i-1, j),
@@ -96,8 +118,10 @@ func Trace(initial []int) []trace.Step {
 				}, map[string]any{"i": i, "key": key, "j": j, "val": arr[j]})
 
 				arr[j+1] = arr[j]
+				ids[j+1] = ids[j]
+				hole = j
 				b.IncSwaps()
-				b.AddStep("L7", trace.ActionSwap, fmt.Sprintf("Shifted %d from index %d to index %d.", arr[j], j, j+1), renderers.ArrayState{
+				addStep("L7", trace.ActionSwap, fmt.Sprintf("Shifted %d from index %d to index %d.", arr[j], j, j+1), renderers.ArrayState{
 					Values:  cloneSlice(arr),
 					Swapped: []int{j, j + 1},
 					Sorted:  makeRange(0, i-1, j, j+1),
@@ -105,13 +129,14 @@ func Trace(initial []int) []trace.Step {
 				}, map[string]any{"i": i, "key": key, "j": j})
 
 				j--
-				b.AddStep("L8", trace.ActionSet, fmt.Sprintf("Decremented j to %d.", j), renderers.ArrayState{
+				scan = j
+				addStep("L8", trace.ActionSet, fmt.Sprintf("Decremented j to %d.", j), renderers.ArrayState{
 					Values:  cloneSlice(arr),
 					Sorted:  makeRange(0, i-1),
 					Current: i,
 				}, map[string]any{"i": i, "key": key, "j": j})
 			} else {
-				b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) > key (%d): condition is false, found insertion position.", j, arr[j], key), renderers.ArrayState{
+				addStep("L6", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) > key (%d): condition is false, found insertion position.", j, arr[j], key), renderers.ArrayState{
 					Values:    cloneSlice(arr),
 					Comparing: []int{j},
 					Sorted:    makeRange(0, i-1, j),
@@ -122,21 +147,30 @@ func Trace(initial []int) []trace.Step {
 		}
 
 		arr[j+1] = key
+		ids[j+1] = keyID
+		keyHeld, hole, prefixEnd = false, -1, i
 		b.IncOperations()
-		b.AddStep("L10", trace.ActionSet, fmt.Sprintf("Inserted key %d at index %d.", key, j+1), renderers.ArrayState{
+		addStep("L10", trace.ActionSet, fmt.Sprintf("Inserted key %d at index %d.", key, j+1), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  makeRange(0, i),
 			Current: j + 1,
 		}, map[string]any{"i": i, "key": key, "j": j, "insertedAt": j + 1})
 	}
 
-	b.AddStep("L12", trace.ActionDone, "Insertion Sort completed! All elements sorted.", renderers.ArrayState{
+	pass, scan, keyID = -1, -1, -1
+	addStep("L12", trace.ActionDone, "Insertion Sort completed! All elements sorted.", renderers.ArrayState{
 		Values:  cloneSlice(arr),
 		Sorted:  makeRange(0, n-1),
 		Current: -1,
 	}, map[string]any{"status": "complete"})
 
-	return b.Steps()
+	steps := b.Steps()
+	for i := 0; i+1 < len(steps); i++ {
+		if steps[i].LineID == "L6" && steps[i+1].LineID == "L7" {
+			steps[i].HoldMS, steps[i+1].HoldMS = 600, 1200
+		}
+	}
+	return steps
 }
 
 func cloneSlice(s []int) []int {

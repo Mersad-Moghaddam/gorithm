@@ -1,7 +1,9 @@
 package hanoitower
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -45,31 +47,51 @@ func (l Lesson) Source() []trace.SourceLine {
 }
 
 type buildInput struct {
-	Disks int `json:"disks"`
-	N     int `json:"n"`
-	Count int `json:"count"`
+	Disks json.RawMessage `json:"disks"`
+	N     json.RawMessage `json:"n"`
+	Count json.RawMessage `json:"count"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	n := 3
+	input = bytes.TrimSpace(input)
 	if len(input) > 0 {
-		var directVal int
-		if err := json.Unmarshal(input, &directVal); err == nil {
-			if directVal >= 3 && directVal <= 5 {
-				n = directVal
-			}
-		} else {
+		if input[0] == '{' {
 			var obj buildInput
-			if err := json.Unmarshal(input, &obj); err == nil {
-				if obj.Disks >= 3 && obj.Disks <= 5 {
-					n = obj.Disks
-				} else if obj.N >= 3 && obj.N <= 5 {
-					n = obj.N
-				} else if obj.Count >= 3 && obj.Count <= 5 {
-					n = obj.Count
+			if err := json.Unmarshal(input, &obj); err != nil {
+				return nil, fmt.Errorf("invalid Hanoi input: %w", err)
+			}
+			selected := false
+			for _, raw := range []json.RawMessage{obj.Disks, obj.N, obj.Count} {
+				if len(raw) == 0 {
+					continue
+				}
+				var value int
+				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+					return nil, fmt.Errorf("disk count must be an integer in [1,8]")
+				}
+				if err := json.Unmarshal(raw, &value); err != nil {
+					return nil, fmt.Errorf("disk count must be an integer: %w", err)
+				}
+				if value < 1 || value > 8 {
+					return nil, fmt.Errorf("disk count must be in [1,8]")
+				}
+				if !selected {
+					n = value
+					selected = true
 				}
 			}
+		} else {
+			if bytes.Equal(input, []byte("null")) {
+				return nil, fmt.Errorf("disk count must be an integer in [1,8]")
+			}
+			if err := json.Unmarshal(input, &n); err != nil {
+				return nil, fmt.Errorf("invalid disk count: %w", err)
+			}
 		}
+	}
+	if n < 1 || n > 8 {
+		return nil, fmt.Errorf("disk count must be in [1,8]")
 	}
 	return Trace(n), nil
 }

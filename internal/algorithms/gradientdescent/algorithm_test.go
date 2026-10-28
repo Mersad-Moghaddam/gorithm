@@ -155,9 +155,10 @@ func TestTraceStepsAndTableState(t *testing.T) {
 			t.Errorf("step %d missing 'b' variable", i)
 		}
 
-		tableState, ok := step.State.(renderers.TableState)
+		lessonState, ok := step.State.(renderers.GradientDescentLessonState)
+		tableState := lessonState.TableState
 		if !ok {
-			t.Fatalf("step %d state is not renderers.TableState: %T", i, step.State)
+			t.Fatalf("step %d state is not renderers.GradientDescentLessonState: %T", i, step.State)
 		}
 		if len(tableState.ColHeaders) == 0 {
 			t.Errorf("step %d TableState ColHeaders is empty", i)

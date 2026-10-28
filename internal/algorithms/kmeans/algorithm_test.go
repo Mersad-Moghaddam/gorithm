@@ -169,32 +169,30 @@ func TestTraceGraphState(t *testing.T) {
 	}
 
 	firstStep := steps[0]
-	state, ok := firstStep.State.(renderers.GraphState)
+	state, ok := firstStep.State.(renderers.KMeansLessonState)
 	if !ok {
 		t.Fatalf("expected state to be renderers.GraphState, got %T", firstStep.State)
 	}
-	if len(state.Nodes) == 0 {
-		t.Error("expected graph state nodes to be non-empty")
+	if len(state.Points) == 0 {
+		t.Error("expected lesson points to be non-empty")
 	}
 
 	lastStep := steps[len(steps)-1]
 	if lastStep.Action != trace.ActionDone {
 		t.Errorf("expected last step action ActionDone, got %s", lastStep.Action)
 	}
-	lastState, ok := lastStep.State.(renderers.GraphState)
+	lastState, ok := lastStep.State.(renderers.KMeansLessonState)
 	if !ok {
 		t.Fatalf("expected last step state to be renderers.GraphState, got %T", lastStep.State)
 	}
 
-	// In final step, each of the 12 points should be assigned to one of the 3 cluster colors
-	foundColors := make(map[string]int)
-	for _, n := range lastState.Nodes {
-		foundColors[n.State]++
+	found := make(map[int]int)
+	for _, cluster := range lastState.Assignments {
+		found[cluster]++
 	}
-	// At least visiting, visited, path should be present for the 3 clusters
-	for _, requiredState := range []string{"visiting", "visited", "path"} {
-		if foundColors[requiredState] == 0 {
-			t.Errorf("expected at least one node with state %q, found counts: %v", requiredState, foundColors)
+	for cluster := 0; cluster < 3; cluster++ {
+		if found[cluster] == 0 {
+			t.Errorf("cluster %d has no assigned points", cluster)
 		}
 	}
 }

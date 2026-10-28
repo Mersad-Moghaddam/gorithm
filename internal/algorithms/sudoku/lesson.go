@@ -1,7 +1,9 @@
 package sudoku
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -60,22 +62,50 @@ func (l Lesson) Source() []trace.SourceLine {
 	}
 }
 
-type buildInput struct {
-	Board *[9][9]int `json:"board"`
-}
-
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	board := CanonicalBoard
-	if len(input) > 0 {
-		var payload buildInput
-		if err := json.Unmarshal(input, &payload); err == nil && payload.Board != nil {
-			board = *payload.Board
-		} else {
-			var direct [9][9]int
-			if err := json.Unmarshal(input, &direct); err == nil {
-				board = direct
-			}
+	input = bytes.TrimSpace(input)
+	if len(input) == 0 {
+		return Trace(board), nil
+	}
+	if bytes.Equal(input, []byte("null")) {
+		return nil, fmt.Errorf("board must not be null")
+	}
+	raw := input
+	if input[0] == '{' {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(input, &payload); err != nil {
+			return nil, fmt.Errorf("invalid Sudoku JSON: %w", err)
 		}
+		var exists bool
+		raw, exists = payload["board"]
+		if !exists {
+			return Trace(board), nil
+		}
+	}
+	var rows [][]int
+	if bytes.Contains(raw, []byte("null")) {
+		return nil, fmt.Errorf("board entries and rows must not be null")
+	}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return nil, fmt.Errorf("board must contain integer rows: %w", err)
+	}
+	if len(rows) != 9 {
+		return nil, fmt.Errorf("board must have exactly 9 rows")
+	}
+	for r, row := range rows {
+		if len(row) != 9 {
+			return nil, fmt.Errorf("row %d must have exactly 9 entries", r)
+		}
+		for c, value := range row {
+			if value < 0 || value > 9 {
+				return nil, fmt.Errorf("cell (%d,%d) must be in [0,9]", r, c)
+			}
+			board[r][c] = value
+		}
+	}
+	if !validateBoard(board) {
+		return nil, fmt.Errorf("board has conflicting givens")
 	}
 	return Trace(board), nil
 }

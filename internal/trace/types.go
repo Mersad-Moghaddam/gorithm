@@ -3,15 +3,15 @@ package trace
 type ActionType string
 
 const (
-	ActionInit       ActionType = "init"
-	ActionCompare    ActionType = "compare"
-	ActionSwap       ActionType = "swap"
-	ActionSet        ActionType = "set"
-	ActionVisit      ActionType = "visit"
-	ActionHighlight  ActionType = "highlight"
-	ActionPush       ActionType = "push"
-	ActionPop        ActionType = "pop"
-	ActionDone       ActionType = "done"
+	ActionInit      ActionType = "init"
+	ActionCompare   ActionType = "compare"
+	ActionSwap      ActionType = "swap"
+	ActionSet       ActionType = "set"
+	ActionVisit     ActionType = "visit"
+	ActionHighlight ActionType = "highlight"
+	ActionPush      ActionType = "push"
+	ActionPop       ActionType = "pop"
+	ActionDone      ActionType = "done"
 )
 
 type Metrics struct {
@@ -21,6 +21,7 @@ type Metrics struct {
 }
 
 type Step struct {
+	HoldMS      int            `json:"holdMs,omitempty"`
 	Index       int            `json:"index"`
 	LineID      string         `json:"lineId"`
 	Action      ActionType     `json:"action"`

@@ -2,178 +2,128 @@ package merge
 
 import (
 	"fmt"
-
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
 func Trace(initial []int) []trace.Step {
 	b := trace.NewBuilder()
-	arr := make([]int, len(initial))
-	copy(arr, initial)
-	n := len(arr)
-
-	b.AddStep("L1", trace.ActionInit, "Initialize Merge Sort with input array.", renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"n": n})
-
-	if n <= 1 {
-		sorted := make([]int, n)
-		for i := range sorted {
-			sorted[i] = i
-		}
-		b.AddStep("L9", trace.ActionDone, "Merge Sort completed! Array is sorted.", renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Sorted:  sorted,
-			Current: -1,
-		}, map[string]any{"status": "complete"})
-		return b.Steps()
+	arr := cloneSlice(initial)
+	ids := make([]int, len(arr))
+	for i := range ids {
+		ids[i] = i
 	}
-
-	var mergeSortTraced func(left, right int)
-	mergeSortTraced = func(left, right int) {
+	low, high := 0, 0
+	for _, v := range arr {
+		low = min(low, v)
+		high = max(high, v)
+	}
+	s := renderers.MergeLessonState{Left: -1, Mid: -1, Right: -1, I: -1, J: -1, K: -1, CopyIndex: -1, MinValue: low, MaxValue: high}
+	emit := func(line string, action trace.ActionType, explanation string, current int, comparing, swapped, sorted []int, vars map[string]any) {
+		out := s
+		out.ArrayState = renderers.ArrayState{Values: cloneSlice(arr), Current: current, Comparing: cloneSlice(comparing), Swapped: cloneSlice(swapped), Sorted: cloneSlice(sorted)}
+		out.IDs = cloneSlice(ids)
+		out.Aux = cloneSlice(s.Aux)
+		out.AuxIDs = cloneSlice(s.AuxIDs)
+		out.AuxFilled = append([]bool(nil), s.AuxFilled...)
+		out.Stack = append([]renderers.MergeLessonRange(nil), s.Stack...)
+		b.AddStep(line, action, explanation, out, vars)
+	}
+	emit("L1", trace.ActionInit, "Initialize Merge Sort. Split ranges, then copy their stable merge through auxiliary storage.", -1, nil, nil, nil, map[string]any{"n": len(arr)})
+	var visit func(int, int)
+	visit = func(left, right int) {
+		parent := s
+		s = renderers.MergeLessonState{Left: left, Mid: -1, Right: right, I: -1, J: -1, K: -1, CopyIndex: -1, MinValue: low, MaxValue: high, Stack: append(append([]renderers.MergeLessonRange(nil), parent.Stack...), renderers.MergeLessonRange{Left: left, Mid: -1, Right: right})}
+		defer func() { s = parent }()
 		b.IncOperations()
-		b.AddStep("L2", trace.ActionHighlight, fmt.Sprintf("Checking if left (%d) >= right (%d).", left, right), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"left": left, "right": right})
-
+		emit("L2", trace.ActionHighlight, fmt.Sprintf("Check range [%d..%d] for a base case.", left, right), -1, nil, nil, nil, map[string]any{"left": left, "right": right})
 		if left >= right {
-			b.AddStep("L3", trace.ActionVisit, fmt.Sprintf("Subarray [%d..%d] has length <= 1, base case reached.", left, right), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: left,
-			}, map[string]any{"left": left, "right": right})
+			emit("L3", trace.ActionVisit, fmt.Sprintf("Range [%d..%d] has one element; return.", left, right), left, nil, nil, nil, map[string]any{"left": left, "right": right})
 			return
 		}
-
 		mid := left + (right-left)/2
+		s.Mid = mid
+		s.Stack[len(s.Stack)-1].Mid = mid
 		b.IncOperations()
-		b.AddStep("L5", trace.ActionSet, fmt.Sprintf("Calculated mid = %d for subarray [%d..%d].", mid, left, right), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: mid,
-		}, map[string]any{"left": left, "mid": mid, "right": right})
-
-		b.AddStep("L6", trace.ActionVisit, fmt.Sprintf("Recursively calling MergeSort on left half [%d..%d].", left, mid), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: mid,
-		}, map[string]any{"left": left, "mid": mid})
-		mergeSortTraced(left, mid)
-
-		b.AddStep("L7", trace.ActionVisit, fmt.Sprintf("Recursively calling MergeSort on right half [%d..%d].", mid+1, right), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: mid + 1,
-		}, map[string]any{"mid+1": mid + 1, "right": right})
-		mergeSortTraced(mid+1, right)
-
-		b.AddStep("L8", trace.ActionHighlight, fmt.Sprintf("Preparing to merge subarrays [%d..%d] and [%d..%d].", left, mid, mid+1, right), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"left": left, "mid": mid, "right": right})
-
-		b.AddStep("L10", trace.ActionVisit, fmt.Sprintf("Begin merge: [%d..%d] and [%d..%d].", left, mid, mid+1, right), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"left": left, "mid": mid, "right": right})
-
-		aux := make([]int, right-left+1)
+		emit("L5", trace.ActionSet, fmt.Sprintf("Split [%d..%d] at mid = %d.", left, right, mid), mid, nil, nil, nil, map[string]any{"left": left, "mid": mid, "right": right})
+		emit("L6", trace.ActionVisit, fmt.Sprintf("Sort left range [%d..%d] first.", left, mid), mid, nil, nil, nil, map[string]any{"left": left, "mid": mid})
+		visit(left, mid)
+		emit("L7", trace.ActionVisit, fmt.Sprintf("Left range returned; sort right range [%d..%d].", mid+1, right), mid+1, nil, nil, nil, map[string]any{"mid+1": mid + 1, "right": right})
+		visit(mid+1, right)
+		emit("L8", trace.ActionHighlight, fmt.Sprintf("Both halves [%d..%d] and [%d..%d] are ready to merge.", left, mid, mid+1, right), -1, nil, nil, nil, map[string]any{"left": left, "mid": mid, "right": right})
+		emit("L10", trace.ActionVisit, fmt.Sprintf("Begin merging [%d..%d] using separate auxiliary storage.", left, right), -1, nil, nil, nil, map[string]any{"left": left, "mid": mid, "right": right})
+		s.Aux = make([]int, right-left+1)
+		s.AuxIDs = make([]int, len(s.Aux))
+		s.AuxFilled = make([]bool, len(s.Aux))
+		for i := range s.AuxIDs {
+			s.AuxIDs[i] = -1
+		}
 		b.IncOperations()
-		b.AddStep("L11", trace.ActionSet, fmt.Sprintf("Created auxiliary array of size %d.", len(aux)), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"aux_size": len(aux)})
-
-		i, j, k := left, mid+1, 0
+		emit("L11", trace.ActionSet, fmt.Sprintf("Allocate %d empty auxiliary cells. Unwritten cells are not zero values.", len(s.Aux)), -1, nil, nil, nil, map[string]any{"aux_size": len(s.Aux)})
+		s.I, s.J, s.K = left, mid+1, 0
 		b.IncOperations()
-		b.AddStep("L12", trace.ActionSet, fmt.Sprintf("Initialized pointers: i = %d (left), j = %d (right), k = %d.", i, j, k), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"i": i, "j": j, "k": k})
-
-		for i <= mid && j <= right {
-			b.IncComparisons()
-			b.AddStep("L14", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) and arr[%d] (%d).", i, arr[i], j, arr[j]), renderers.ArrayState{
-				Values:    cloneSlice(arr),
-				Comparing: []int{i, j},
-				Current:   -1,
-			}, map[string]any{"i": i, "j": j, "val_i": arr[i], "val_j": arr[j]})
-
-			if arr[i] <= arr[j] {
-				aux[k] = arr[i]
-				b.IncOperations()
-				b.AddStep("L15", trace.ActionSet, fmt.Sprintf("arr[%d] (%d) <= arr[%d] (%d): placing %d into aux[%d].", i, arr[i], j, arr[j], arr[i], k), renderers.ArrayState{
-					Values:  cloneSlice(arr),
-					Current: i,
-				}, map[string]any{"i": i, "val": arr[i], "k": k})
-				i++
+		emit("L12", trace.ActionSet, fmt.Sprintf("Set i = %d, j = %d, k = 0.", s.I, s.J), -1, nil, nil, nil, map[string]any{"i": s.I, "j": s.J, "k": s.K})
+		copyAux := func(line string, from int) {
+			s.Aux[s.K] = arr[from]
+			s.AuxIDs[s.K] = ids[from]
+			s.AuxFilled[s.K] = true
+			b.IncOperations()
+			vars := map[string]any{"val": arr[from], "k": s.K}
+			if line == "L15" || line == "L21" {
+				vars["i"] = from
 			} else {
-				aux[k] = arr[j]
-				b.IncOperations()
-				b.AddStep("L17", trace.ActionSet, fmt.Sprintf("arr[%d] (%d) > arr[%d] (%d): placing %d into aux[%d].", i, arr[i], j, arr[j], arr[j], k), renderers.ArrayState{
-					Values:  cloneSlice(arr),
-					Current: j,
-				}, map[string]any{"j": j, "val": arr[j], "k": k})
-				j++
+				vars["j"] = from
 			}
-			k++
+			emit(line, trace.ActionSet, fmt.Sprintf("Copy arr[%d] = %d (#%d) into aux[%d]; main memory remains unchanged.", from, arr[from], ids[from], s.K), from, nil, nil, nil, vars)
 		}
-
-		for i <= mid {
-			aux[k] = arr[i]
+		for s.I <= mid && s.J <= right {
+			b.IncComparisons()
+			emit("L14", trace.ActionCompare, fmt.Sprintf("Compare %d and %d. Equal values take the left identity first.", arr[s.I], arr[s.J]), -1, []int{s.I, s.J}, nil, nil, map[string]any{"i": s.I, "j": s.J, "val_i": arr[s.I], "val_j": arr[s.J]})
+			if arr[s.I] <= arr[s.J] {
+				copyAux("L15", s.I)
+				s.I++
+			} else {
+				copyAux("L17", s.J)
+				s.J++
+			}
+			s.K++
+		}
+		for s.I <= mid {
+			copyAux("L21", s.I)
+			s.I++
+			s.K++
+		}
+		for s.J <= right {
+			copyAux("L22", s.J)
+			s.J++
+			s.K++
+		}
+		for p := range s.Aux {
+			s.CopyIndex = p
+			arr[left+p] = s.Aux[p]
+			ids[left+p] = s.AuxIDs[p]
 			b.IncOperations()
-			b.AddStep("L21", trace.ActionSet, fmt.Sprintf("Copying remaining left element arr[%d] (%d) to aux[%d].", i, arr[i], k), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: i,
-			}, map[string]any{"i": i, "val": arr[i], "k": k})
-			i++
-			k++
+			emit("L23", trace.ActionSet, fmt.Sprintf("Copy aux[%d] = %d (#%d) back to arr[%d]. Other main cells still hold their old values.", p, s.Aux[p], s.AuxIDs[p], left+p), left+p, nil, []int{left + p}, nil, map[string]any{"index": left + p, "val": s.Aux[p]})
 		}
-
-		for j <= right {
-			aux[k] = arr[j]
-			b.IncOperations()
-			b.AddStep("L22", trace.ActionSet, fmt.Sprintf("Copying remaining right element arr[%d] (%d) to aux[%d].", j, arr[j], k), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: j,
-			}, map[string]any{"j": j, "val": arr[j], "k": k})
-			j++
-			k++
-		}
-
-		for p := 0; p < len(aux); p++ {
-			arr[left+p] = aux[p]
-			b.IncOperations()
-			b.AddStep("L23", trace.ActionSet, fmt.Sprintf("Copied aux[%d] (%d) back to arr[%d].", p, aux[p], left+p), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: left + p,
-				Swapped: []int{left + p},
-			}, map[string]any{"index": left + p, "val": aux[p]})
-		}
-
-		b.AddStep("L24", trace.ActionHighlight, fmt.Sprintf("Merged subarray [%d..%d]: %v.", left, right, arr[left:right+1]), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"left": left, "right": right})
+		s.CopyIndex = -1
+		emit("L24", trace.ActionHighlight, fmt.Sprintf("Range [%d..%d] is merged: %v. Return to its caller.", left, right, arr[left:right+1]), -1, nil, nil, nil, map[string]any{"left": left, "right": right})
 	}
-
-	mergeSortTraced(0, n-1)
-
-	allSorted := make([]int, n)
-	for i := 0; i < n; i++ {
-		allSorted[i] = i
+	if len(arr) > 1 {
+		visit(0, len(arr)-1)
 	}
-
-	b.AddStep("L9", trace.ActionDone, "Merge Sort completed! All elements sorted.", renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Sorted:  allSorted,
-		Current: -1,
-	}, map[string]any{"status": "complete"})
-
-	return b.Steps()
+	sorted := make([]int, len(arr))
+	for i := range sorted {
+		sorted[i] = i
+	}
+	emit("L9", trace.ActionDone, "Merge Sort complete. Every main-array position is final.", -1, nil, nil, sorted, map[string]any{"status": "complete"})
+	steps := b.Steps()
+	for i := 0; i+1 < len(steps); i++ {
+		if steps[i].LineID == "L14" && (steps[i+1].LineID == "L15" || steps[i+1].LineID == "L17") {
+			steps[i].HoldMS = 600
+			steps[i+1].HoldMS = 1200
+		}
+	}
+	return steps
 }
 
-func cloneSlice(s []int) []int {
-	c := make([]int, len(s))
-	copy(c, s)
-	return c
-}
+func cloneSlice(s []int) []int { out := make([]int, len(s)); copy(out, s); return out }

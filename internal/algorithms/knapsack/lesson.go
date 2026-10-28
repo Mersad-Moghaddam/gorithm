@@ -1,7 +1,9 @@
 package knapsack
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -58,12 +60,42 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	values := []int{3, 4, 5, 6}
 	capacity := 5
 
-	if len(input) > 0 {
+	if len(bytes.TrimSpace(input)) > 0 {
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Weights) > 0 && len(custom.Weights) == len(custom.Values) && custom.Capacity != nil {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("knapsack input must be an object")
+		}
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid knapsack input: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		for _, key := range []string{"weights", "values", "capacity"} {
+			if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("%s cannot be null", key)
+			}
+		}
+		if _, ok := fields["weights"]; ok {
 			weights = custom.Weights
+		}
+		if _, ok := fields["values"]; ok {
 			values = custom.Values
+		}
+		if custom.Capacity != nil {
 			capacity = *custom.Capacity
+		}
+	}
+	if len(weights) < 1 || len(weights) > 20 || len(weights) != len(values) {
+		return nil, fmt.Errorf("require 1–20 items with equal weight/value lengths")
+	}
+	if capacity < 0 || capacity > 200 {
+		return nil, fmt.Errorf("capacity must be in [0,200]")
+	}
+	for i, weight := range weights {
+		if weight < 0 || weight > 200 || values[i] < 0 || values[i] > 1000000 {
+			return nil, fmt.Errorf("item %d requires weight in [0,200] and value in [0,1000000]", i+1)
 		}
 	}
 

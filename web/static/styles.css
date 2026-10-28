@@ -15,3 +15,8 @@ dialog{background:var(--panel);color:var(--text);border:1px solid #607657;border
 :root[data-theme="paper"] .code-container .syn-fn,:root[data-theme="paper"] .code-container .syn-type{color:#185257}
 @media(max-width:540px){.timeline>label{display:block;position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Dedicated scenes retain legible geometry through stage-local scrolling. */
+.canvas-viewport{overflow:auto;overscroll-behavior:contain}
+.canvas-viewport>svg{flex-shrink:0}
+.canvas-viewport>svg.lesson-scene{max-height:none}
+#svg-stage [data-entity]{transform-box:view-box;transform-origin:0 0}

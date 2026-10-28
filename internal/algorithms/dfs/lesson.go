@@ -1,7 +1,11 @@
 package dfs
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -28,7 +32,7 @@ func (l Lesson) Meta() catalog.Meta {
 			},
 			HowItWorks: "Starts at a chosen root vertex and marks it as visiting. Traverses outgoing edges to unvisited adjacent vertices recursively. Upon reaching a vertex with no unvisited neighbors, backtracks to explore remaining branches until all reachable vertices are processed and marked visited.",
 		},
-		DefaultInput: "A",
+		DefaultInput: `"A"`,
 	}
 }
 
@@ -72,28 +76,71 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 	startNode := "A"
 
-	if len(input) > 0 {
+	if len(bytes.TrimSpace(input)) > 0 {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("DFS input must be a start string or graph object")
+		}
 		var strInput string
-		if err := json.Unmarshal(input, &strInput); err == nil && strInput != "" {
-			startNode = strInput
+		if err := json.Unmarshal(input, &strInput); err == nil {
+			if strInput != "" {
+				startNode = strInput
+			}
 		} else {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(input, &fields); err != nil {
+				return nil, fmt.Errorf("invalid DFS object: %w", err)
+			}
+			for _, key := range []string{"start", "nodes", "edges"} {
+				if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+					return nil, fmt.Errorf("%s cannot be null", key)
+				}
+			}
 			var custom struct {
 				Start string                `json:"start"`
 				Nodes []renderers.GraphNode `json:"nodes"`
 				Edges []renderers.GraphEdge `json:"edges"`
 			}
-			if err := json.Unmarshal(input, &custom); err == nil {
+			if err := json.Unmarshal(input, &custom); err != nil {
+				return nil, fmt.Errorf("invalid DFS input: %w", err)
+			} else {
 				if custom.Start != "" {
 					startNode = custom.Start
 				}
 				if len(custom.Nodes) > 0 {
 					nodes = custom.Nodes
 				}
-				if len(custom.Edges) > 0 {
+				if custom.Edges != nil {
 					edges = custom.Edges
 				}
 			}
 		}
+	}
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("DFS supports at most 32 nodes and 128 edges")
+	}
+	ids := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		if n.ID == "" || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node IDs must be nonempty and IDs/labels at most 64 characters")
+		}
+		if ids[n.ID] {
+			return nil, fmt.Errorf("duplicate node ID %q", n.ID)
+		}
+		ids[n.ID] = true
+		if math.IsNaN(n.X) || math.IsNaN(n.Y) || math.IsInf(n.X, 0) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1e6 || math.Abs(n.Y) > 1e6 {
+			return nil, fmt.Errorf("node coordinates must be finite within ±1000000")
+		}
+	}
+	for _, e := range edges {
+		if !ids[e.From] || !ids[e.To] {
+			return nil, fmt.Errorf("edge endpoints must exist")
+		}
+		if e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("edge weights must be within ±10000")
+		}
+	}
+	if !ids[startNode] {
+		return nil, fmt.Errorf("start node %q does not exist", startNode)
 	}
 
 	return Trace(nodes, edges, startNode), nil

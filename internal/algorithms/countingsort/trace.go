@@ -7,198 +7,119 @@ import (
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// ponytail: count slice tracks non-negative range; upgrade if sparse or negative range needed.
+// ponytail: direct Trace requires nonnegative bounded values; Lesson.Build validates browser input.
 func Trace(initial []int) []trace.Step {
 	b := trace.NewBuilder()
-	arr := make([]int, len(initial))
-	copy(arr, initial)
+	arr := cloneSlice(initial)
 	n := len(arr)
-
-	if n == 0 {
-		b.AddStep("L1", trace.ActionInit, "Initialize Counting Sort with empty array.", renderers.ArrayState{
-			Values:  []int{},
-			Current: -1,
-		}, map[string]any{"n": 0})
-		b.AddStep("L3", trace.ActionHighlight, "Array is empty (n <= 1), nothing to sort.", renderers.ArrayState{
-			Values:  []int{},
-			Current: -1,
-		}, map[string]any{"n": 0})
-		b.AddStep("L4", trace.ActionDone, "Counting Sort completed! Array is empty.", renderers.ArrayState{
-			Values:  []int{},
-			Current: -1,
-		}, map[string]any{"status": "complete"})
+	s := renderers.CountingsortLessonState{Input: arr, InputIDs: makeRange(0, n-1), Max: -1, Scan: -1, CountIndex: -1, Target: -1, Phase: "init"}
+	add := func(line string, action trace.ActionType, text string, legacy renderers.ArrayState, vars map[string]any) {
+		v := s
+		v.ArrayState = legacy
+		v.Input, v.InputIDs, v.Counts = cloneSlice(s.Input), cloneSlice(s.InputIDs), cloneSlice(s.Counts)
+		v.Output, v.OutputIDs = cloneSlice(s.Output), cloneSlice(s.OutputIDs)
+		v.OutputFilled = append([]bool(nil), s.OutputFilled...)
+		b.AddStep(line, action, text, v, vars)
+	}
+	state := func(values []int, current int, sorted []int) renderers.ArrayState {
+		return renderers.ArrayState{Values: cloneSlice(values), Current: current, Sorted: cloneSlice(sorted)}
+	}
+	if n <= 1 {
+		sorted := makeRange(0, n-1)
+		add("L1", trace.ActionInit, "Initialize Counting Sort.", state(arr, -1, sorted), map[string]any{"n": n})
+		if n == 1 {
+			add("L2", trace.ActionSet, "Array length is 1.", state(arr, -1, sorted), map[string]any{"n": n})
+		}
+		add("L3", trace.ActionHighlight, "At most one element: already sorted.", state(arr, -1, sorted), map[string]any{"n": n})
+		s.Phase = "done"
+		s.Output, s.OutputIDs, s.OutputFilled = cloneSlice(arr), makeRange(0, n-1), make([]bool, n)
+		for i := range s.OutputFilled {
+			s.OutputFilled[i] = true
+		}
+		add("L4", trace.ActionDone, "Counting Sort completed.", state(arr, -1, sorted), map[string]any{"status": "complete"})
 		return b.Steps()
 	}
-
-	if n == 1 {
-		b.AddStep("L1", trace.ActionInit, "Initialize Counting Sort with input array.", renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Sorted:  []int{0},
-			Current: -1,
-		}, map[string]any{"n": 1})
-		b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Sorted:  []int{0},
-			Current: -1,
-		}, map[string]any{"n": 1})
-		b.AddStep("L3", trace.ActionHighlight, "Single element array (n <= 1), already sorted.", renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Sorted:  []int{0},
-			Current: -1,
-		}, map[string]any{"n": 1})
-		b.AddStep("L4", trace.ActionDone, "Counting Sort completed! Single element is sorted.", renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Sorted:  []int{0},
-			Current: -1,
-		}, map[string]any{"status": "complete"})
-		return b.Steps()
-	}
-
-	b.AddStep("L1", trace.ActionInit, "Initialize Counting Sort with input array.", renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"n": n})
-
-	b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"n": n})
-
-	b.AddStep("L3", trace.ActionHighlight, fmt.Sprintf("Array length %d > 1, proceeding with sorting.", n), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"n": n})
-
-	max := arr[0]
+	add("L1", trace.ActionInit, "Initialize Counting Sort with input array.", state(arr, -1, nil), map[string]any{"n": n})
+	add("L2", trace.ActionSet, fmt.Sprintf("Array length is %d.", n), state(arr, -1, nil), map[string]any{"n": n})
+	add("L3", trace.ActionHighlight, "More than one element: find the value range.", state(arr, -1, nil), map[string]any{"n": n})
+	s.Phase, s.Max, s.Scan = "maximum", arr[0], 0
 	b.IncOperations()
-	b.AddStep("L6", trace.ActionSet, fmt.Sprintf("Initialize max with arr[0] = %d.", max), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: 0,
-	}, map[string]any{"max": max, "i": 0})
-
+	add("L6", trace.ActionSet, fmt.Sprintf("Initialize maximum to %d.", s.Max), state(arr, 0, nil), map[string]any{"max": s.Max, "i": 0})
 	for i := 1; i < n; i++ {
-		b.AddStep("L7", trace.ActionHighlight, fmt.Sprintf("Inspecting element at index %d (%d) to find maximum value.", i, arr[i]), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: i,
-		}, map[string]any{"i": i, "val": arr[i], "max": max})
-
+		s.Scan = i
+		vars := map[string]any{"i": i, "val": arr[i], "max": s.Max}
+		add("L7", trace.ActionHighlight, fmt.Sprintf("Inspect input[%d] = %d for maximum.", i, arr[i]), state(arr, i, nil), vars)
 		b.IncComparisons()
-		if arr[i] > max {
-			b.AddStep("L8", trace.ActionCompare, fmt.Sprintf("arr[%d] (%d) > max (%d): new maximum found.", i, arr[i], max), renderers.ArrayState{
-				Values:    cloneSlice(arr),
-				Comparing: []int{i},
-				Current:   i,
-			}, map[string]any{"i": i, "val": arr[i], "max": max})
-
-			max = arr[i]
+		comp := state(arr, i, nil)
+		comp.Comparing = []int{i}
+		add("L8", trace.ActionCompare, fmt.Sprintf("Compare %d with maximum %d.", arr[i], s.Max), comp, vars)
+		if arr[i] > s.Max {
+			s.Max = arr[i]
 			b.IncOperations()
-			b.AddStep("L9", trace.ActionSet, fmt.Sprintf("Updated max to %d.", max), renderers.ArrayState{
-				Values:  cloneSlice(arr),
-				Current: i,
-			}, map[string]any{"i": i, "max": max})
-		} else {
-			b.AddStep("L8", trace.ActionCompare, fmt.Sprintf("arr[%d] (%d) <= max (%d): max remains %d.", i, arr[i], max, max), renderers.ArrayState{
-				Values:    cloneSlice(arr),
-				Comparing: []int{i},
-				Current:   i,
-			}, map[string]any{"i": i, "val": arr[i], "max": max})
+			add("L9", trace.ActionSet, fmt.Sprintf("Maximum becomes %d.", s.Max), state(arr, i, nil), map[string]any{"i": i, "max": s.Max})
 		}
 	}
-
-	count := make([]int, max+1)
+	s.Phase, s.Scan = "tally", -1
+	s.Counts = make([]int, s.Max+1)
 	b.IncOperations()
-	b.AddStep("L12", trace.ActionSet, fmt.Sprintf("Allocate count array of size %d (range 0 to %d).", max+1, max), renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"max": max, "countSize": max + 1, "count": cloneSlice(count)})
-
-	for i := 0; i < n; i++ {
-		val := arr[i]
-		b.AddStep("L13", trace.ActionHighlight, fmt.Sprintf("Tallying frequency for arr[%d] = %d.", i, val), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: i,
-		}, map[string]any{"i": i, "val": val, "count": cloneSlice(count)})
-
-		count[val]++
+	add("L12", trace.ActionSet, fmt.Sprintf("Allocate counts for values 0 through %d.", s.Max), state(arr, -1, nil), map[string]any{"max": s.Max, "countSize": s.Max + 1, "count": cloneSlice(s.Counts)})
+	for i, value := range arr {
+		s.Scan, s.CountIndex = i, value
+		add("L13", trace.ActionHighlight, fmt.Sprintf("Tally input[%d] = %d.", i, value), state(arr, i, nil), map[string]any{"i": i, "val": value, "count": cloneSlice(s.Counts)})
+		s.Counts[value]++
 		b.IncOperations()
-		b.AddStep("L14", trace.ActionSet, fmt.Sprintf("Increment frequency count[%d] to %d.", val, count[val]), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: i,
-		}, map[string]any{"i": i, "val": val, "count": cloneSlice(count), "frequencies": cloneSlice(count)})
+		add("L14", trace.ActionSet, fmt.Sprintf("Frequency[%d] becomes %d.", value, s.Counts[value]), state(arr, i, nil), map[string]any{"i": i, "val": value, "count": cloneSlice(s.Counts), "frequencies": cloneSlice(s.Counts)})
 	}
-
-	b.AddStep("L16", trace.ActionHighlight, "Accumulate frequencies into prefix sums to determine positions.", renderers.ArrayState{
-		Values:  cloneSlice(arr),
-		Current: -1,
-	}, map[string]any{"count": cloneSlice(count)})
-
-	for i := 1; i <= max; i++ {
-		count[i] += count[i-1]
+	s.Phase, s.Scan, s.CountIndex = "prefix", -1, -1
+	add("L16", trace.ActionHighlight, "Accumulate frequencies: number of items <= each value.", state(arr, -1, nil), map[string]any{"count": cloneSlice(s.Counts)})
+	for i := 1; i <= s.Max; i++ {
+		s.CountIndex = i
+		s.Counts[i] += s.Counts[i-1]
 		b.IncOperations()
-		b.AddStep("L17", trace.ActionSet, fmt.Sprintf("Prefix sum: count[%d] += count[%d] = %d.", i, i-1, count[i]), renderers.ArrayState{
-			Values:  cloneSlice(arr),
-			Current: -1,
-		}, map[string]any{"i": i, "count": cloneSlice(count), "prefixSums": cloneSlice(count)})
+		add("L17", trace.ActionSet, fmt.Sprintf("count[%d] += count[%d]: %d items <= %d.", i, i-1, s.Counts[i], i), state(arr, -1, nil), map[string]any{"i": i, "count": cloneSlice(s.Counts), "prefixSums": cloneSlice(s.Counts)})
 	}
-
-	output := make([]int, n)
+	s.Phase, s.CountIndex = "output", -1
+	s.Output, s.OutputIDs, s.OutputFilled = make([]int, n), make([]int, n), make([]bool, n)
+	for i := range s.OutputIDs {
+		s.OutputIDs[i] = -1
+	}
 	b.IncOperations()
-	b.AddStep("L19", trace.ActionSet, fmt.Sprintf("Allocate output array of size %d.", n), renderers.ArrayState{
-		Values:  cloneSlice(output),
-		Current: -1,
-	}, map[string]any{"n": n, "count": cloneSlice(count), "output": cloneSlice(output)})
-
-	sortedIndices := make([]int, 0, n)
+	add("L19", trace.ActionSet, "Allocate output: empty slots are not zero-valued items.", state(s.Output, -1, nil), map[string]any{"n": n, "count": cloneSlice(s.Counts), "output": cloneSlice(s.Output)})
+	sorted := make([]int, 0, n)
 	for i := n - 1; i >= 0; i-- {
-		val := arr[i]
-		b.AddStep("L20", trace.ActionHighlight, fmt.Sprintf("Examining arr[%d] = %d from right to preserve stability.", i, val), renderers.ArrayState{
-			Values:  cloneSlice(output),
-			Sorted:  cloneSlice(sortedIndices),
-			Current: -1,
-		}, map[string]any{"i": i, "val": val, "count": cloneSlice(count)})
-
-		targetIdx := count[val] - 1
-		output[targetIdx] = val
-		sortedIndices = append(sortedIndices, targetIdx)
+		value := arr[i]
+		s.Scan, s.CountIndex, s.Target = i, value, -1
+		add("L20", trace.ActionHighlight, fmt.Sprintf("Read %d#%d from right to preserve stability.", value, i), state(s.Output, -1, sorted), map[string]any{"i": i, "val": value, "count": cloneSlice(s.Counts)})
+		s.Target = s.Counts[value] - 1
+		s.Output[s.Target], s.OutputIDs[s.Target], s.OutputFilled[s.Target] = value, i, true
+		sorted = append(sorted, s.Target)
 		b.IncOperations()
-		b.AddStep("L21", trace.ActionSet, fmt.Sprintf("Place arr[%d] (%d) at output[%d].", i, val, targetIdx), renderers.ArrayState{
-			Values:  cloneSlice(output),
-			Current: targetIdx,
-			Swapped: []int{targetIdx},
-			Sorted:  cloneSlice(sortedIndices),
-		}, map[string]any{"i": i, "val": val, "targetIndex": targetIdx, "count": cloneSlice(count), "output": cloneSlice(output)})
-
-		count[val]--
+		placed := state(s.Output, s.Target, sorted)
+		placed.Swapped = []int{s.Target}
+		add("L21", trace.ActionSet, fmt.Sprintf("Copy %d#%d to output[%d] = count[%d]-1.", value, i, s.Target, value), placed, map[string]any{"i": i, "val": value, "targetIndex": s.Target, "count": cloneSlice(s.Counts), "output": cloneSlice(s.Output)})
+		s.Counts[value]--
 		b.IncOperations()
-		b.AddStep("L22", trace.ActionSet, fmt.Sprintf("Decrement count[%d] to %d.", val, count[val]), renderers.ArrayState{
-			Values:  cloneSlice(output),
-			Current: targetIdx,
-			Sorted:  cloneSlice(sortedIndices),
-		}, map[string]any{"i": i, "val": val, "count": cloneSlice(count)})
+		add("L22", trace.ActionSet, fmt.Sprintf("Decrement count[%d] to %d: remaining insertion boundary.", value, s.Counts[value]), state(s.Output, s.Target, sorted), map[string]any{"i": i, "val": value, "count": cloneSlice(s.Counts)})
 	}
-
-	b.AddStep("L24", trace.ActionDone, "Counting Sort completed! All elements sorted stably.", renderers.ArrayState{
-		Values:  cloneSlice(output),
-		Sorted:  makeRange(0, n-1),
-		Current: -1,
-	}, map[string]any{"status": "complete", "result": cloneSlice(output)})
-
-	return b.Steps()
+	s.Phase, s.Scan, s.CountIndex, s.Target = "done", -1, -1, -1
+	add("L24", trace.ActionDone, "Counting Sort completed: equal values retain original order.", state(s.Output, -1, makeRange(0, n-1)), map[string]any{"status": "complete", "result": cloneSlice(s.Output)})
+	steps := b.Steps()
+	for i := 0; i+1 < len(steps); i++ {
+		if steps[i].LineID == "L8" && steps[i+1].LineID == "L9" {
+			steps[i].HoldMS, steps[i+1].HoldMS = 600, 1200
+		}
+	}
+	return steps
 }
 
-func cloneSlice(s []int) []int {
-	c := make([]int, len(s))
-	copy(c, s)
-	return c
-}
-
+func cloneSlice(s []int) []int { c := make([]int, len(s)); copy(c, s); return c }
 func makeRange(start, end int) []int {
 	if start > end {
 		return []int{}
 	}
-	res := make([]int, end-start+1)
-	for i := range res {
-		res[i] = start + i
+	r := make([]int, end-start+1)
+	for i := range r {
+		r[i] = start + i
 	}
-	return res
+	return r
 }

@@ -174,9 +174,9 @@ func TestCountingSortTraceValidation(t *testing.T) {
 
 	// Verify final step state values are sorted
 	finalStep := steps[len(steps)-1]
-	state, ok := finalStep.State.(renderers.ArrayState)
+	state, ok := finalStep.State.(renderers.CountingsortLessonState)
 	if !ok {
-		t.Fatalf("expected final state to be ArrayState, got %T", finalStep.State)
+		t.Fatalf("expected final state to be CountingsortLessonState, got %T", finalStep.State)
 	}
 	if !sort.IntsAreSorted(state.Values) {
 		t.Fatalf("final state values are not sorted: %v", state.Values)
@@ -210,9 +210,9 @@ func TestCountingSortTraceCustomInput(t *testing.T) {
 	}
 
 	finalStep := steps[len(steps)-1]
-	state, ok := finalStep.State.(renderers.ArrayState)
+	state, ok := finalStep.State.(renderers.CountingsortLessonState)
 	if !ok {
-		t.Fatalf("expected final state to be ArrayState, got %T", finalStep.State)
+		t.Fatalf("expected final state to be CountingsortLessonState, got %T", finalStep.State)
 	}
 	if !reflect.DeepEqual(state.Values, []int{1, 2, 3, 4, 5}) {
 		t.Fatalf("expected [1 2 3 4 5], got %v", state.Values)

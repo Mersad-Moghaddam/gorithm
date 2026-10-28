@@ -2,6 +2,8 @@ package unionfind
 
 import (
 	"encoding/json"
+	"bytes"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -71,16 +73,33 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if custom.N > 0 {
-				n = custom.N
-			}
-			if len(custom.Operations) > 0 {
-				ops = custom.Operations
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil { return nil,fmt.Errorf("union-find input must be an object: %w",err) }
+		if fields == nil { return nil,fmt.Errorf("union-find input must not be null") }
+		if raw,ok := fields["n"]; ok {
+			if bytes.Equal(bytes.TrimSpace(raw),[]byte("null")) { return nil,fmt.Errorf("n must be an integer in [1,64]") }
+			if err := json.Unmarshal(raw,&n); err != nil { return nil,fmt.Errorf("invalid n: %w",err) }
+		}
+		if n < 1 || n > 64 { return nil,fmt.Errorf("n must be in [1,64]") }
+		if raw,ok := fields["operations"]; ok {
+			var entries []struct { Op *string `json:"op"`; I *int `json:"i"`; J *int `json:"j"` }
+			if bytes.Equal(bytes.TrimSpace(raw),[]byte("null")) { return nil,fmt.Errorf("operations must be an array") }
+			if err := json.Unmarshal(raw,&entries); err != nil { return nil,fmt.Errorf("invalid operations: %w",err) }
+			if len(entries)>128 { return nil,fmt.Errorf("operations must contain at most 128 entries") }
+			ops = make([]Operation, len(entries))
+			for i, e := range entries {
+				if e.Op == nil || e.I == nil { return nil, fmt.Errorf("operation %d requires op and i", i) }
+				if *e.Op != "find" && *e.Op != "union" && *e.Op != "connected" { return nil, fmt.Errorf("unknown operation %q", *e.Op) }
+				if *e.Op != "find" && e.J == nil { return nil, fmt.Errorf("operation %d requires j", i) }
+				ops[i] = Operation{Op: *e.Op, I: *e.I}
+				if e.J != nil {
+					ops[i].J = *e.J
+					if *e.J < 0 || *e.J >= n { return nil, fmt.Errorf("operation %d: j outside [0,n)", i) }
+				}
 			}
 		}
 	}
+	for i,op := range ops { if op.I < 0 || op.I >= n || (op.Op != "find" && (op.J < 0 || op.J >= n)) { return nil,fmt.Errorf("operation %d: index outside [0,n)",i) } }
 
 	return Trace(n, ops), nil
 }

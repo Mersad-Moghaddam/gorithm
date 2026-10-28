@@ -1,7 +1,9 @@
 package minimax
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -66,21 +68,65 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	branching := 2
 
 	if len(input) > 0 {
-		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Scores) > 0 {
-			scores = custom.Scores
-			if custom.Branching > 0 {
-				branching = custom.Branching
-			}
+		raw := bytes.TrimSpace(input)
+		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+			return nil, fmt.Errorf("minimax: expected scores array or object")
+		}
+		var scoreRaw json.RawMessage
+		if raw[0] == '[' {
+			scoreRaw = raw
 		} else {
-			var customArr []int
-			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
-				scores = customArr
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				return nil, fmt.Errorf("minimax: %w", err)
+			}
+			scoreRaw = fields["scores"]
+			if v, ok := fields["branching"]; ok {
+				if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+					return nil, fmt.Errorf("minimax: branching must be integer")
+				}
+				if err := json.Unmarshal(v, &branching); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if scoreRaw != nil {
+			var values []*int
+			if err := json.Unmarshal(scoreRaw, &values); err != nil {
+				return nil, err
+			}
+			if len(values) == 0 {
+				return nil, fmt.Errorf("minimax: scores require 1–64 integers")
+			}
+			scores = make([]int, len(values))
+			for i, v := range values {
+				if v == nil {
+					return nil, fmt.Errorf("minimax: score %d must be integer", i)
+				}
+				scores[i] = *v
 			}
 		}
 	}
+	if err := validateMinimaxInput(scores, branching); err != nil {
+		return nil, err
+	}
 
 	return Trace(scores, branching), nil
+}
+
+func validateMinimaxInput(scores []int, branching int) error {
+	if len(scores) < 1 || len(scores) > 64 {
+		return fmt.Errorf("minimax: scores require 1–64 integers")
+	}
+	if branching < 2 || branching > 8 {
+		return fmt.Errorf("minimax: branching must be 2–8")
+	}
+	for _, v := range scores {
+		if v < -999999 || v > 999999 {
+			return fmt.Errorf("minimax: scores must be within [-999999,999999]")
+		}
+	}
+	return nil
 }
 
 func init() {

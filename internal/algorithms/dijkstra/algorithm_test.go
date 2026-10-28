@@ -115,7 +115,7 @@ func TestDijkstraTraceProperties(t *testing.T) {
 	}
 
 	lastStep := steps[len(steps)-1]
-	state, ok := lastStep.State.(renderers.GraphState)
+	state, ok := lastStep.State.(renderers.DijkstraLessonState)
 	if !ok {
 		t.Fatalf("expected last step state to be renderers.GraphState, got %T", lastStep.State)
 	}

@@ -2,6 +2,7 @@ package countingsort
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -66,9 +67,18 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{4, 2, 2, 8, 3, 3, 1}
 	if len(input) > 0 {
 		var custom []int
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
-			arr = custom
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("counting sort requires an array of integers: %w", err)
 		}
+		if len(custom) == 0 || len(custom) > 64 {
+			return nil, fmt.Errorf("counting sort requires 1–64 integers")
+		}
+		for _, value := range custom {
+			if value < 0 || value > 1000 {
+				return nil, fmt.Errorf("counting sort values must be between 0 and 1000")
+			}
+		}
+		arr = custom
 	}
 	return Trace(arr), nil
 }

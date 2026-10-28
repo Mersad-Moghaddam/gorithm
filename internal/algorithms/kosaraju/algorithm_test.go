@@ -141,9 +141,9 @@ func TestKosarajuTraceVariablesAndState(t *testing.T) {
 	}
 
 	lastStep := steps[len(steps)-1]
-	state, ok := lastStep.State.(renderers.GraphState)
+	state, ok := lastStep.State.(renderers.KosarajuLessonState)
 	if !ok {
-		t.Fatalf("expected GraphState in last step, got %T", lastStep.State)
+		t.Fatalf("expected KosarajuLessonState in last step, got %T", lastStep.State)
 	}
 	if len(state.Nodes) == 0 {
 		t.Error("expected non-empty nodes in graph state")

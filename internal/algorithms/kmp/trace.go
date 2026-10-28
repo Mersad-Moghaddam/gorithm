@@ -2,210 +2,143 @@ package kmp
 
 import (
 	"fmt"
-	"strconv"
-
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-func buildTableState(text, pattern string, lps []int, i, j int, phase string) renderers.TableState {
-	shift := i - j
-	if shift < 0 {
-		shift = 0
-	}
-	n := len(text)
-	m := len(pattern)
-	numCols := n
-	if shift+m > numCols {
-		numCols = shift + m
-	}
-	if numCols == 0 {
-		return renderers.TableState{}
-	}
-
-	colHeaders := make([]string, numCols)
-	for c := 0; c < numCols; c++ {
-		colHeaders[c] = strconv.Itoa(c)
-	}
-
-	cells := make([]renderers.TableCell, 0, n+2*m)
-
-	// Row 0: Text
-	for c := 0; c < n; c++ {
-		cellState := "normal"
-		if phase == "match" && c >= shift && c < shift+m {
-			cellState = "computed"
-		} else if phase == "compare" && c == i {
-			cellState = "active"
-		} else if phase == "char_match" && c == i-1 {
-			cellState = "computed"
-		} else if phase == "mismatch" && c == i {
-			cellState = "source"
-		} else if c >= shift && c < shift+j {
-			cellState = "computed"
-		}
-
-		cells = append(cells, renderers.TableCell{
-			Row:   0,
-			Col:   c,
-			Value: string(text[c]),
-			State: cellState,
-		})
-	}
-
-	// Row 1: Pattern
-	for k := 0; k < m; k++ {
-		c := shift + k
-		cellState := "normal"
-		if phase == "match" {
-			cellState = "computed"
-		} else if phase == "compare" && k == j {
-			cellState = "active"
-		} else if phase == "char_match" && k == j-1 {
-			cellState = "computed"
-		} else if phase == "mismatch" && k == j {
-			cellState = "source"
-		} else if k < j {
-			cellState = "computed"
-		}
-
-		cells = append(cells, renderers.TableCell{
-			Row:   1,
-			Col:   c,
-			Value: string(pattern[k]),
-			State: cellState,
-		})
-	}
-
-	// Row 2: LPS
-	for k := 0; k < m; k++ {
-		c := shift + k
-		cellState := "normal"
-		if phase == "lps_lookup" && k == j-1 {
-			cellState = "source"
-		}
-
-		cells = append(cells, renderers.TableCell{
-			Row:   2,
-			Col:   c,
-			Value: strconv.Itoa(lps[k]),
-			State: cellState,
-		})
-	}
-
-	return renderers.TableState{
-		RowHeaders: []string{"Text", "Pattern", "LPS"},
-		ColHeaders: colHeaders,
-		Cells:      cells,
-	}
-}
-
-// Trace records the step-by-step execution of Knuth-Morris-Pratt string matching.
+// Trace follows Search's byte comparisons, including its post-advance mismatch check.
 func Trace(text, pattern string) []trace.Step {
 	b := trace.NewBuilder()
-	n := len(text)
-	m := len(pattern)
-
-	if m == 0 {
-		emptyState := renderers.TableState{
-			RowHeaders: []string{"Text", "Pattern", "LPS"},
-			ColHeaders: []string{"0"},
+	s := renderers.KMPLessonState{Text: text, Pattern: pattern, LPS: make([]int, len(pattern)), Phase: "init", LPSIndex: -1, PrefixLength: -1, FallbackFrom: -1, FallbackTo: -1, LPSKnownThrough: -1, MatchIndex: -1}
+	for k := range s.LPS {
+		s.LPS[k] = -1
+	}
+	if len(pattern) > 0 {
+		s.LPS[0] = 0
+		s.LPSKnownThrough = 0
+	}
+	add := func(line string, action trace.ActionType, phase, why string) {
+		s.Phase = phase
+		s.Shift = s.I - s.J
+		copyState := s
+		copyState.LPS = append([]int(nil), s.LPS...)
+		vars := map[string]any{"i": s.I, "j": s.J, "shift": s.Shift}
+		if s.ResultKnown {
+			vars["matchIndex"] = s.MatchIndex
 		}
-		b.AddStep("L1", trace.ActionInit, "Initialize KMP search with empty pattern.", emptyState, map[string]any{"i": 0, "j": 0, "shift": 0})
-		b.AddStep("L10", trace.ActionDone, "Empty pattern matches at index 0.", emptyState, map[string]any{"i": 0, "j": 0, "shift": 0, "matchIndex": 0})
+		b.AddStep(line, action, why, copyState, vars)
+	}
+	finish := func(line string, result int) {
+		s.ResultKnown = true
+		s.MatchIndex = result
+		why := fmt.Sprintf("Pattern found at byte offset %d.", result)
+		if result < 0 {
+			why = "Pattern not found."
+		}
+		if len(pattern) == 0 {
+			why = "Empty pattern returns byte offset 0; no comparisons needed."
+		}
+		add(line, trace.ActionDone, "done", why)
+	}
+	add("L1", trace.ActionInit, "init", "Search uses byte offsets, not Unicode character positions.")
+	if len(pattern) == 0 {
+		finish("empty", 0)
 		return b.Steps()
 	}
-
-	if n < m {
-		lps := ComputeLPS(pattern)
-		state := buildTableState(text, pattern, lps, 0, 0, "init")
-		b.AddStep("L1", trace.ActionInit, "Initialize KMP search.", state, map[string]any{"i": 0, "j": 0, "shift": 0})
-		b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Text length %d is less than pattern length %d: match impossible.", n, m), state, map[string]any{"i": 0, "j": 0, "shift": 0})
-		b.AddStep("L19", trace.ActionDone, "Pattern not found in text.", state, map[string]any{"i": 0, "j": 0, "shift": 0, "matchIndex": -1})
+	add("L2", trace.ActionSet, "init", fmt.Sprintf("Text has %d bytes; pattern has %d bytes.", len(text), len(pattern)))
+	if len(text) < len(pattern) {
+		finish("short", -1)
 		return b.Steps()
 	}
-
-	lps := ComputeLPS(pattern)
-	initState := buildTableState(text, pattern, lps, 0, 0, "init")
-
-	b.AddStep("L1", trace.ActionInit, "Initialize KMP search with text and pattern.", initState, map[string]any{"i": 0, "j": 0, "shift": 0})
-	b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Text length n = %d, pattern length m = %d.", n, m), initState, map[string]any{"i": 0, "j": 0, "shift": 0})
-	b.AddStep("L3", trace.ActionSet, fmt.Sprintf("Precomputed LPS (Longest Proper Prefix/Suffix) array: %v.", lps), initState, map[string]any{"i": 0, "j": 0, "shift": 0})
-	b.AddStep("L4", trace.ActionSet, "Initialized text pointer i = 0 and pattern pointer j = 0.", initState, map[string]any{"i": 0, "j": 0, "shift": 0})
-
-	i := 0
-	j := 0
-	found := false
-
-	for i < n {
-		b.AddStep("L5", trace.ActionHighlight, fmt.Sprintf("Loop check: text index i = %d < %d.", i, n),
-			buildTableState(text, pattern, lps, i, j, "normal"),
-			map[string]any{"i": i, "j": j, "shift": i - j})
-
+	s.LPSIndex = 0
+	s.PrefixLength = 0
+	add("L3", trace.ActionSet, "lps", "Inside computeLPS: lps[0] = 0; other entries remain unknown.")
+	length := 0
+	for scan := 1; scan < len(pattern); {
+		s.LPSIndex = scan
+		s.PrefixLength = length
+		s.FallbackFrom = -1
+		s.FallbackTo = -1
 		b.IncComparisons()
-		b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("Comparing text[%d] ('%c') with pattern[%d] ('%c').", i, text[i], j, pattern[j]),
-			buildTableState(text, pattern, lps, i, j, "compare"),
-			map[string]any{"i": i, "j": j, "shift": i - j})
-
-		if text[i] == pattern[j] {
-			i++
-			j++
-			b.AddStep("L7", trace.ActionSet, fmt.Sprintf("Match: '%c' == '%c'. Advanced text pointer i to %d and pattern pointer j to %d.", text[i-1], pattern[j-1], i, j),
-				buildTableState(text, pattern, lps, i, j, "char_match"),
-				map[string]any{"i": i, "j": j, "shift": i - j})
+		add("L3", trace.ActionCompare, "lps", fmt.Sprintf("Inside computeLPS: compare pattern bytes %d and %d.", scan, length))
+		if pattern[scan] == pattern[length] {
+			length++
+			s.LPS[scan] = length
+			s.LPSKnownThrough = scan
+			s.PrefixLength = length
+			b.IncOperations()
+			add("L3", trace.ActionSet, "lps", fmt.Sprintf("Inside computeLPS: matching suffix extends prefix; lps[%d] = %d.", scan, length))
+			scan++
+		} else if length > 0 {
+			old := length
+			length = s.LPS[length-1]
+			s.FallbackFrom = old
+			s.FallbackTo = length
+			s.PrefixLength = length
+			b.IncOperations()
+			add("L3", trace.ActionSet, "lps", fmt.Sprintf("Inside computeLPS: unequal bytes; prefix falls from %d to %d, scan stays %d.", old, length, scan))
+		} else {
+			s.LPS[scan] = 0
+			s.LPSKnownThrough = scan
+			b.IncOperations()
+			add("L3", trace.ActionSet, "lps", fmt.Sprintf("Inside computeLPS: no matching proper prefix; lps[%d] = 0.", scan))
+			scan++
 		}
-
-		if j == m {
-			matchIdx := i - j
-			b.AddStep("L9", trace.ActionHighlight, fmt.Sprintf("Pattern index j reaches length %d: full pattern matched!", m),
-				buildTableState(text, pattern, lps, i, j, "match"),
-				map[string]any{"i": i, "j": j, "shift": matchIdx})
-
-			b.AddStep("L10", trace.ActionDone, fmt.Sprintf("Pattern found starting at index %d in text.", matchIdx),
-				buildTableState(text, pattern, lps, i, j, "match"),
-				map[string]any{"i": i, "j": j, "shift": matchIdx, "matchIndex": matchIdx})
-			found = true
-			break
-		} else if i < n && text[i] != pattern[j] {
-			b.AddStep("L11", trace.ActionHighlight, fmt.Sprintf("Mismatch: text[%d] ('%c') != pattern[%d] ('%c').", i, text[i], j, pattern[j]),
-				buildTableState(text, pattern, lps, i, j, "mismatch"),
-				map[string]any{"i": i, "j": j, "shift": i - j})
-
-			if j != 0 {
-				lookupIdx := j - 1
-				nextJ := lps[lookupIdx]
-				b.AddStep("L12", trace.ActionHighlight, fmt.Sprintf("Pattern pointer j = %d > 0: query LPS table at index j-1 = %d.", j, lookupIdx),
-					buildTableState(text, pattern, lps, i, j, "lps_lookup"),
-					map[string]any{"i": i, "j": j, "shift": i - j})
-
-				b.IncOperations()
-				j = nextJ
-				b.AddStep("L13", trace.ActionSet, fmt.Sprintf("LPS[%d] = %d: shift pattern alignment without backtracking text pointer i (new j = %d, shift = %d).", lookupIdx, nextJ, j, i-j),
-					buildTableState(text, pattern, lps, i, j, "normal"),
-					map[string]any{"i": i, "j": j, "shift": i - j})
-			} else {
-				b.AddStep("L14", trace.ActionHighlight, "Pattern pointer j = 0: cannot shift pattern further, advance text index i.",
-					buildTableState(text, pattern, lps, i, j, "normal"),
-					map[string]any{"i": i, "j": j, "shift": i - j})
-
-				b.IncOperations()
-				i++
-				b.AddStep("L15", trace.ActionSet, fmt.Sprintf("Advanced text index i to %d.", i),
-					buildTableState(text, pattern, lps, i, j, "normal"),
-					map[string]any{"i": i, "j": j, "shift": i - j})
+	}
+	s.LPSIndex = -1
+	s.PrefixLength = -1
+	s.FallbackFrom = -1
+	s.FallbackTo = -1
+	add("L4", trace.ActionSet, "init", "Start text pointer i = 0 and pattern pointer j = 0.")
+	for s.I < len(text) {
+		s.LPSIndex = -1
+		s.FallbackFrom = -1
+		s.FallbackTo = -1
+		add("L5", trace.ActionHighlight, "advance", "Text remains; compare current bytes.")
+		b.IncComparisons()
+		add("L6", trace.ActionCompare, "compare", fmt.Sprintf("Compare text[%d] and pattern[%d].", s.I, s.J))
+		if text[s.I] == pattern[s.J] {
+			s.I++
+			s.J++
+			add("L7", trace.ActionSet, "advance", "Equal bytes: advance both pointers; matched prefix grows.")
+		}
+		if s.J == len(pattern) {
+			add("L9", trace.ActionHighlight, "advance", "Pattern pointer reached its end: full match.")
+			finish("L10", s.I-s.J)
+			return kmpLessonTiming(b.Steps())
+		}
+		if s.I < len(text) {
+			b.IncComparisons()
+			if text[s.I] != pattern[s.J] {
+				add("L11", trace.ActionHighlight, "mismatch", fmt.Sprintf("Unequal bytes at text[%d] and pattern[%d]: ≠.", s.I, s.J))
+				if s.J > 0 {
+					s.LPSIndex = s.J - 1
+					s.FallbackFrom = s.J
+					s.FallbackTo = s.LPS[s.J-1]
+					add("L12", trace.ActionHighlight, "mismatch", fmt.Sprintf("Read lps[%d] = %d; text pointer stays fixed.", s.LPSIndex, s.FallbackTo))
+					s.J = s.FallbackTo
+					b.IncOperations()
+					add("L13", trace.ActionSet, "fallback", fmt.Sprintf("j = lps[%d] = %d; i stays %d. Shift alignment to %d.", s.LPSIndex, s.J, s.I, s.I-s.J))
+				} else {
+					add("L14", trace.ActionHighlight, "mismatch", "No matched prefix to reuse; advance text pointer.")
+					s.I++
+					b.IncOperations()
+					add("L15", trace.ActionSet, "advance", "Advance i; j remains 0.")
+				}
 			}
 		}
 	}
+	add("L18", trace.ActionHighlight, "advance", "Text pointer reached end without full match.")
+	finish("L19", -1)
+	return kmpLessonTiming(b.Steps())
+}
 
-	if !found {
-		b.AddStep("L18", trace.ActionHighlight, "Text exhausted without finding a full pattern match.",
-			buildTableState(text, pattern, lps, i, j, "normal"),
-			map[string]any{"i": i, "j": j, "shift": i - j})
-
-		b.AddStep("L19", trace.ActionDone, "KMP search finished: pattern not found in text.",
-			buildTableState(text, pattern, lps, i, j, "normal"),
-			map[string]any{"i": i, "j": j, "shift": i - j, "matchIndex": -1})
+func kmpLessonTiming(steps []trace.Step) []trace.Step {
+	for k := 1; k < len(steps); k++ {
+		if steps[k-1].Action == trace.ActionCompare && steps[k].Action == trace.ActionSet {
+			steps[k-1].HoldMS = 600
+			steps[k].HoldMS = 1200
+		}
 	}
-
-	return b.Steps()
+	return steps
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
+	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
 func TestSearchCorrectness(t *testing.T) {
@@ -90,6 +91,109 @@ func TestSearchCorrectness(t *testing.T) {
 				t.Fatalf("Search(%v, %d) = %d, expected %d", tt.arr, tt.target, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestBinarySearchLessonBounds(t *testing.T) {
+	steps, _ := (Lesson{}).Build(nil)
+	var bounds, discards [][2]int
+	var mids []int
+	for _, step := range steps {
+		s, ok := step.State.(renderers.BinarySearchLessonState)
+		if !ok {
+			t.Fatalf("untyped state at %s", step.LineID)
+		}
+		if step.LineID == "L4" {
+			bounds = append(bounds, [2]int{s.Low, s.High})
+			mids = append(mids, s.Mid)
+		}
+		if s.Phase == "discard" {
+			discards = append(discards, [2]int{s.DiscardLow, s.DiscardHigh})
+			if s.Mid != -1 {
+				t.Fatal("stale midpoint")
+			}
+		}
+		if !reflect.DeepEqual(s.Values, []int{3, 8, 14, 22, 35, 47, 59, 71, 88}) {
+			t.Fatal("values rearranged")
+		}
+	}
+	if !reflect.DeepEqual(bounds, [][2]int{{0, 8}, {5, 8}, {5, 5}}) || !reflect.DeepEqual(mids, []int{4, 6, 5}) || !reflect.DeepEqual(discards, [][2]int{{0, 4}, {6, 8}}) {
+		t.Fatalf("bounds %v mids %v discards %v", bounds, mids, discards)
+	}
+	last := steps[len(steps)-1]
+	if last.Metrics.Comparisons != 3 || last.State.(renderers.BinarySearchLessonState).Result != 5 {
+		t.Fatal("wrong result/metrics")
+	}
+	for i, step := range steps {
+		if step.LineID == "L7" || step.LineID == "L9" || step.LineID == "L6" {
+			if step.LineID == "L6" {
+				i--
+			}
+			if steps[i].HoldMS != 600 || steps[i+1].HoldMS != 1200 {
+				t.Fatal("compare/commit budget must total 1800ms")
+			}
+		}
+	}
+}
+
+func TestBinarySearchLessonBoundaryCases(t *testing.T) {
+	for _, fixture := range []struct {
+		a      []int
+		target int
+	}{{nil, 0}, {[]int{2}, 2}, {[]int{2}, 1}, {[]int{2, 4}, 0}, {[]int{2, 4}, 5}, {[]int{-8, -3, 0}, -3}, {[]int{2, 2, 2}, 2}, {[]int{3, 1, 2}, 1}} {
+		steps := Trace(fixture.a, fixture.target)
+		if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range steps {
+			s := step.State.(renderers.BinarySearchLessonState)
+			if s.Mid != -1 && (s.Mid < s.Low || s.Mid > s.High) {
+				t.Fatal("mid outside interval")
+			}
+			if step.HoldMS != 0 && step.HoldMS != 350 && step.HoldMS != 600 && step.HoldMS != 1200 && step.HoldMS != 1800 {
+				t.Fatal("invalid hold")
+			}
+		}
+		last := steps[len(steps)-1].State.(renderers.BinarySearchLessonState)
+		if !last.ResultKnown || last.Result != Search(fixture.a, fixture.target) {
+			t.Fatal("result parity")
+		}
+		if len(fixture.a) == 3 && fixture.a[0] == 3 && last.SortedInput {
+			t.Fatal("unsorted claimed sorted")
+		}
+	}
+	input := []int{1, 2, 3}
+	steps := Trace(input, 3)
+	before := steps[0].State.(renderers.BinarySearchLessonState).Values
+	input[0] = 99
+	steps[len(steps)-1].State.(renderers.BinarySearchLessonState).Values[0] = 88
+	if before[0] != 1 {
+		t.Fatal("aliased snapshot")
+	}
+}
+
+func TestBinarySearchBuildValidation(t *testing.T) {
+	for _, input := range []string{`null`, `{`, `true`, `[null]`, `{"array":[null]}`, `{"arr":[null]}`, `{"array":null}`, `{"arr":null}`, `{"target":null}`, `{"array":[3,1,2]}`, `{"array":[1000001]}`, `{"array":[-1000001]}`, `{"target":1000001}`, `{"target":-1000001}`, `{"array":["1"]}`} {
+		if _, err := (Lesson{}).Build(json.RawMessage(input)); err == nil {
+			t.Errorf("accepted %s", input)
+		}
+	}
+	for _, n := range []int{128, 129} {
+		a := make([]int, n)
+		raw, _ := json.Marshal(a)
+		_, err := (Lesson{}).Build(raw)
+		if (err == nil) != (n == 128) {
+			t.Fatalf("length %d: %v", n, err)
+		}
+	}
+	for _, input := range []string{`{"target":0}`, `{"array":[-1000000,1000000],"target":1000000}`, `{"arr":[0],"target":0}`, `[]`, `{}`} {
+		steps, err := (Lesson{}).Build(json.RawMessage(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if input == `{"target":0}` && steps[0].State.(renderers.BinarySearchLessonState).Target != 0 {
+			t.Fatal("zero target lost")
+		}
 	}
 }
 
@@ -258,4 +362,3 @@ func TestBinarySearchTracePointersAndState(t *testing.T) {
 		t.Errorf("expected result index 3, got %v", lastStep.Variables["result"])
 	}
 }
-

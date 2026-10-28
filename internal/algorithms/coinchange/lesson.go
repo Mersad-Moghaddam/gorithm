@@ -1,7 +1,9 @@
 package coinchange
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -60,15 +62,38 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	coins := []int{1, 2, 5}
 	amount := 11
 
-	if len(input) > 0 {
+	if len(bytes.TrimSpace(input)) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil || fields == nil {
+			return nil, fmt.Errorf("coin change input must be a JSON object")
+		}
+		for _, key := range []string{"coins", "amount"} {
+			if value, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+				return nil, fmt.Errorf("%s must not be null", key)
+			}
+		}
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if len(custom.Coins) > 0 {
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid coin change input: %w", err)
+		}
+		{
+			if _, supplied := fields["coins"]; supplied {
 				coins = custom.Coins
 			}
 			if custom.Amount != nil {
 				amount = *custom.Amount
 			}
+		}
+	}
+	if amount < 0 || amount > 200 {
+		return nil, fmt.Errorf("amount must be between 0 and 200")
+	}
+	if len(coins) < 1 || len(coins) > 16 {
+		return nil, fmt.Errorf("provide between 1 and 16 coins")
+	}
+	for _, coin := range coins {
+		if coin < 1 || coin > 200 {
+			return nil, fmt.Errorf("each coin must be between 1 and 200")
 		}
 	}
 

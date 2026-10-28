@@ -145,8 +145,8 @@ func TestAStarDefaultBuildValidation(t *testing.T) {
 	}
 
 	// Verify GraphState is emitted
-	if _, ok := lastStep.State.(renderers.GraphState); !ok {
-		t.Fatalf("expected state type renderers.GraphState, got %T", lastStep.State)
+	if _, ok := lastStep.State.(renderers.AStarLessonState); !ok {
+		t.Fatalf("expected state type renderers.AStarLessonState, got %T", lastStep.State)
 	}
 
 	// Verify f/g/h values present in step variables

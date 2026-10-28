@@ -2,152 +2,115 @@ package bfs
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// Trace generates execution steps for Breadth-First Search traversal.
-// ponytail: adj derived from slice of edges; adjacency list cache faster for dynamic updates.
+// Trace records forward-edge BFS; weights and Directed do not change traversal.
 func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start string) []trace.Step {
 	if len(nodes) == 0 {
 		return nil
 	}
-
 	if start == "" {
 		start = nodes[0].ID
 	}
-
-	adj := make(map[string][]string)
-	for _, e := range edges {
-		adj[e.From] = append(adj[e.From], e.To)
+	s := renderers.BFSLessonState{GraphState: renderers.GraphState{Nodes: slices.Clone(nodes), Edges: slices.Clone(edges)}, Start: start, EdgeIndex: -1, Distance: map[string]int{}, Parent: map[string]string{}, Discovered: map[string]bool{}, Finished: map[string]bool{}}
+	adj := map[string][]int{}
+	for i, e := range edges {
+		adj[e.From] = append(adj[e.From], i)
 	}
-
-	nodeStates := make(map[string]string, len(nodes))
-	for _, n := range nodes {
-		nodeStates[n.ID] = "unvisited"
-	}
-
 	b := trace.NewBuilder()
-
-	// Initial step
-	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Initialize BFS traversal starting at node %s. All nodes unvisited.", start),
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{"start": start})
-
-	visited := make(map[string]bool)
-	queue := []string{start}
-	visited[start] = true
-	nodeStates[start] = "queued"
-	b.IncOperations()
-
-	b.AddStep("L3", trace.ActionPush, fmt.Sprintf("Enqueue start node %s and mark it queued.", start),
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{"start": start, "queue": cloneSlice(queue)})
-
-	var order []string
-	b.AddStep("L5", trace.ActionSet, "Initialize empty traversal order list.",
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{"queue": cloneSlice(queue), "order": cloneSlice(order)})
-
-	for len(queue) > 0 {
-		b.IncComparisons()
-		b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("Queue is not empty (%v). Continue BFS loop.", queue),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{"queue": cloneSlice(queue), "order": cloneSlice(order)})
-
-		curr := queue[0]
-		queue = queue[1:]
-		nodeStates[curr] = "visiting"
-		b.IncOperations()
-
-		b.AddStep("L7", trace.ActionPop, fmt.Sprintf("Dequeue node %s from front of queue to explore neighbors.", curr),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{"curr": curr, "queue": cloneSlice(queue)})
-
-		order = append(order, curr)
-		b.IncOperations()
-		b.AddStep("L9", trace.ActionVisit, fmt.Sprintf("Visit node %s and append it to traversal order.", curr),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{"curr": curr, "order": cloneSlice(order)})
-
-		for _, neighbor := range adj[curr] {
-			b.IncComparisons()
-			b.AddStep("L10", trace.ActionHighlight, fmt.Sprintf("Inspect outgoing edge %s -> %s.", curr, neighbor),
-				cloneGraphState(nodes, nodeStates, edges, curr, neighbor),
-				map[string]any{"curr": curr, "neighbor": neighbor})
-
-			b.IncComparisons()
-			if !visited[neighbor] {
-				b.AddStep("L11", trace.ActionCompare, fmt.Sprintf("Neighbor node %s is unvisited. Prepare to enqueue.", neighbor),
-					cloneGraphState(nodes, nodeStates, edges, curr, neighbor),
-					map[string]any{"curr": curr, "neighbor": neighbor})
-
-				visited[neighbor] = true
-				queue = append(queue, neighbor)
-				nodeStates[neighbor] = "queued"
-				b.IncOperations()
-
-				b.AddStep("L12", trace.ActionPush, fmt.Sprintf("Mark %s as queued and add to queue: %v.", neighbor, queue),
-					cloneGraphState(nodes, nodeStates, edges, curr, neighbor),
-					map[string]any{"curr": curr, "neighbor": neighbor, "queue": cloneSlice(queue)})
-			} else {
-				b.AddStep("L11", trace.ActionCompare, fmt.Sprintf("Neighbor node %s is already visited or queued. Skip.", neighbor),
-					cloneGraphState(nodes, nodeStates, edges, curr, neighbor),
-					map[string]any{"curr": curr, "neighbor": neighbor})
+	add := func(line string, action trace.ActionType, explanation string) {
+		c := s
+		c.Nodes = slices.Clone(s.Nodes)
+		c.Edges = slices.Clone(s.Edges)
+		for i := range c.Nodes {
+			n := &c.Nodes[i]
+			n.State = "unvisited"
+			if s.Discovered[n.ID] {
+				n.State = "queued"
+			}
+			if n.ID == s.Current {
+				n.State = "visiting"
+			}
+			if s.Finished[n.ID] {
+				n.State = "visited"
 			}
 		}
-
-		nodeStates[curr] = "visited"
+		for i := range c.Edges {
+			c.Edges[i].Active = i == s.EdgeIndex
+		}
+		c.Queue = slices.Clone(s.Queue)
+		c.Order = slices.Clone(s.Order)
+		c.Distance = maps.Clone(s.Distance)
+		c.Parent = maps.Clone(s.Parent)
+		c.Discovered = maps.Clone(s.Discovered)
+		c.Finished = maps.Clone(s.Finished)
+		b.AddStep(line, action, explanation, c, map[string]any{"start": s.Start, "curr": s.Current, "neighbor": s.Neighbor, "queue": slices.Clone(s.Queue), "order": slices.Clone(s.Order)})
+	}
+	add("L1", trace.ActionInit, "BFS uses a FIFO queue. Levels count edges, not weighted cost.")
+	s.Queue = []string{start}
+	s.Discovered[start] = true
+	s.Distance[start] = 0
+	s.Enqueued = start
+	b.IncOperations()
+	add("L3", trace.ActionPush, fmt.Sprintf("Discover %s at level 0 and enqueue it.", start))
+	s.Enqueued = ""
+	add("L5", trace.ActionSet, "Initialize empty visit order. Discovered means queued, not finished.")
+	for len(s.Queue) > 0 {
+		b.IncComparisons()
+		add("L6", trace.ActionCompare, "FIFO is not empty; take its front vertex.")
+		s.Current = s.Queue[0]
+		s.Queue = s.Queue[1:]
+		s.Dequeued = s.Current
 		b.IncOperations()
-		b.AddStep("L15", trace.ActionSet, fmt.Sprintf("Finished inspecting neighbors of %s. Mark %s as visited.", curr, curr),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{"curr": curr, "queue": cloneSlice(queue), "order": cloneSlice(order)})
+		add("L7", trace.ActionPop, fmt.Sprintf("Dequeue %s; remaining queue %v.", s.Current, s.Queue))
+		s.Dequeued = ""
+		s.Order = append(s.Order, s.Current)
+		b.IncOperations()
+		add("L9", trace.ActionVisit, fmt.Sprintf("Append %s to visit order.", s.Current))
+		for _, ei := range adj[s.Current] {
+			s.EdgeIndex = ei
+			s.Neighbor = edges[ei].To
+			s.Skip = false
+			b.IncComparisons()
+			add("L10", trace.ActionHighlight, fmt.Sprintf("Inspect directed edge %s → %s (input edge %d).", s.Current, s.Neighbor, ei))
+			b.IncComparisons()
+			s.Skip = s.Discovered[s.Neighbor]
+			if s.Skip {
+				add("L11", trace.ActionCompare, "Skip: neighbor already queued/visited; never enqueue twice.")
+				continue
+			}
+			add("L11", trace.ActionCompare, fmt.Sprintf("%s is undiscovered; it is not in the queue yet.", s.Neighbor))
+			s.Discovered[s.Neighbor] = true
+			s.Distance[s.Neighbor] = s.Distance[s.Current] + 1
+			s.Parent[s.Neighbor] = s.Current
+			s.Queue = append(s.Queue, s.Neighbor)
+			s.Enqueued = s.Neighbor
+			b.IncOperations()
+			add("L12", trace.ActionPush, fmt.Sprintf("Discover %s: d[%s] + 1 = %d. Enqueue once.", s.Neighbor, s.Current, s.Distance[s.Neighbor]))
+			s.Enqueued = ""
+		}
+		s.EdgeIndex = -1
+		s.Neighbor = ""
+		s.Skip = false
+		s.Finished[s.Current] = true
+		b.IncOperations()
+		add("L15", trace.ActionSet, fmt.Sprintf("✓ %s: all outgoing edges inspected. Level stays fixed.", s.Current))
+		s.Current = ""
 	}
-
 	b.IncComparisons()
-	b.AddStep("L6", trace.ActionCompare, "Queue is empty. Traversal loop terminates.",
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{"queue": []string{}, "order": cloneSlice(order)})
-
-	b.AddStep("L17", trace.ActionDone, fmt.Sprintf("BFS traversal complete. Traversal order: %v.", order),
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{"order": cloneSlice(order), "status": "complete"})
-
-	return b.Steps()
-}
-
-func cloneGraphState(nodes []renderers.GraphNode, nodeStates map[string]string, edges []renderers.GraphEdge, activeFrom, activeTo string) renderers.GraphState {
-	clonedNodes := make([]renderers.GraphNode, len(nodes))
-	for i, n := range nodes {
-		clonedNodes[i] = n
-		if st, ok := nodeStates[n.ID]; ok {
-			clonedNodes[i].State = st
+	add("L6", trace.ActionCompare, "Queue empty; traversal ends.")
+	add("L17", trace.ActionDone, fmt.Sprintf("BFS complete: %v. Unknown levels are unreachable from %s.", s.Order, start))
+	steps := b.Steps()
+	for i := range steps {
+		if steps[i].LineID == "L11" && i+1 < len(steps) && steps[i+1].LineID == "L12" {
+			steps[i].HoldMS = 600
+			steps[i+1].HoldMS = 1200
 		}
 	}
-
-	clonedEdges := make([]renderers.GraphEdge, len(edges))
-	for i, e := range edges {
-		clonedEdges[i] = e
-		if activeFrom != "" && activeTo != "" &&
-			((e.From == activeFrom && e.To == activeTo) || (e.From == activeTo && e.To == activeFrom)) {
-			clonedEdges[i].Active = true
-		} else {
-			clonedEdges[i].Active = false
-		}
-	}
-
-	return renderers.GraphState{
-		Nodes: clonedNodes,
-		Edges: clonedEdges,
-	}
-}
-
-func cloneSlice(s []string) []string {
-	if s == nil {
-		return nil
-	}
-	res := make([]string, len(s))
-	copy(res, s)
-	return res
+	return steps
 }

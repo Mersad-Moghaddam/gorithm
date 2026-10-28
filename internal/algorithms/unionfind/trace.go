@@ -2,7 +2,6 @@ package unionfind
 
 import (
 	"fmt"
-	"math"
 	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -11,330 +10,124 @@ import (
 
 // Operation represents an action to execute in union-find trace.
 type Operation struct {
-	Op string `json:"op"` // "union", "find", "connected"
+	Op string `json:"op"`
 	I  int    `json:"i"`
 	J  int    `json:"j,omitempty"`
 }
 
-// Trace simulates DSU operations and emits visual execution steps.
-// ponytail: circular 2D graph layout; upgrade to hierarchical tree layout if nested depth > 4.
+// Trace records actual parent pointers, including compression within every caller.
 func Trace(n int, ops []Operation) []trace.Step {
 	b := trace.NewBuilder()
 	if n <= 0 {
 		return b.Steps()
 	}
-
-	dsu := New(n)
-	nodes := initNodes(n)
-	edges := make([]renderers.GraphEdge, 0, n)
-
-	// Step 1: Initial state
-	b.AddStep("L1", trace.ActionInit,
-		fmt.Sprintf("Initialized Disjoint Set Union with %d elements (0 to %d). Each element is its own representative root.", n, n-1),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-		map[string]any{
-			"n":          n,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
+	d := New(n)
+	s := renderers.UnionFindLessonState{I: -1, J: -1, RootI: -1, RootJ: -1, Active: -1, ChangedNode: -1, OldParent: -1, NewParent: -1}
+	emit := func(line string, action trace.ActionType, phase, explanation string) {
+		s.Phase = phase
+		snapshot := s
+		snapshot.Parent, snapshot.Rank, snapshot.Path = slices.Clone(d.parent), slices.Clone(d.rank), slices.Clone(s.Path)
+		snapshot.Components = d.count
+		b.AddStep(line, action, explanation, snapshot, map[string]any{
+			"parent": slices.Clone(d.parent), "rank": slices.Clone(d.rank), "path": slices.Clone(s.Path), "components": d.count,
+			"i": s.I, "j": s.J, "root_i": s.RootI, "root_j": s.RootJ, "result_known": s.ResultKnown, "connected": s.Connected, "redundant": s.Redundant,
+		})
+	}
+	emit("L1", trace.ActionInit, "init", fmt.Sprintf("Each of %d elements starts as its own root. Rank starts at zero.", n))
+	var find func(int) int
+	find = func(i int) int {
+		s.Active = i
+		s.Path = append(s.Path, i)
+		emit("L5", trace.ActionHighlight, "walk", fmt.Sprintf("Find visits %d; parent[%d] = %d.", i, i, d.parent[i]))
+		b.IncComparisons()
+		emit("L6", trace.ActionCompare, "walk", fmt.Sprintf("Check %d against parent %d: root = %t.", i, d.parent[i], d.parent[i] == i))
+		if d.parent[i] != i {
+			old := d.parent[i]
+			root := find(old)
+			if old != root {
+				d.parent[i] = root
+				b.IncOperations()
+				s.Active, s.ChangedNode, s.OldParent, s.NewParent = i, i, old, root
+				emit("L7", trace.ActionSet, "compress", fmt.Sprintf("Compress parent[%d]: %d becomes %d. Components and rank stay unchanged.", i, old, root))
+				s.ChangedNode, s.OldParent, s.NewParent = -1, -1, -1
+			}
+		}
+		s.Active = i
+		emit("L9", trace.ActionHighlight, "roots", fmt.Sprintf("Find(%d) returns root %d.", i, d.parent[i]))
+		return d.parent[i]
+	}
 	for _, op := range ops {
-		switch op.Op {
-		case "union":
-			traceUnion(b, dsu, nodes, &edges, op.I, op.J)
-		case "find":
-			traceFind(b, dsu, nodes, edges, op.I)
-		case "connected":
-			traceConnected(b, dsu, nodes, edges, op.I, op.J)
+		if op.I < 0 || op.I >= n {
+			continue
 		}
-	}
-
-	// Final Step
-	resetNodeStates(nodes)
-	b.AddStep("L17", trace.ActionDone,
-		fmt.Sprintf("Completed all operations. Total remaining disjoint components: %d.", dsu.Count()),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-		map[string]any{
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
-	return b.Steps()
-}
-
-func traceUnion(b *trace.Builder, dsu *DSU, nodes []renderers.GraphNode, edges *[]renderers.GraphEdge, i, j int) {
-	if i < 0 || i >= len(nodes) || j < 0 || j >= len(nodes) {
-		return
-	}
-
-	// L11: Call Union
-	resetNodeStates(nodes)
-	setNodeState(nodes, i, "visiting")
-	setNodeState(nodes, j, "visiting")
-	b.AddStep("L11", trace.ActionHighlight,
-		fmt.Sprintf("Union(%d, %d): finding roots for %d and %d.", i, j, i, j),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(*edges)},
-		map[string]any{
-			"i":          i,
-			"j":          j,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
-	b.IncComparisons()
-	rootI := dsu.Find(i)
-	rootJ := dsu.Find(j)
-
-	setNodeState(nodes, rootI, "queued")
-	setNodeState(nodes, rootJ, "queued")
-
-	// L12: Roots resolved
-	b.AddStep("L12", trace.ActionCompare,
-		fmt.Sprintf("Find(%d) = %d, Find(%d) = %d.", i, rootI, j, rootJ),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(*edges)},
-		map[string]any{
-			"i":          i,
-			"j":          j,
-			"root_i":     rootI,
-			"root_j":     rootJ,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
-	// L13: Check equality
-	if rootI == rootJ {
-		b.AddStep("L13", trace.ActionCompare,
-			fmt.Sprintf("Roots match (%d == %d). Elements %d and %d are already in the same set.", rootI, rootJ, i, j),
-			renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(*edges)},
-			map[string]any{
-				"i":          i,
-				"j":          j,
-				"root_i":     rootI,
-				"root_j":     rootJ,
-				"redundant":  true,
-				"components": dsu.Count(),
-				"parent":     slices.Clone(dsu.parent),
-				"rank":       slices.Clone(dsu.rank),
-			},
-		)
-		return
-	}
-
-	b.IncOperations()
-	var lineID string
-	var expl string
-
-	if dsu.rank[rootI] < dsu.rank[rootJ] {
-		lineID = "L14"
-		dsu.parent[rootI] = rootJ
-		expl = fmt.Sprintf("rank[%d] (%d) < rank[%d] (%d): attach tree %d under root %d.", rootI, dsu.rank[rootI], rootJ, dsu.rank[rootJ], rootI, rootJ)
-	} else if dsu.rank[rootI] > dsu.rank[rootJ] {
-		lineID = "L15"
-		dsu.parent[rootJ] = rootI
-		expl = fmt.Sprintf("rank[%d] (%d) > rank[%d] (%d): attach tree %d under root %d.", rootI, dsu.rank[rootI], rootJ, dsu.rank[rootJ], rootJ, rootI)
-	} else {
-		lineID = "L16"
-		dsu.parent[rootJ] = rootI
-		dsu.rank[rootI]++
-		expl = fmt.Sprintf("Ranks equal (%d): attach tree %d under %d and increment rank[%d] to %d.", dsu.rank[rootI]-1, rootJ, rootI, rootI, dsu.rank[rootI])
-	}
-	dsu.count--
-
-	addEdge(edges, i, j)
-	setNodeState(nodes, i, "visited")
-	setNodeState(nodes, j, "visited")
-	setNodeState(nodes, rootI, "visited")
-	setNodeState(nodes, rootJ, "visited")
-
-	b.AddStep(lineID, trace.ActionSet,
-		expl,
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(*edges)},
-		map[string]any{
-			"i":          i,
-			"j":          j,
-			"root_i":     rootI,
-			"root_j":     rootJ,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
-	b.AddStep("L17", trace.ActionDone,
-		fmt.Sprintf("Union(%d, %d) complete. Components remaining: %d.", i, j, dsu.Count()),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(*edges)},
-		map[string]any{
-			"i":          i,
-			"j":          j,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-}
-
-func traceFind(b *trace.Builder, dsu *DSU, nodes []renderers.GraphNode, edges []renderers.GraphEdge, i int) {
-	if i < 0 || i >= len(nodes) {
-		return
-	}
-
-	resetNodeStates(nodes)
-	setNodeState(nodes, i, "visiting")
-
-	b.AddStep("L5", trace.ActionHighlight,
-		fmt.Sprintf("Find(%d): traversing parent pointers to determine representative root.", i),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-		map[string]any{
-			"i":          i,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
-	b.IncComparisons()
-	origParent := dsu.parent[i]
-	root := dsu.Find(i)
-
-	if origParent != root {
+		if op.Op != "find" && (op.J < 0 || op.J >= n) {
+			continue
+		}
+		if op.Op != "find" && op.Op != "union" && op.Op != "connected" {
+			continue
+		}
+		s = renderers.UnionFindLessonState{Operation: op.Op, I: op.I, J: -1, RootI: -1, RootJ: -1, Active: -1, ChangedNode: -1, OldParent: -1, NewParent: -1}
+		if op.Op == "find" {
+			s.RootI = find(op.I)
+			s.ResultKnown = true
+			emit("L9", trace.ActionDone, "done", fmt.Sprintf("Find(%d) = %d. Component count stays %d.", op.I, s.RootI, d.count))
+			continue
+		}
+		s.J = op.J
+		line := "L11"
+		if op.Op == "connected" {
+			line = "L19"
+		}
+		emit(line, trace.ActionHighlight, "walk", fmt.Sprintf("%s(%d, %d): find both representative roots.", op.Op, op.I, op.J))
+		s.RootI = find(op.I)
+		s.Path = nil
+		s.RootJ = find(op.J)
+		s.Active = -1
+		if op.Op == "connected" {
+			b.IncComparisons()
+			s.Connected, s.ResultKnown = s.RootI == s.RootJ, true
+			emit("L20", trace.ActionCompare, "compare", fmt.Sprintf("Roots %d and %d: connected = %t.", s.RootI, s.RootJ, s.Connected))
+			continue
+		}
+		emit("L12", trace.ActionHighlight, "roots", fmt.Sprintf("Roots found: %d and %d.", s.RootI, s.RootJ))
+		b.IncComparisons()
+		s.Redundant = s.RootI == s.RootJ
+		emit("L13", trace.ActionCompare, "compare", fmt.Sprintf("Roots equal = %t. Redundant unions do not change rank or component count.", s.Redundant))
+		if s.Redundant {
+			continue
+		}
+		ri, rj := s.RootI, s.RootJ
+		s.OldParent = -1
+		if d.rank[ri] < d.rank[rj] {
+			line = "L14"
+			s.ChangedNode, s.NewParent = ri, rj
+		} else if d.rank[ri] > d.rank[rj] {
+			line = "L15"
+			s.ChangedNode, s.NewParent = rj, ri
+		} else {
+			line = "L16"
+			s.ChangedNode, s.NewParent = rj, ri
+		}
+		b.IncComparisons()
+		emit(line, trace.ActionCompare, "compare", fmt.Sprintf("Compare rank[%d] = %d and rank[%d] = %d; link root %d under %d.", ri, d.rank[ri], rj, d.rank[rj], s.ChangedNode, s.NewParent))
+		s.OldParent = d.parent[s.ChangedNode]
+		d.parent[s.ChangedNode] = s.NewParent
+		if line == "L16" {
+			d.rank[ri]++
+		}
+		d.count--
 		b.IncOperations()
-		b.AddStep("L7", trace.ActionSet,
-			fmt.Sprintf("Path compression: updated parent[%d] from %d directly to root %d.", i, origParent, root),
-			renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-			map[string]any{
-				"i":          i,
-				"root":       root,
-				"compressed": true,
-				"components": dsu.Count(),
-				"parent":     slices.Clone(dsu.parent),
-				"rank":       slices.Clone(dsu.rank),
-			},
-		)
+		emit(line, trace.ActionSet, "link", fmt.Sprintf("parent[%d] = %d. Components: %d; root rank %d%s.", s.ChangedNode, s.NewParent, d.count, d.rank[s.NewParent], map[bool]string{true: " (tie increment)", false: " (unchanged)"}[line == "L16"]))
+		s.ChangedNode, s.OldParent, s.NewParent = -1, -1, -1
+		s.ResultKnown = true
+		emit("L17", trace.ActionDone, "done", fmt.Sprintf("Union(%d, %d) merged two sets. Components: %d.", op.I, op.J, d.count))
 	}
-
-	setNodeState(nodes, root, "path")
-	b.AddStep("L9", trace.ActionDone,
-		fmt.Sprintf("Find(%d) returns root %d.", i, root),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-		map[string]any{
-			"i":          i,
-			"root":       root,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-}
-
-func traceConnected(b *trace.Builder, dsu *DSU, nodes []renderers.GraphNode, edges []renderers.GraphEdge, i, j int) {
-	if i < 0 || i >= len(nodes) || j < 0 || j >= len(nodes) {
-		return
-	}
-
-	resetNodeStates(nodes)
-	setNodeState(nodes, i, "visiting")
-	setNodeState(nodes, j, "visiting")
-
-	b.AddStep("L19", trace.ActionHighlight,
-		fmt.Sprintf("Connected(%d, %d): checking if elements share the same root.", i, j),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-		map[string]any{
-			"i":          i,
-			"j":          j,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-
-	b.IncComparisons()
-	rootI := dsu.Find(i)
-	rootJ := dsu.Find(j)
-	conn := (rootI == rootJ)
-
-	state := "visited"
-	if !conn {
-		state = "queued"
-	}
-	setNodeState(nodes, rootI, state)
-	setNodeState(nodes, rootJ, state)
-
-	b.AddStep("L20", trace.ActionCompare,
-		fmt.Sprintf("Connected(%d, %d): Find(%d)=%d, Find(%d)=%d -> %t.", i, j, i, rootI, j, rootJ, conn),
-		renderers.GraphState{Nodes: cloneNodes(nodes), Edges: cloneEdges(edges)},
-		map[string]any{
-			"i":          i,
-			"j":          j,
-			"root_i":     rootI,
-			"root_j":     rootJ,
-			"connected":  conn,
-			"components": dsu.Count(),
-			"parent":     slices.Clone(dsu.parent),
-			"rank":       slices.Clone(dsu.rank),
-		},
-	)
-}
-
-func initNodes(n int) []renderers.GraphNode {
-	nodes := make([]renderers.GraphNode, n)
-	for i := 0; i < n; i++ {
-		angle := 2*math.Pi*float64(i)/float64(n) - math.Pi/2
-		x := 400.0 + 220.0*math.Cos(angle)
-		y := 220.0 + 120.0*math.Sin(angle)
-		nodes[i] = renderers.GraphNode{
-			ID:    fmt.Sprintf("%d", i),
-			Label: fmt.Sprintf("%d", i),
-			X:     math.Round(x*10) / 10,
-			Y:     math.Round(y*10) / 10,
-			State: "unvisited",
+	steps := b.Steps()
+	for i := range steps {
+		state := steps[i].State.(renderers.UnionFindLessonState)
+		if state.Phase == "link" && i > 0 {
+			steps[i-1].HoldMS, steps[i].HoldMS = 600, 1200
 		}
 	}
-	return nodes
-}
-
-func cloneNodes(nodes []renderers.GraphNode) []renderers.GraphNode {
-	cp := make([]renderers.GraphNode, len(nodes))
-	copy(cp, nodes)
-	return cp
-}
-
-func cloneEdges(edges []renderers.GraphEdge) []renderers.GraphEdge {
-	cp := make([]renderers.GraphEdge, len(edges))
-	copy(cp, edges)
-	return cp
-}
-
-func setNodeState(nodes []renderers.GraphNode, idx int, state string) {
-	if idx >= 0 && idx < len(nodes) {
-		nodes[idx].State = state
-	}
-}
-
-func resetNodeStates(nodes []renderers.GraphNode) {
-	for i := range nodes {
-		nodes[i].State = "unvisited"
-	}
-}
-
-func addEdge(edges *[]renderers.GraphEdge, u, v int) {
-	uStr := fmt.Sprintf("%d", u)
-	vStr := fmt.Sprintf("%d", v)
-	for _, e := range *edges {
-		if (e.From == uStr && e.To == vStr) || (e.From == vStr && e.To == uStr) {
-			return
-		}
-	}
-	*edges = append(*edges, renderers.GraphEdge{
-		From:   uStr,
-		To:     vStr,
-		Active: false,
-	})
+	return steps
 }

@@ -2,286 +2,145 @@ package toposort
 
 import (
 	"fmt"
-
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// Trace generates execution steps for Kahn's topological sort algorithm.
-// ponytail: map-based adjacency and in-degree tracking; dense indexed slices faster when node count exceeds 10k.
+// Trace records Kahn's FIFO operations; empty graphs retain the direct API's zero-step guard.
 func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge) []trace.Step {
 	b := trace.NewBuilder()
 	if len(nodes) == 0 {
 		return b.Steps()
 	}
-
-	nodeIDs := make([]string, len(nodes))
-	nodeStates := make(map[string]string, len(nodes))
-	for i, n := range nodes {
-		nodeIDs[i] = n.ID
-		nodeStates[n.ID] = "unvisited"
+	s := renderers.ToposortLessonState{GraphState: renderers.GraphState{Nodes: nodes, Edges: edges}, InDegree: map[string]int{}, Processed: map[string]bool{}, EdgeIndex: -1, OldInDegree: -1, NewInDegree: -1}
+	adj := map[string][]int{}
+	for _, n := range nodes {
+		s.InDegree[n.ID] = 0
 	}
-
-	adj := make(map[string][]string, len(nodes))
-	inDegree := make(map[string]int, len(nodes))
-	for _, id := range nodeIDs {
-		inDegree[id] = 0
+	for i, e := range edges {
+		adj[e.From] = append(adj[e.From], i)
+		s.InDegree[e.To]++
 	}
-	for _, e := range edges {
-		adj[e.From] = append(adj[e.From], e.To)
-		inDegree[e.To]++
+	add := func(line string, action trace.ActionType, explanation string) {
+		snap := s
+		snap.Nodes = append([]renderers.GraphNode(nil), nodes...)
+		snap.Edges = append([]renderers.GraphEdge(nil), edges...)
+		snap.InDegree = cloneInDegrees(s.InDegree)
+		snap.Processed = map[string]bool{}
+		for k, v := range s.Processed {
+			snap.Processed[k] = v
+		}
+		snap.Queue = cloneSlice(s.Queue)
+		snap.Order = cloneSlice(s.Order)
+		snap.Blocked = cloneSlice(s.Blocked)
+		snap.ResolvedEdges = append([]int(nil), s.ResolvedEdges...)
+		vars := map[string]any{"curr": s.Current, "neighbor": s.Neighbor, "inDegrees": cloneInDegrees(s.InDegree), "order": cloneSlice(s.Order), "processed": cloneSlice(s.Order), "queue": cloneSlice(s.Queue)}
+		if s.Terminal {
+			vars["valid"] = s.Valid
+			if s.Valid {
+				vars["status"] = "complete"
+			} else {
+				vars["status"] = "cycle_detected"
+			}
+		}
+		b.AddStep(line, action, explanation, snap, vars)
 	}
-
-	// L1: Init
-	b.AddStep("L1", trace.ActionInit,
-		fmt.Sprintf("Initialize Kahn's topological sort for DAG with %d tasks and %d dependencies.", len(nodes), len(edges)),
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{
-			"inDegrees": cloneInDegrees(inDegree),
-			"order":     []string{},
-			"processed": []string{},
-			"queue":     []string{},
-		},
-	)
-
-	// L2: Calculate in-degrees
+	add("L1", trace.ActionInit, fmt.Sprintf("Count prerequisites for %d tasks and %d dependencies.", len(nodes), len(edges)))
 	b.IncOperations()
-	b.AddStep("L2", trace.ActionSet,
-		fmt.Sprintf("Compute in-degree for each node by counting incoming dependencies: %v.", inDegree),
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{
-			"inDegrees": cloneInDegrees(inDegree),
-			"order":     []string{},
-			"processed": []string{},
-			"queue":     []string{},
-		},
-	)
-
-	// L4: Find all nodes with in-degree 0
-	var queue []string
-	for _, id := range nodeIDs {
+	add("L2", trace.ActionSet, "Each incoming dependency contributes one prerequisite, including parallel edges.")
+	for _, n := range nodes {
 		b.IncComparisons()
-		if inDegree[id] == 0 {
-			queue = append(queue, id)
-			nodeStates[id] = "queued"
+		if s.InDegree[n.ID] == 0 {
+			s.Queue = append(s.Queue, n.ID)
 			b.IncOperations()
 		}
 	}
-
-	b.AddStep("L4", trace.ActionPush,
-		fmt.Sprintf("Find nodes with in-degree 0 (no prerequisites) and enqueue: %v.", queue),
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{
-			"inDegrees": cloneInDegrees(inDegree),
-			"order":     []string{},
-			"processed": []string{},
-			"queue":     cloneSlice(queue),
-		},
-	)
-
-	order := make([]string, 0, len(nodes))
-	b.AddStep("L5", trace.ActionSet,
-		"Initialize empty list to store topologically sorted order.",
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{
-			"inDegrees": cloneInDegrees(inDegree),
-			"order":     cloneSlice(order),
-			"processed": cloneSlice(order),
-			"queue":     cloneSlice(queue),
-		},
-	)
-
-	for len(queue) > 0 {
+	add("L4", trace.ActionPush, fmt.Sprintf("Ready FIFO starts with %v, in input order.", s.Queue))
+	add("L5", trace.ActionSet, "Start with an empty output order.")
+	for len(s.Queue) > 0 {
+		s.Current = ""
+		s.Neighbor = ""
+		s.EdgeIndex = -1
+		s.Decremented = false
+		s.Ready = false
+		s.OldInDegree = -1
+		s.NewInDegree = -1
 		b.IncComparisons()
-		b.AddStep("L6", trace.ActionCompare,
-			fmt.Sprintf("Queue contains %d ready node(s): %v. Proceed with next task.", len(queue), queue),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{
-				"inDegrees": cloneInDegrees(inDegree),
-				"order":     cloneSlice(order),
-				"processed": cloneSlice(order),
-				"queue":     cloneSlice(queue),
-			},
-		)
-
-		curr := queue[0]
-		queue = queue[1:]
-		nodeStates[curr] = "visiting"
+		add("L6", trace.ActionCompare, fmt.Sprintf("%d ready tasks remain.", len(s.Queue)))
+		s.Current = s.Queue[0]
+		s.Queue = s.Queue[1:]
 		b.IncOperations()
-
-		b.AddStep("L7", trace.ActionPop,
-			fmt.Sprintf("Dequeue node %q (in-degree 0). Begin resolving downstream dependents.", curr),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{
-				"curr":      curr,
-				"inDegrees": cloneInDegrees(inDegree),
-				"order":     cloneSlice(order),
-				"processed": cloneSlice(order),
-				"queue":     cloneSlice(queue),
-			},
-		)
-
-		order = append(order, curr)
-		nodeStates[curr] = "visited"
+		add("L7", trace.ActionPop, fmt.Sprintf("Dequeue %q; all its prerequisites are resolved.", s.Current))
+		s.Order = append(s.Order, s.Current)
+		s.Processed[s.Current] = true
 		b.IncOperations()
-
-		b.AddStep("L8", trace.ActionVisit,
-			fmt.Sprintf("Add node %q to topological order: %v.", curr, order),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{
-				"curr":      curr,
-				"inDegrees": cloneInDegrees(inDegree),
-				"order":     cloneSlice(order),
-				"processed": cloneSlice(order),
-				"queue":     cloneSlice(queue),
-			},
-		)
-
-		for _, neighbor := range adj[curr] {
+		add("L8", trace.ActionVisit, fmt.Sprintf("Append %q to output. Its outgoing dependencies are not yet resolved.", s.Current))
+		for _, i := range adj[s.Current] {
+			e := edges[i]
+			s.Neighbor = e.To
+			s.EdgeIndex = i
+			s.Decremented = false
+			s.Ready = false
+			s.OldInDegree = s.InDegree[e.To]
+			s.NewInDegree = s.OldInDegree
 			b.IncComparisons()
-			b.AddStep("L9", trace.ActionHighlight,
-				fmt.Sprintf("Inspect dependency edge %q -> %q.", curr, neighbor),
-				cloneGraphState(nodes, nodeStates, edges, curr, neighbor),
-				map[string]any{
-					"curr":      curr,
-					"neighbor":  neighbor,
-					"inDegrees": cloneInDegrees(inDegree),
-					"order":     cloneSlice(order),
-					"processed": cloneSlice(order),
-					"queue":     cloneSlice(queue),
-				},
-			)
-
-			inDegree[neighbor]--
+			add("L9", trace.ActionHighlight, fmt.Sprintf("Inspect dependency %q to %q; %d prerequisites remain.", e.From, e.To, s.OldInDegree))
+			s.InDegree[e.To]--
+			s.NewInDegree = s.InDegree[e.To]
+			s.Decremented = true
+			s.ResolvedEdges = append(s.ResolvedEdges, i)
 			b.IncOperations()
-			b.AddStep("L10", trace.ActionSet,
-				fmt.Sprintf("Decrement in-degree of %q to %d (dependency on %q resolved).", neighbor, inDegree[neighbor], curr),
-				cloneGraphState(nodes, nodeStates, edges, curr, neighbor),
-				map[string]any{
-					"curr":      curr,
-					"neighbor":  neighbor,
-					"inDegrees": cloneInDegrees(inDegree),
-					"order":     cloneSlice(order),
-					"processed": cloneSlice(order),
-					"queue":     cloneSlice(queue),
-				},
-			)
-
+			add("L10", trace.ActionSet, fmt.Sprintf("%s: %d − 1 = %d remaining prerequisites.", e.To, s.OldInDegree, s.NewInDegree))
+			s.Decremented = false
 			b.IncComparisons()
-			if inDegree[neighbor] == 0 {
-				queue = append(queue, neighbor)
-				nodeStates[neighbor] = "queued"
+			if s.NewInDegree == 0 {
+				s.Queue = append(s.Queue, e.To)
+				s.Ready = true
 				b.IncOperations()
-
-				b.AddStep("L12", trace.ActionPush,
-					fmt.Sprintf("All dependencies for %q resolved (in-degree 0). Enqueue %q.", neighbor, neighbor),
-					cloneGraphState(nodes, nodeStates, edges, "", ""),
-					map[string]any{
-						"curr":      curr,
-						"neighbor":  neighbor,
-						"inDegrees": cloneInDegrees(inDegree),
-						"order":     cloneSlice(order),
-						"processed": cloneSlice(order),
-						"queue":     cloneSlice(queue),
-					},
-				)
+				add("L12", trace.ActionPush, fmt.Sprintf("%q reaches zero; append it to ready FIFO.", e.To))
 			} else {
-				b.AddStep("L11", trace.ActionCompare,
-					fmt.Sprintf("Node %q still has %d unresolved dependency(ies).", neighbor, inDegree[neighbor]),
-					cloneGraphState(nodes, nodeStates, edges, "", ""),
-					map[string]any{
-						"curr":      curr,
-						"neighbor":  neighbor,
-						"inDegrees": cloneInDegrees(inDegree),
-						"order":     cloneSlice(order),
-						"processed": cloneSlice(order),
-						"queue":     cloneSlice(queue),
-					},
-				)
+				add("L11", trace.ActionCompare, fmt.Sprintf("%q still waits for %d prerequisites.", e.To, s.NewInDegree))
 			}
 		}
 	}
-
+	s.Current = ""
+	s.Neighbor = ""
+	s.EdgeIndex = -1
+	s.OldInDegree = -1
+	s.NewInDegree = -1
+	s.Ready = false
+	s.Decremented = false
 	b.IncComparisons()
-	b.AddStep("L6", trace.ActionCompare,
-		"Queue is empty. Topological processing finished.",
-		cloneGraphState(nodes, nodeStates, edges, "", ""),
-		map[string]any{
-			"inDegrees": cloneInDegrees(inDegree),
-			"order":     cloneSlice(order),
-			"processed": cloneSlice(order),
-			"queue":     []string{},
-		},
-	)
-
-	isDAG := len(order) == len(nodes)
-	if isDAG {
-		b.AddStep("L16", trace.ActionDone,
-			fmt.Sprintf("Topological sort complete! Valid DAG with order: %v.", order),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{
-				"inDegrees": cloneInDegrees(inDegree),
-				"order":     cloneSlice(order),
-				"processed": cloneSlice(order),
-				"status":    "complete",
-				"valid":     true,
-			},
-		)
+	add("L6", trace.ActionCompare, "Ready FIFO is empty.")
+	s.Terminal = true
+	s.Valid = len(s.Order) == len(nodes)
+	for _, n := range nodes {
+		if !s.Processed[n.ID] {
+			s.Blocked = append(s.Blocked, n.ID)
+		}
+	}
+	if s.Valid {
+		add("L16", trace.ActionDone, fmt.Sprintf("Valid topological order: %v.", s.Order))
 	} else {
-		b.AddStep("L16", trace.ActionDone,
-			fmt.Sprintf("Cycle detected! Only %d of %d nodes resolved (%v). Graph contains cyclic dependencies.", len(order), len(nodes), order),
-			cloneGraphState(nodes, nodeStates, edges, "", ""),
-			map[string]any{
-				"inDegrees": cloneInDegrees(inDegree),
-				"order":     cloneSlice(order),
-				"processed": cloneSlice(order),
-				"status":    "cycle_detected",
-				"valid":     false,
-			},
-		)
+		add("L16", trace.ActionDone, fmt.Sprintf("Cycle prevents completion. Blocked tasks %v may include downstream tasks, not only cycle members.", s.Blocked))
 	}
-
-	return b.Steps()
-}
-
-func cloneGraphState(nodes []renderers.GraphNode, nodeStates map[string]string, edges []renderers.GraphEdge, activeFrom, activeTo string) renderers.GraphState {
-	clonedNodes := make([]renderers.GraphNode, len(nodes))
-	for i, n := range nodes {
-		clonedNodes[i] = n
-		if st, ok := nodeStates[n.ID]; ok {
-			clonedNodes[i].State = st
+	steps := b.Steps()
+	for i := range steps {
+		if steps[i].LineID == "L9" {
+			steps[i].HoldMS = 600
+		}
+		if steps[i].LineID == "L10" {
+			steps[i].HoldMS = 1200
 		}
 	}
-
-	clonedEdges := make([]renderers.GraphEdge, len(edges))
-	for i, e := range edges {
-		clonedEdges[i] = e
-		if activeFrom != "" && activeTo != "" && e.From == activeFrom && e.To == activeTo {
-			clonedEdges[i].Active = true
-		} else {
-			clonedEdges[i].Active = false
-		}
-	}
-
-	return renderers.GraphState{
-		Nodes: clonedNodes,
-		Edges: clonedEdges,
-	}
+	return steps
 }
 
-func cloneSlice(s []string) []string {
-	if s == nil {
-		return nil
-	}
-	res := make([]string, len(s))
-	copy(res, s)
-	return res
-}
-
+func cloneSlice(s []string) []string { return append([]string(nil), s...) }
 func cloneInDegrees(m map[string]int) map[string]int {
-	res := make(map[string]int, len(m))
+	out := make(map[string]int, len(m))
 	for k, v := range m {
-		res[k] = v
+		out[k] = v
 	}
-	return res
+	return out
 }

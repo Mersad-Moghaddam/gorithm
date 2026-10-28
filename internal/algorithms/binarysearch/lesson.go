@@ -1,7 +1,10 @@
 package binarysearch
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -56,8 +59,36 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	target := 47
 
 	if len(input) > 0 {
+		input = bytes.TrimSpace(input)
+		if !json.Valid(input) || bytes.Equal(input, []byte("null")) {
+			return nil, fmt.Errorf("expected binary search object or integer array")
+		}
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && (len(custom.Array) > 0 || len(custom.Arr) > 0 || custom.Target != nil) {
+		if input[0] == '{' {
+			if err := json.Unmarshal(input, &custom); err != nil {
+				return nil, fmt.Errorf("invalid binary search input: %w", err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(input, &fields); err != nil {
+				return nil, err
+			}
+			for _, key := range []string{"array", "arr", "target"} {
+				if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+					return nil, fmt.Errorf("%s must not be null", key)
+				}
+			}
+			for _, key := range []string{"array", "arr"} {
+				if raw, ok := fields[key]; ok {
+					if err := rejectNullElements(raw); err != nil {
+						return nil, err
+					}
+				}
+			}
+			for _, values := range [][]int{custom.Array, custom.Arr} {
+				if err := validateBinarySearchValues(values); err != nil {
+					return nil, err
+				}
+			}
 			if len(custom.Array) > 0 {
 				arr = custom.Array
 			} else if len(custom.Arr) > 0 {
@@ -67,14 +98,54 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				target = *custom.Target
 			}
 		} else {
+			if err := rejectNullElements(input); err != nil {
+				return nil, err
+			}
 			var customArr []int
-			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
+			if err := json.Unmarshal(input, &customArr); err != nil {
+				return nil, fmt.Errorf("expected integer array: %w", err)
+			}
+			if err := validateBinarySearchValues(customArr); err != nil {
+				return nil, err
+			}
+			if len(customArr) > 0 {
 				arr = customArr
 			}
 		}
 	}
+	if target < -1000000 || target > 1000000 {
+		return nil, fmt.Errorf("target must be within ±1000000")
+	}
 
 	return Trace(arr, target), nil
+}
+
+func rejectNullElements(raw json.RawMessage) error {
+	var values []json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return fmt.Errorf("expected integer array: %w", err)
+	}
+	for _, value := range values {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return fmt.Errorf("array values must not be null")
+		}
+	}
+	return nil
+}
+
+func validateBinarySearchValues(values []int) error {
+	if len(values) > 128 {
+		return fmt.Errorf("array must contain at most 128 integers")
+	}
+	for _, value := range values {
+		if value < -1000000 || value > 1000000 {
+			return fmt.Errorf("array values must be within ±1000000")
+		}
+	}
+	if !slices.IsSorted(values) {
+		return fmt.Errorf("binary search requires nondecreasing input")
+	}
+	return nil
 }
 
 func init() {

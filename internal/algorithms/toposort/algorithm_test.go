@@ -123,8 +123,8 @@ func TestLessonBuildAndValidateSourceLineIDs(t *testing.T) {
 	sawInDegrees := false
 	sawProcessed := false
 	for _, s := range steps {
-		if _, ok := s.State.(renderers.GraphState); !ok {
-			t.Fatalf("step %d state is %T, want renderers.GraphState", s.Index, s.State)
+		if _, ok := s.State.(renderers.ToposortLessonState); !ok {
+			t.Fatalf("step %d state is %T, want renderers.ToposortLessonState", s.Index, s.State)
 		}
 		if _, ok := s.Variables["inDegrees"]; ok {
 			sawInDegrees = true

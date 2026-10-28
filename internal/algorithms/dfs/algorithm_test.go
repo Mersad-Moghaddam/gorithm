@@ -89,9 +89,9 @@ func TestDFSTraceExecution(t *testing.T) {
 
 	// Verify all nodes are marked visited in final step
 	finalStep := steps[len(steps)-1]
-	state, ok := finalStep.State.(renderers.GraphState)
+	state, ok := finalStep.State.(renderers.DFSLessonState)
 	if !ok {
-		t.Fatalf("expected GraphState, got %T", finalStep.State)
+		t.Fatalf("expected DFSLessonState, got %T", finalStep.State)
 	}
 
 	for _, node := range state.Nodes {

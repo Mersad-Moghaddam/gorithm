@@ -2,6 +2,8 @@ package linearsearch
 
 import (
 	"encoding/json"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
@@ -87,7 +89,7 @@ func TestLinearSearchTraceValidation(t *testing.T) {
 
 	// Verify found element is marked in Sorted/Green
 	lastStep := steps[len(steps)-1]
-	state, ok := lastStep.State.(renderers.ArrayState)
+	state, ok := lastStep.State.(renderers.LinearSearchLessonState)
 	if !ok {
 		t.Fatalf("expected state to be ArrayState, got %T", lastStep.State)
 	}
@@ -108,7 +110,7 @@ func TestLinearSearchTraceValidation(t *testing.T) {
 		t.Fatalf("line validation failed on not found trace: %v", err)
 	}
 	lastNotFound := notFoundSteps[len(notFoundSteps)-1]
-	notFoundState := lastNotFound.State.(renderers.ArrayState)
+	notFoundState := lastNotFound.State.(renderers.LinearSearchLessonState)
 	if len(notFoundState.Sorted) != 0 {
 		t.Fatalf("expected empty Sorted on not found, got %v", notFoundState.Sorted)
 	}
@@ -159,5 +161,139 @@ func TestLessonMeta(t *testing.T) {
 	registered, ok := catalog.Get("linearsearch")
 	if !ok || registered == nil {
 		t.Fatal("linearsearch not found in catalog registry")
+	}
+}
+
+func TestLinearSearchLessonFirstMatch(t *testing.T) {
+	for _, tc := range []struct {
+		arr                         []int
+		target, result, comparisons int
+	}{
+		{[]int{15, 28, 42, 8, 33, 91, 55}, 33, 4, 5}, {[]int{7, 7, 7}, 7, 0, 1},
+	} {
+		steps := Trace(tc.arr, tc.target)
+		if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range steps {
+			s, ok := step.State.(renderers.LinearSearchLessonState)
+			if !ok {
+				t.Fatalf("state %T", step.State)
+			}
+			if s.Phase == "scan" && (s.Compared || s.CheckedThrough != s.Index-1) {
+				t.Fatalf("pending scan: %+v", s)
+			}
+			if s.Phase == "compare" && (!s.Compared || s.Equal != (tc.arr[s.Index] == tc.target)) {
+				t.Fatalf("comparison: %+v", s)
+			}
+			if step.HoldMS != 0 && step.HoldMS != 350 && step.HoldMS != 600 && step.HoldMS != 1200 && step.HoldMS != 1800 {
+				t.Fatalf("hold %d", step.HoldMS)
+			}
+		}
+		last := steps[len(steps)-1]
+		s := last.State.(renderers.LinearSearchLessonState)
+		if !s.ResultKnown || s.Result != tc.result || s.CheckedThrough != tc.result-1 || last.Metrics.Comparisons != tc.comparisons || s.Result != Search(tc.arr, tc.target) {
+			t.Fatalf("final %+v, metrics %+v", s, last.Metrics)
+		}
+		if steps[len(steps)-2].HoldMS+last.HoldMS != 1800 {
+			t.Fatal("compare/result budget")
+		}
+		before := append([]int(nil), steps[0].State.(renderers.LinearSearchLessonState).Values...)
+		tc.arr[0] = 999
+		s.Values[0] = 888
+		if !reflect.DeepEqual(before, steps[0].State.(renderers.LinearSearchLessonState).Values) {
+			t.Fatal("snapshot alias")
+		}
+	}
+}
+
+func TestLinearSearchLessonMissAndEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		arr                                  []int
+		target, result, checked, comparisons int
+	}{
+		{[]int{0, -2, 4}, 9, -1, 2, 3}, {nil, 9, -1, -1, 0}, {[]int{0, -2, 4}, 0, 0, -1, 1},
+	} {
+		steps := Trace(tc.arr, tc.target)
+		if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range steps {
+			if _, ok := step.State.(renderers.LinearSearchLessonState); !ok {
+				t.Fatalf("state %T", step.State)
+			}
+		}
+		last := steps[len(steps)-1]
+		s := last.State.(renderers.LinearSearchLessonState)
+		if !s.ResultKnown || s.Result != tc.result || s.CheckedThrough != tc.checked || last.Metrics.Comparisons != tc.comparisons {
+			t.Fatalf("final %+v %+v", s, last.Metrics)
+		}
+	}
+}
+
+func TestLinearSearchLessonBuildValidation(t *testing.T) {
+	steps, err := (Lesson{}).Build(json.RawMessage(`{"target":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := steps[0].State.(renderers.LinearSearchLessonState)
+	if s.Target != 0 || len(s.Values) != 7 {
+		t.Fatalf("target/default %+v", s)
+	}
+	for _, input := range []string{`{`, `null`, `"x"`, `{"arr":null}`, `{"target":null}`, `{"arr":"x"}`, `[1000001]`, `[-1000001]`, `{"target":1000001}`, `{"target":-1000001}`, `[` + strings.Repeat("0,", 128) + `0]`} {
+		if _, err := (Lesson{}).Build(json.RawMessage(input)); err == nil {
+			t.Errorf("accepted %s", input)
+		}
+	}
+	for _, input := range []string{`[]`, `{}`, `{"array":[0],"target":0}`, `[-1000000,1000000]`, `{"target":-1000000}`, `{"target":1000000}`, `[` + strings.Repeat("0,", 127) + `0]`} {
+		if _, err := (Lesson{}).Build(json.RawMessage(input)); err != nil {
+			t.Errorf("rejected %s: %v", input, err)
+		}
+	}
+}
+
+func TestLinearSearchLessonRejectsNullIntegersAndFoldedFields(t *testing.T) {
+	for _, input := range []string{
+		`[null]`, `{"arr":[null],"target":0}`, `{"array":[null]}`,
+		`{"arr":[0],"array":[null]}`, `{"arr":[null],"array":[0]}`,
+		`{"ARR":null}`, `{"ARRAY":null}`, `{"TARGET":null}`,
+		`{"aRr":[null]}`, `{"ArRaY":[null]}`,
+		`{"arr":[1],"ARR":null}`, `{"ARR":null,"arr":[1]}`,
+		`{"target":0,"TARGET":null}`, `{"TARGET":null,"target":0}`,
+		`{"arr":[0],"ArRaY":null}`, `{"arr":[0],"ArRaY":[null]}`,
+		`{"arr":[null],"ARR":[0]}`, `{"array":[null],"ARRAY":[0]}`,
+		`{"arr":[null],"arr":[0]}`, `{"target":null,"target":0}`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			if _, err := (Lesson{}).Build(json.RawMessage(input)); err == nil {
+				t.Fatalf("accepted null in known input: %s", input)
+			}
+		})
+	}
+}
+
+func TestLinearSearchLessonAcceptedPayloadSemantics(t *testing.T) {
+	defaults := []int{15, 28, 42, 8, 33, 91, 55}
+	for _, tc := range []struct { input string; values []int; target int }{
+		{`{}`, defaults, 33}, {`[]`, defaults, 33},
+		{`{"arr":[],"array":[]}`, defaults, 33}, {`{"TARGET":0}`, defaults, 0},
+		{`[0,-2,4]`, []int{0,-2,4}, 33},
+		{`{"array":[0],"target":0}`, []int{0}, 0},
+		{`{"ARR":[0],"ArRaY":[7],"TaRgEt":0}`, []int{0}, 0},
+		{`{"ARR":[],"ARRAY":[7],"TARGET":7}`, []int{7}, 7},
+		{`{"arr":[1],"ARR":[0],"target":1,"TARGET":0}`, []int{0}, 0},
+		{`{"ARR":[1],"arr":[0],"TARGET":1,"target":0}`, []int{0}, 0},
+		{`{"arr":[1],"arr":[0],"target":0}`, []int{0}, 0},
+		{`{"arr":[0],"unknown":null,"target":0}`, []int{0}, 0},
+	} {
+		t.Run(tc.input,func(t *testing.T) {
+			steps, err := (Lesson{}).Build(json.RawMessage(tc.input))
+			if err != nil { t.Fatal(err) }
+			first := steps[0].State.(renderers.LinearSearchLessonState)
+			last := steps[len(steps)-1].State.(renderers.LinearSearchLessonState)
+			if !reflect.DeepEqual(first.Values,tc.values) || first.Target != tc.target || !last.ResultKnown || last.Result != Search(tc.values,tc.target) {
+				t.Fatalf("decoded values=%v target=%d result=%d; want values=%v target=%d result=%d",first.Values,first.Target,last.Result,tc.values,tc.target,Search(tc.values,tc.target))
+			}
+		})
 	}
 }

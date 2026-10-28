@@ -95,7 +95,7 @@ func TestMinimaxTraceAndSourceLineIDs(t *testing.T) {
 	hasOptimalMove := false
 
 	for i, step := range steps {
-		state, ok := step.State.(renderers.TreeState)
+		state, ok := step.State.(renderers.MinimaxLessonState)
 		if !ok {
 			t.Fatalf("step %d state is %T, want renderers.TreeState", i, step.State)
 		}
@@ -114,7 +114,7 @@ func TestMinimaxTraceAndSourceLineIDs(t *testing.T) {
 			hasCutoff = true
 		}
 
-		for _, n := range state.Nodes {
+		for _, n := range state.TreeState.Nodes {
 			seenStates[n.State] = true
 			if n.State == "inserted" {
 				hasOptimalMove = true
