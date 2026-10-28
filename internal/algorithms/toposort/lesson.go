@@ -1,7 +1,11 @@
 package toposort
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -27,7 +31,7 @@ func (l Lesson) Meta() catalog.Meta {
 				"Dependency Resolution",
 				"Cycle Detection",
 			},
-			HowItWorks: "Computes the in-degree (number of incoming prerequisites) for each node and enqueues vertices with in-degree 0. While the queue has elements, it dequeues a node, appends it to the sorted list, and decrements the in-degrees of all outgoing neighbors. Whenever a neighbor reaches in-degree 0, it is added to the queue. If all nodes are processed, a valid topological order is achieved; otherwise, any unprocessed nodes participate in a cycle.",
+			HowItWorks: "Computes incoming prerequisites and enqueues zero-degree vertices. Each dequeued vertex enters the order before its outgoing dependencies resolve. Neighbors reaching zero join the FIFO. If processing stops early, a cycle exists; blocked vertices may also be downstream of that cycle.",
 		},
 		DefaultInput: `{}`,
 	}
@@ -84,13 +88,53 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 
 	if len(input) > 0 {
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("expected graph object, not null")
+		}
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid graph: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		for _, key := range []string{"nodes", "edges"} {
+			if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("%s must be an array", key)
+			}
+		}
+		{
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
 			}
 			if len(custom.Edges) > 0 {
 				edges = custom.Edges
 			}
+		}
+	}
+
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("graph limit: 32 nodes, 128 edges")
+	}
+	ids := map[string]bool{}
+	for _, n := range nodes {
+		if ids[n.ID] {
+			return nil, fmt.Errorf("duplicate node ID %q", n.ID)
+		}
+		ids[n.ID] = true
+		if utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node ID and label limit: 64 characters")
+		}
+		if math.IsNaN(n.X) || math.IsInf(n.X, 0) || math.IsNaN(n.Y) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+			return nil, fmt.Errorf("coordinates must be finite within ±1000000")
+		}
+	}
+	for _, e := range edges {
+		if !ids[e.From] || !ids[e.To] {
+			return nil, fmt.Errorf("dependency endpoint missing: %q to %q", e.From, e.To)
+		}
+		if e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("weight limit: ±10000")
 		}
 	}
 

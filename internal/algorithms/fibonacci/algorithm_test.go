@@ -114,9 +114,9 @@ func TestFibonacciTraceHighlighting(t *testing.T) {
 
 	var foundHighlight bool
 	for _, step := range steps {
-		tableState, ok := step.State.(renderers.TableState)
+		tableState, ok := step.State.(renderers.FibonacciLessonState)
 		if !ok {
-			t.Fatalf("step state is not renderers.TableState: %T", step.State)
+			t.Fatalf("step state is not renderers.FibonacciLessonState: %T", step.State)
 		}
 
 		var sourceCount, activeCount int
@@ -196,10 +196,9 @@ func TestFibonacciBuildCustomInput(t *testing.T) {
 func TestFibonacciRenderTableSVG(t *testing.T) {
 	steps := Trace(8)
 	for i, step := range steps {
-		svg := renderers.RenderTableSVG(step, 800, 600)
+		svg := renderers.RenderFibonacciLessonSVG(step, 800, 600)
 		if svg == "" || svg == `<text x="50%" y="50%" fill="#8b949e" text-anchor="middle">No table state</text>` {
 			t.Fatalf("step %d rendered invalid table svg: %s", i, svg)
 		}
 	}
 }
-

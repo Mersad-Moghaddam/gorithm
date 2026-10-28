@@ -15,8 +15,20 @@ func Trace(initial []int) []trace.Step {
 	arr := make([]int, len(initial))
 	copy(arr, initial)
 	n := len(arr)
+	ids := make([]int, n)
+	for i := range ids {
+		ids[i] = i
+	}
+	context := renderers.QuickLessonState{Low: 0, High: n - 1, Boundary: -1, Scan: -1, PivotIndex: -1, PivotID: -1}
+	add := func(line string, action trace.ActionType, explanation string, state renderers.ArrayState, variables map[string]any) {
+		snapshot := context
+		snapshot.ArrayState = state
+		snapshot.IDs = cloneSlice(ids)
+		snapshot.Stack = append([]renderers.QuickLessonRange(nil), context.Stack...)
+		b.AddStep(line, action, explanation, snapshot, variables)
+	}
 
-	b.AddStep("L1", trace.ActionInit, "Initialize Quick Sort with input array.", renderers.ArrayState{
+	add("L1", trace.ActionInit, "Initialize Quick Sort with input array.", renderers.ArrayState{
 		Values:  cloneSlice(arr),
 		Current: -1,
 	}, map[string]any{"n": n})
@@ -26,7 +38,7 @@ func Trace(initial []int) []trace.Step {
 		for i := 0; i < n; i++ {
 			sorted[i] = i
 		}
-		b.AddStep("L7", trace.ActionDone, "Quick Sort completed! All elements sorted.", renderers.ArrayState{
+		add("L7", trace.ActionDone, "Quick Sort completed! All elements sorted.", renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  sorted,
 			Current: -1,
@@ -49,14 +61,20 @@ func Trace(initial []int) []trace.Step {
 	var partitionHelper func(low, high int) int
 
 	sortHelper = func(low, high int) {
-		b.AddStep("L2", trace.ActionHighlight, fmt.Sprintf("Checking base case for range [%d..%d].", low, high), renderers.ArrayState{
+		parent := context
+		context.Low, context.High = low, high
+		context.Boundary, context.Scan, context.PivotIndex, context.PivotID = -1, -1, -1, -1
+		context.PivotValue, context.PivotActive = 0, false
+		context.Stack = append(append([]renderers.QuickLessonRange(nil), parent.Stack...), renderers.QuickLessonRange{Low: low, High: high})
+		defer func() { context = parent }()
+		add("L2", trace.ActionHighlight, fmt.Sprintf("Checking base case for range [%d..%d].", low, high), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  getSortedSlice(),
 			Current: -1,
 		}, map[string]any{"low": low, "high": high})
 
 		if low < high {
-			b.AddStep("L3", trace.ActionHighlight, fmt.Sprintf("Partitioning range [%d..%d].", low, high), renderers.ArrayState{
+			add("L3", trace.ActionHighlight, fmt.Sprintf("Partitioning range [%d..%d].", low, high), renderers.ArrayState{
 				Values:  cloneSlice(arr),
 				Sorted:  getSortedSlice(),
 				Current: high,
@@ -64,14 +82,14 @@ func Trace(initial []int) []trace.Step {
 
 			p := partitionHelper(low, high)
 
-			b.AddStep("L4", trace.ActionHighlight, fmt.Sprintf("Recursively sorting left partition [%d..%d].", low, p-1), renderers.ArrayState{
+			add("L4", trace.ActionHighlight, fmt.Sprintf("Recursively sorting left partition [%d..%d].", low, p-1), renderers.ArrayState{
 				Values:  cloneSlice(arr),
 				Sorted:  getSortedSlice(),
 				Current: -1,
 			}, map[string]any{"low": low, "p": p})
 			sortHelper(low, p-1)
 
-			b.AddStep("L5", trace.ActionHighlight, fmt.Sprintf("Recursively sorting right partition [%d..%d].", p+1, high), renderers.ArrayState{
+			add("L5", trace.ActionHighlight, fmt.Sprintf("Recursively sorting right partition [%d..%d].", p+1, high), renderers.ArrayState{
 				Values:  cloneSlice(arr),
 				Sorted:  getSortedSlice(),
 				Current: -1,
@@ -79,7 +97,7 @@ func Trace(initial []int) []trace.Step {
 			sortHelper(p+1, high)
 		} else if low == high {
 			sortedSet[low] = true
-			b.AddStep("L6", trace.ActionSet, fmt.Sprintf("Single element at index %d is sorted.", low), renderers.ArrayState{
+			add("L6", trace.ActionSet, fmt.Sprintf("Single element at index %d is sorted.", low), renderers.ArrayState{
 				Values:  cloneSlice(arr),
 				Sorted:  getSortedSlice(),
 				Current: low,
@@ -88,28 +106,31 @@ func Trace(initial []int) []trace.Step {
 	}
 
 	partitionHelper = func(low, high int) int {
-		b.AddStep("L8", trace.ActionHighlight, fmt.Sprintf("Starting partition on range [%d..%d].", low, high), renderers.ArrayState{
+		add("L8", trace.ActionHighlight, fmt.Sprintf("Starting partition on range [%d..%d].", low, high), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  getSortedSlice(),
 			Current: high,
 		}, map[string]any{"low": low, "high": high})
 
 		pivot := arr[high]
-		b.AddStep("L9", trace.ActionSet, fmt.Sprintf("Selected pivot arr[%d] = %d.", high, pivot), renderers.ArrayState{
+		context.PivotIndex, context.PivotID, context.PivotValue, context.PivotActive = high, ids[high], pivot, true
+		add("L9", trace.ActionSet, fmt.Sprintf("Selected pivot arr[%d] = %d.", high, pivot), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  getSortedSlice(),
 			Current: high,
 		}, map[string]any{"pivot": pivot, "pivotIndex": high})
 
 		i := low - 1
-		b.AddStep("L10", trace.ActionSet, fmt.Sprintf("Initialized boundary i = %d.", i), renderers.ArrayState{
+		context.Boundary = i
+		add("L10", trace.ActionSet, fmt.Sprintf("Initialized boundary i = %d.", i), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  getSortedSlice(),
 			Current: high,
 		}, map[string]any{"i": i})
 
 		for j := low; j < high; j++ {
-			b.AddStep("L11", trace.ActionHighlight, fmt.Sprintf("Examining arr[%d] = %d.", j, arr[j]), renderers.ArrayState{
+			context.Scan = j
+			add("L11", trace.ActionHighlight, fmt.Sprintf("Examining arr[%d] = %d.", j, arr[j]), renderers.ArrayState{
 				Values:    cloneSlice(arr),
 				Sorted:    getSortedSlice(),
 				Comparing: []int{j, high},
@@ -117,7 +138,7 @@ func Trace(initial []int) []trace.Step {
 			}, map[string]any{"j": j, "pivot": pivot})
 
 			b.IncComparisons()
-			b.AddStep("L12", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) < pivot (%d).", j, arr[j], pivot), renderers.ArrayState{
+			add("L12", trace.ActionCompare, fmt.Sprintf("Comparing arr[%d] (%d) < pivot (%d).", j, arr[j], pivot), renderers.ArrayState{
 				Values:    cloneSlice(arr),
 				Sorted:    getSortedSlice(),
 				Comparing: []int{j, high},
@@ -126,15 +147,17 @@ func Trace(initial []int) []trace.Step {
 
 			if arr[j] < pivot {
 				i++
-				b.AddStep("L13", trace.ActionSet, fmt.Sprintf("Incremented boundary i = %d.", i), renderers.ArrayState{
+				context.Boundary = i
+				add("L13", trace.ActionSet, fmt.Sprintf("Incremented boundary i = %d.", i), renderers.ArrayState{
 					Values:  cloneSlice(arr),
 					Sorted:  getSortedSlice(),
 					Current: i,
 				}, map[string]any{"i": i})
 
 				arr[i], arr[j] = arr[j], arr[i]
+				ids[i], ids[j] = ids[j], ids[i]
 				b.IncSwaps()
-				b.AddStep("L14", trace.ActionSwap, fmt.Sprintf("Swapped arr[%d] and arr[%d].", i, j), renderers.ArrayState{
+				add("L14", trace.ActionSwap, fmt.Sprintf("Swapped arr[%d] and arr[%d].", i, j), renderers.ArrayState{
 					Values:  cloneSlice(arr),
 					Sorted:  getSortedSlice(),
 					Swapped: []int{i, j},
@@ -144,17 +167,19 @@ func Trace(initial []int) []trace.Step {
 		}
 
 		arr[i+1], arr[high] = arr[high], arr[i+1]
+		ids[i+1], ids[high] = ids[high], ids[i+1]
 		b.IncSwaps()
 		p := i + 1
+		context.PivotIndex, context.Scan = p, high
 		sortedSet[p] = true
-		b.AddStep("L17", trace.ActionSwap, fmt.Sprintf("Placed pivot into sorted position at index %d.", p), renderers.ArrayState{
+		add("L17", trace.ActionSwap, fmt.Sprintf("Placed pivot into sorted position at index %d.", p), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  getSortedSlice(),
 			Swapped: []int{p, high},
 			Current: p,
 		}, map[string]any{"pivotIndex": p})
 
-		b.AddStep("L18", trace.ActionSet, fmt.Sprintf("Partition complete. Pivot index is %d.", p), renderers.ArrayState{
+		add("L18", trace.ActionSet, fmt.Sprintf("Partition complete. Pivot index is %d.", p), renderers.ArrayState{
 			Values:  cloneSlice(arr),
 			Sorted:  getSortedSlice(),
 			Current: p,
@@ -169,13 +194,19 @@ func Trace(initial []int) []trace.Step {
 		sortedSet[i] = true
 	}
 
-	b.AddStep("L7", trace.ActionDone, "Quick Sort completed! All elements sorted.", renderers.ArrayState{
+	add("L7", trace.ActionDone, "Quick Sort completed! All elements sorted.", renderers.ArrayState{
 		Values:  cloneSlice(arr),
 		Sorted:  getSortedSlice(),
 		Current: -1,
 	}, map[string]any{"status": "complete"})
 
-	return b.Steps()
+	steps := b.Steps()
+	for i := 0; i+1 < len(steps); i++ {
+		if steps[i].LineID == "L13" && steps[i+1].LineID == "L14" {
+			steps[i].HoldMS, steps[i+1].HoldMS = 600, 1200
+		}
+	}
+	return steps
 }
 
 func cloneSlice(s []int) []int {

@@ -118,7 +118,7 @@ func TestLessonTraceValidation(t *testing.T) {
 
 	// Verify state and variables in steps
 	for i, step := range steps {
-		state, ok := step.State.(renderers.ArrayState)
+		state, ok := step.State.(renderers.PerceptronLessonState)
 		if !ok {
 			t.Fatalf("step %d state is not renderers.ArrayState, got %T", i, step.State)
 		}
@@ -134,7 +134,7 @@ func TestLessonTraceValidation(t *testing.T) {
 	}
 
 	// Verify SVG renderer works on the first step
-	svg := renderers.RenderArraySVG(steps[0], 800, 400)
+	svg := renderers.RenderPerceptronLessonSVG(steps[0], 800, 400)
 	if len(svg) == 0 {
 		t.Fatal("RenderArraySVG produced empty SVG")
 	}

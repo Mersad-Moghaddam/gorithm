@@ -2,6 +2,7 @@ package bucketsort
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -28,11 +29,12 @@ func (l Lesson) Meta() catalog.Meta {
 }
 
 func (l Lesson) Source() []trace.SourceLine {
-	return []trace.SourceLine{
+	lines := []trace.SourceLine{
 		{ID: "L1", Number: 1, Code: "func BucketSort(arr []int) []int {"},
 		{ID: "L2", Number: 2, Code: "    n := len(arr)"},
 		{ID: "L3", Number: 3, Code: "    if n <= 1 { return arr }"},
 		{ID: "L4", Number: 4, Code: "    minVal, maxVal := minMax(arr)"},
+		{ID: "L4_equal", Code: "    if minVal == maxVal { return arr }"},
 		{ID: "L5", Number: 5, Code: "    k := 5"},
 		{ID: "L6", Number: 6, Code: "    buckets := make([][]int, k)"},
 		{ID: "L7", Number: 7, Code: "    for _, x := range arr {"},
@@ -51,15 +53,28 @@ func (l Lesson) Source() []trace.SourceLine {
 		{ID: "L20", Number: 20, Code: "    return arr"},
 		{ID: "L21", Number: 21, Code: "}"},
 	}
+	for i := range lines {
+		lines[i].Number = i + 1
+	}
+	return lines
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{78, 17, 39, 26, 72, 94, 21, 12, 23, 68}
 	if len(input) > 0 {
 		var custom []int
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
-			arr = custom
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("bucket sort input must be an array of integers: %w", err)
 		}
+		if len(custom) == 0 || len(custom) > 64 {
+			return nil, fmt.Errorf("bucket sort requires 1–64 integers")
+		}
+		for _, v := range custom {
+			if v < -1000000 || v > 1000000 {
+				return nil, fmt.Errorf("bucket sort values must be between -1000000 and 1000000")
+			}
+		}
+		arr = custom
 	}
 	return Trace(arr), nil
 }

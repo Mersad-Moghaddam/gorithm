@@ -1,7 +1,9 @@
 package kmeans
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -36,7 +38,7 @@ func (l Lesson) Source() []trace.SourceLine {
 	return []trace.SourceLine{
 		{ID: "L1", Number: 1, Code: "func Cluster(points []Point, k, maxIters int) ([]Point, []int) {"},
 		{ID: "L2", Number: 2, Code: "    centroids := initCentroids(points, k)"},
-		{ID: "L3", Number: 3, Code: "    assignments := make([]int, len(points))"},
+		{ID: "L3", Number: 3, Code: "    assignments := unassigned(len(points)) // all -1"},
 		{ID: "L4", Number: 4, Code: "    for iter := 0; iter < maxIters; iter++ {"},
 		{ID: "L5", Number: 5, Code: "        changed := false"},
 		{ID: "L6", Number: 6, Code: "        for i, p := range points {"},
@@ -46,8 +48,8 @@ func (l Lesson) Source() []trace.SourceLine {
 		{ID: "L10", Number: 10, Code: "                changed = true"},
 		{ID: "L11", Number: 11, Code: "            }"},
 		{ID: "L12", Number: 12, Code: "        }"},
-		{ID: "L13", Number: 13, Code: "        centroids = updateCentroids(points, assignments, k)"},
-		{ID: "L14", Number: 14, Code: "        if !changed { break }"},
+		{ID: "L13", Number: 13, Code: "        centroids, moved := updateCentroids(points, assignments, centroids)"},
+		{ID: "L14", Number: 14, Code: "        if !changed && !moved { break }"},
 		{ID: "L15", Number: 15, Code: "    }"},
 		{ID: "L16", Number: 16, Code: "    return centroids, assignments"},
 		{ID: "L17", Number: 17, Code: "}"},
@@ -79,15 +81,43 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	k := 3
 
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if len(custom.Points) > 0 {
-				pts = custom.Points
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		if fields == nil {
+			return nil, fmt.Errorf("input must be an object")
+		}
+		if raw, ok := fields["points"]; ok {
+			var entries []map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &entries); err != nil {
+				return nil, err
 			}
-			if custom.K > 0 {
-				k = custom.K
+			for _, entry := range entries {
+				if entry == nil {
+					return nil, fmt.Errorf("point must be an object")
+				}
+				for _, key := range []string{"x", "y"} {
+					if value, exists := entry[key]; exists && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+						return nil, fmt.Errorf("point coordinate must be numeric")
+					}
+				}
+			}
+			if err := json.Unmarshal(raw, &pts); err != nil {
+				return nil, err
 			}
 		}
+		if raw, ok := fields["k"]; ok {
+			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("k must be an integer")
+			}
+			if err := json.Unmarshal(raw, &k); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := validateKMeansInput(pts, k); err != nil {
+		return nil, err
 	}
 
 	return Trace(pts, k, 20), nil

@@ -2,6 +2,7 @@ package quick
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -53,9 +54,22 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{10, 80, 30, 90, 40, 50, 70}
 	if len(input) > 0 {
-		var custom []int
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
-			arr = custom
+		var custom []*int
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("Quick Sort input must be an array of integers: %w", err)
+		}
+		if len(custom) == 0 || len(custom) > 64 {
+			return nil, fmt.Errorf("Quick Sort input must contain 1–64 integers")
+		}
+		arr = make([]int, len(custom))
+		for i, v := range custom {
+			if v == nil {
+				return nil, fmt.Errorf("Quick Sort values must be integers, not null")
+			}
+			if *v < -1000000 || *v > 1000000 {
+				return nil, fmt.Errorf("Quick Sort values must be between -1000000 and 1000000")
+			}
+			arr[i] = *v
 		}
 	}
 	return Trace(arr), nil

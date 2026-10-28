@@ -14,12 +14,12 @@ import (
 func TestGeneticAlgorithmImprovement(t *testing.T) {
 	target := "GENETIC"
 	cfg := Config{
-		Target:          target,
-		PopSize:         20,
-		MutationRate:    0.05,
-		MaxGenerations:  50,
-		TournamentSize:  3,
-		RNG:             rand.New(rand.NewSource(42)),
+		Target:         target,
+		PopSize:        20,
+		MutationRate:   0.05,
+		MaxGenerations: 50,
+		TournamentSize: 3,
+		RNG:            rand.New(rand.NewSource(42)),
 	}
 
 	result := Evolve(cfg)
@@ -180,9 +180,9 @@ func TestGeneticTraceValidation(t *testing.T) {
 	}
 
 	for i, step := range steps {
-		tableState, ok := step.State.(renderers.TableState)
+		tableState, ok := step.State.(renderers.GeneticLessonState)
 		if !ok {
-			t.Fatalf("step %d state is not renderers.TableState: %T", i, step.State)
+			t.Fatalf("step %d state is not renderers.GeneticLessonState: %T", i, step.State)
 		}
 		if len(tableState.RowHeaders) == 0 || len(tableState.ColHeaders) == 0 {
 			t.Fatalf("step %d has empty headers: rows=%d cols=%d", i, len(tableState.RowHeaders), len(tableState.ColHeaders))
@@ -218,7 +218,7 @@ func TestGeneticRenderTableSVG(t *testing.T) {
 		t.Fatalf("failed to build trace: %v", err)
 	}
 	for i, step := range steps {
-		svg := renderers.RenderTableSVG(step, 800, 450)
+		svg := renderers.RenderGeneticLessonSVG(step, 800, 450)
 		if svg == "" {
 			t.Errorf("step %d produced empty SVG", i)
 		}
@@ -239,7 +239,7 @@ func TestLongSequenceTableState(t *testing.T) {
 		t.Fatalf("line validation failed: %v", err)
 	}
 
-	tableState := steps[len(steps)-1].State.(renderers.TableState)
+	tableState := steps[len(steps)-1].State.(renderers.GeneticLessonState)
 	if len(tableState.ColHeaders) != 2 || tableState.ColHeaders[0] != "Chromosome" {
 		t.Errorf("expected 2-column layout for long target, got %v", tableState.ColHeaders)
 	}
@@ -294,4 +294,3 @@ func TestConvergenceToTarget(t *testing.T) {
 		t.Errorf("expected full convergence to %q, got %q (fitness %d/%d)", target, res.Best.Genes, res.Best.Fitness, len(target))
 	}
 }
-

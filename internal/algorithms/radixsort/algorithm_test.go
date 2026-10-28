@@ -133,9 +133,9 @@ func TestRadixSortTraceValidation(t *testing.T) {
 
 	// Verify final step state values are sorted
 	finalStep := steps[len(steps)-1]
-	state, ok := finalStep.State.(renderers.ArrayState)
+	state, ok := finalStep.State.(renderers.RadixsortLessonState)
 	if !ok {
-		t.Fatalf("expected final state to be ArrayState, got %T", finalStep.State)
+		t.Fatalf("expected final state to be RadixsortLessonState, got %T", finalStep.State)
 	}
 	if !sort.IntsAreSorted(state.Values) {
 		t.Fatalf("final state values are not sorted: %v", state.Values)
@@ -158,9 +158,9 @@ func TestRadixSortTraceCustomInput(t *testing.T) {
 	}
 
 	finalStep := steps[len(steps)-1]
-	state, ok := finalStep.State.(renderers.ArrayState)
+	state, ok := finalStep.State.(renderers.RadixsortLessonState)
 	if !ok {
-		t.Fatalf("expected final state to be ArrayState, got %T", finalStep.State)
+		t.Fatalf("expected final state to be RadixsortLessonState, got %T", finalStep.State)
 	}
 	if !reflect.DeepEqual(state.Values, []int{10, 20, 30, 40, 50}) {
 		t.Fatalf("expected [10 20 30 40 50], got %v", state.Values)

@@ -1,7 +1,9 @@
 package qlearning
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -45,14 +47,14 @@ func (l Lesson) Source() []trace.SourceLine {
 		{ID: "L2", Number: 2, Code: "    Q := initTable(env.States, env.Actions)"},
 		{ID: "L3", Number: 3, Code: "    for ep := 0; ep < episodes; ep++ {"},
 		{ID: "L4", Number: 4, Code: "        state := env.Reset()"},
-		{ID: "L5", Number: 5, Code: "        for !env.IsTerminal(state) {"},
+		{ID: "L5", Number: 5, Code: "        for step := 0; step < 12 && !env.IsTerminal(state); step++ {"},
 		{ID: "L6", Number: 6, Code: "            action := chooseAction(state, Q, epsilon)"},
-		{ID: "L7", Number: 7, Code: "            nextState, reward := env.Step(action)"},
-		{ID: "L8", Number: 8, Code: "            bestNextQ := max(Q[nextState])"},
+		{ID: "L7", Number: 7, Code: "            nextState, reward, done := env.Step(state, action)"},
+		{ID: "L8", Number: 8, Code: "            bestNextQ := 0.0; if !done { bestNextQ = max(Q[nextState]) }"},
 		{ID: "L9", Number: 9, Code: "            tdTarget := reward + gamma * bestNextQ"},
 		{ID: "L10", Number: 10, Code: "            Q[state][action] += alpha * (tdTarget - Q[state][action])"},
 		{ID: "L11", Number: 11, Code: "            state = nextState"},
-		{ID: "L12", Number: 12, Code: "        }"},
+		{ID: "L12", Number: 12, Code: "        } // stop at goal or after 12 transitions"},
 		{ID: "L13", Number: 13, Code: "    }"},
 		{ID: "L14", Number: 14, Code: "    return Q"},
 		{ID: "L15", Number: 15, Code: "}"},
@@ -66,20 +68,33 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	epsilon := 0.3
 
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
-			if custom.Episodes > 0 {
-				episodes = custom.Episodes
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, fmt.Errorf("Q-learning input must be an object: %w", err)
+		}
+		if fields == nil {
+			return nil, fmt.Errorf("Q-learning input must be an object, not null")
+		}
+		for name, dst := range map[string]any{"episodes": &episodes, "alpha": &alpha, "gamma": &gamma, "epsilon": &epsilon} {
+			if raw, ok := fields[name]; ok {
+				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+					return nil, fmt.Errorf("%s must be a number, not null", name)
+				}
+				if err := json.Unmarshal(raw, dst); err != nil {
+					return nil, fmt.Errorf("invalid %s: %w", name, err)
+				}
 			}
-			if custom.Alpha > 0 {
-				alpha = custom.Alpha
-			}
-			if custom.Gamma > 0 {
-				gamma = custom.Gamma
-			}
-			if custom.Epsilon > 0 {
-				epsilon = custom.Epsilon
-			}
+		}
+	}
+	if episodes < 1 || episodes > 20 {
+		return nil, fmt.Errorf("episodes must be between 1 and 20")
+	}
+	for _, rate := range []struct {
+		name  string
+		value float64
+	}{{"alpha", alpha}, {"gamma", gamma}, {"epsilon", epsilon}} {
+		if !qlearningRateValid(rate.value) {
+			return nil, fmt.Errorf("%s must be finite and in (0,1]", rate.name)
 		}
 	}
 

@@ -1,7 +1,9 @@
 package kmp
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -61,17 +63,58 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	pattern := "ABABCABAB"
 
 	if len(input) > 0 {
-		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && custom.Text != "" && custom.Pattern != "" {
-			text = custom.Text
-			pattern = custom.Pattern
-		} else {
-			var sliceInput []string
-			if err := json.Unmarshal(input, &sliceInput); err == nil && len(sliceInput) >= 2 {
-				text = sliceInput[0]
-				pattern = sliceInput[1]
-			}
+		raw := bytes.TrimSpace(input)
+		if len(raw) == 0 {
+			return nil, fmt.Errorf("KMP input must be a JSON object or string array")
 		}
+		switch raw[0] {
+		case '{':
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				return nil, err
+			}
+			for _, field := range []struct {
+				name string
+				dst  *string
+			}{{"text", &text}, {"pattern", &pattern}} {
+				if value, ok := fields[field.name]; ok {
+					if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+						return nil, fmt.Errorf("%s must be a string", field.name)
+					}
+					if err := json.Unmarshal(value, field.dst); err != nil {
+						return nil, err
+					}
+				}
+			}
+		case '[':
+			var values []json.RawMessage
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return nil, err
+			}
+			if len(values) < 2 {
+				return nil, fmt.Errorf("KMP array needs text and pattern")
+			}
+			for k, value := range values {
+				var str string
+				if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+					return nil, fmt.Errorf("KMP array entries must be strings")
+				}
+				if err := json.Unmarshal(value, &str); err != nil {
+					return nil, err
+				}
+				if k == 0 {
+					text = str
+				}
+				if k == 1 {
+					pattern = str
+				}
+			}
+		default:
+			return nil, fmt.Errorf("KMP input must be a JSON object or string array")
+		}
+	}
+	if len(text) > 256 || len(pattern) > 64 {
+		return nil, fmt.Errorf("KMP limits: text 256 bytes, pattern 64 bytes")
 	}
 
 	return Trace(text, pattern), nil

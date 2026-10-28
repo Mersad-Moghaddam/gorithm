@@ -183,12 +183,12 @@ func TestLessonBuildAndTrace(t *testing.T) {
 			t.Errorf("step %d missing 'parent' in Variables", i)
 		}
 
-		state, ok := step.State.(renderers.GraphState)
+		state, ok := step.State.(renderers.UnionFindLessonState)
 		if !ok {
 			t.Fatalf("step %d state is %T, want renderers.GraphState", i, step.State)
 		}
-		if len(state.Nodes) != 5 {
-			t.Fatalf("step %d: expected 5 nodes in GraphState, got %d", i, len(state.Nodes))
+		if len(state.Parent) != 5 {
+			t.Fatalf("step %d: expected 5 parents, got %d", i, len(state.Parent))
 		}
 	}
 }

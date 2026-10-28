@@ -146,6 +146,9 @@ func bindLabControls(doc js.Value, p *Player) {
 	on(doc, "keydown", func(e js.Value) {
 		target := e.Get("target")
 		tag := target.Get("tagName").String()
+		if !target.Call("closest", ".canvas-viewport").IsNull() {
+			return
+		}
 		if get("workspace").Get("hidden").Bool() || modal.Get("open").Bool() || target.Get("isContentEditable").Bool() || tag == "INPUT" || tag == "TEXTAREA" || tag == "SELECT" || tag == "BUTTON" || tag == "A" || e.Get("ctrlKey").Bool() || e.Get("metaKey").Bool() || e.Get("altKey").Bool() {
 			return
 		}

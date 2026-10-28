@@ -1,7 +1,11 @@
 package bellmanford
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -85,19 +89,76 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 
 	if len(input) > 0 {
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid graph JSON: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil || fields == nil {
+			return nil, fmt.Errorf("graph input must be an object")
+		}
+		for _, key := range []string{"nodes", "edges", "start"} {
+			if raw, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("%s cannot be null", key)
+			}
+		}
+		for _, key := range []string{"nodes", "edges"} {
+			if raw, ok := fields[key]; ok {
+				var records []map[string]json.RawMessage
+				if err := json.Unmarshal(raw, &records); err != nil {
+					return nil, fmt.Errorf("%s must contain objects", key)
+				}
+				for _, record := range records {
+					if record == nil {
+						return nil, fmt.Errorf("%s cannot contain null", key)
+					}
+					for field, value := range record {
+						if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+							return nil, fmt.Errorf("%s cannot be null", field)
+						}
+					}
+				}
+			}
+		}
+		{
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
 			}
-			if len(custom.Edges) > 0 {
+			if _, ok := fields["nodes"]; ok && len(custom.Nodes) == 0 {
+				return nil, fmt.Errorf("nodes must be nonempty")
+			}
+			if _, ok := fields["edges"]; ok {
 				edges = custom.Edges
 			}
-			if custom.Start != "" {
+			if _, ok := fields["start"]; ok {
 				start = custom.Start
 			}
 		}
 	}
 
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("graph limit: 32 nodes, 128 edges")
+	}
+	ids := map[string]bool{}
+	for _, n := range nodes {
+		if n.ID == "" || ids[n.ID] || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node IDs must be unique and nonempty; IDs and labels limited to 64 code points")
+		}
+		if math.IsNaN(n.X) || math.IsNaN(n.Y) || math.IsInf(n.X, 0) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+			return nil, fmt.Errorf("coordinates must be finite and within ±1000000")
+		}
+		ids[n.ID] = true
+	}
+	if !ids[start] {
+		return nil, fmt.Errorf("start node does not exist")
+	}
+	for _, e := range edges {
+		if !ids[e.From] || !ids[e.To] {
+			return nil, fmt.Errorf("edge endpoint does not exist")
+		}
+		if e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("weight must be within ±10000")
+		}
+	}
 	return Trace(nodes, edges, start), nil
 }
 

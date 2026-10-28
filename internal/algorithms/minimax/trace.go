@@ -8,22 +8,27 @@ import (
 )
 
 type tracer struct {
-	b        *trace.Builder
-	allNodes []*Node
-	states   map[string]string
-	values   map[string]int
-	coords   map[string][2]float64
-	parents  map[string]string
+	b         *minimaxBuilder
+	allNodes  []*Node
+	states    map[string]string
+	values    map[string]int
+	coords    map[string][2]float64
+	parents   map[string]string
+	stack     []string
+	evaluated map[string]bool
+	bestChild map[string]string
 }
 
 func newTracer(root *Node) *tracer {
 	tr := &tracer{
-		b:       trace.NewBuilder(),
-		states:  make(map[string]string),
-		values:  make(map[string]int),
-		coords:  make(map[string][2]float64),
-		parents: make(map[string]string),
+		states:    make(map[string]string),
+		values:    make(map[string]int),
+		coords:    make(map[string][2]float64),
+		parents:   make(map[string]string),
+		evaluated: make(map[string]bool),
+		bestChild: make(map[string]string),
 	}
+	tr.b = &minimaxBuilder{Builder: trace.NewBuilder(), tr: tr}
 	tr.initTree(root)
 	return tr
 }
@@ -101,10 +106,10 @@ func (tr *tracer) makeTreeState() renderers.TreeState {
 }
 
 func formatBound(v int) string {
-	if v <= -1000000 {
+	if v == NegInfinity {
 		return "-∞"
 	}
-	if v >= 1000000 {
+	if v == Infinity {
 		return "+∞"
 	}
 	return fmt.Sprintf("%d", v)
@@ -112,11 +117,13 @@ func formatBound(v int) string {
 
 func (tr *tracer) vars(node *Node, alpha, beta int, extra map[string]any) map[string]any {
 	m := map[string]any{
-		"alpha":  formatBound(alpha),
-		"beta":   formatBound(beta),
-		"node":   node.ID,
-		"depth":  node.Depth,
-		"cutoff": false,
+		"alpha":      formatBound(alpha),
+		"beta":       formatBound(beta),
+		"node":       node.ID,
+		"depth":      node.Depth,
+		"cutoff":     false,
+		"alphaValue": alpha,
+		"betaValue":  beta,
 	}
 	if node.IsMax {
 		m["player"] = "MAX"
@@ -129,6 +136,64 @@ func (tr *tracer) vars(node *Node, alpha, beta int, extra map[string]any) map[st
 	return m
 }
 
+// minimaxBuilder captures typed provenance at the same instant as the source event.
+type minimaxBuilder struct {
+	*trace.Builder
+	tr *tracer
+}
+
+func (b *minimaxBuilder) AddStep(line string, action trace.ActionType, explanation string, state any, vars map[string]any) {
+	tr := b.tr
+	s := renderers.MinimaxLessonState{TreeState: state.(renderers.TreeState), Stack: append([]string(nil), tr.stack...)}
+	s.ActiveID, _ = vars["node"].(string)
+	if len(s.Stack) == 0 {
+		s.Stack = []string{s.ActiveID}
+	}
+	s.ChildID, _ = vars["child"].(string)
+	s.ReturnedFromID, _ = vars["returnedFrom"].(string)
+	s.Alpha, _ = vars["alphaValue"].(int)
+	s.Beta, _ = vars["betaValue"].(int)
+	s.Cutoff, _ = vars["cutoff"].(bool)
+	s.Eval, s.EvalValid = vars["eval"].(int)
+	s.BestChildID = tr.bestChild[s.ActiveID]
+	s.BestValue = tr.values[s.ActiveID]
+	s.BestValueValid = tr.evaluated[s.ActiveID]
+	s.Phase = "decision"
+	switch line {
+	case "L1":
+		s.Phase = "init"
+	case "L2":
+		s.Phase = "terminal-check"
+	case "L3":
+		s.Phase = "leaf-return"
+	case "L6", "L15":
+		s.Phase = "initialize-best"
+	case "L7", "L8", "L16", "L17":
+		s.Phase = "descend"
+	case "L9", "L18":
+		s.Phase = "child-return"
+	case "L10", "L19":
+		s.Phase = "bound-update"
+	case "L11", "L20":
+		s.Phase = "cutoff-check"
+	case "L13", "L22":
+		s.Phase = "return"
+	case "L24":
+		s.Phase = "done"
+	}
+	if s.Cutoff {
+		s.Phase = "prune"
+	}
+	for _, n := range tr.allNodes {
+		pruned := tr.states[n.ID] == "deleted"
+		s.Nodes = append(s.Nodes, renderers.MinimaxNodeView{ID: n.ID, ParentID: tr.parents[n.ID], Depth: n.Depth, Value: tr.values[n.ID], IsMax: n.IsMax, Terminal: len(n.Children) == 0, Evaluated: tr.evaluated[n.ID], Pruned: pruned})
+		if pruned {
+			s.PrunedIDs = append(s.PrunedIDs, n.ID)
+		}
+	}
+	b.Builder.AddStep(line, action, explanation, s, vars)
+}
+
 func (tr *tracer) markPruned(n *Node) {
 	tr.states[n.ID] = "deleted"
 	for _, child := range n.Children {
@@ -137,6 +202,8 @@ func (tr *tracer) markPruned(n *Node) {
 }
 
 func (tr *tracer) traceMinimax(node *Node, alpha, beta int, isMax bool) int {
+	tr.stack = append(tr.stack, node.ID)
+	defer func() { tr.stack = tr.stack[:len(tr.stack)-1] }()
 	tr.states[node.ID] = "active"
 	tr.b.IncOperations()
 
@@ -148,6 +215,7 @@ func (tr *tracer) traceMinimax(node *Node, alpha, beta int, isMax bool) int {
 	)
 
 	if len(node.Children) == 0 {
+		tr.evaluated[node.ID] = true
 		tr.states[node.ID] = "matched"
 		tr.b.AddStep("L3", trace.ActionSet,
 			fmt.Sprintf("Terminal leaf %s reached with utility score %d.", node.ID, node.Val),
@@ -189,12 +257,14 @@ func (tr *tracer) traceMinimax(node *Node, alpha, beta int, isMax bool) int {
 
 			if eval > maxEval {
 				maxEval = eval
+				tr.bestChild[node.ID] = child.ID
 			}
+			tr.evaluated[node.ID] = true
 			tr.values[node.ID] = maxEval
 			tr.b.AddStep("L9", trace.ActionSet,
 				fmt.Sprintf("MAX node %s: child returned %d, maxEval is now %d.", node.ID, eval, maxEval),
 				tr.makeTreeState(),
-				tr.vars(node, alpha, beta, map[string]any{"eval": eval, "maxEval": maxEval}),
+				tr.vars(node, alpha, beta, map[string]any{"eval": eval, "maxEval": maxEval, "returnedFrom": child.ID}),
 			)
 
 			if maxEval > alpha {
@@ -268,12 +338,14 @@ func (tr *tracer) traceMinimax(node *Node, alpha, beta int, isMax bool) int {
 
 		if eval < minEval {
 			minEval = eval
+			tr.bestChild[node.ID] = child.ID
 		}
+		tr.evaluated[node.ID] = true
 		tr.values[node.ID] = minEval
 		tr.b.AddStep("L18", trace.ActionSet,
 			fmt.Sprintf("MIN node %s: child returned %d, minEval is now %d.", node.ID, eval, minEval),
 			tr.makeTreeState(),
-			tr.vars(node, alpha, beta, map[string]any{"eval": eval, "minEval": minEval}),
+			tr.vars(node, alpha, beta, map[string]any{"eval": eval, "minEval": minEval, "returnedFrom": child.ID}),
 		)
 
 		if minEval < beta {
@@ -317,6 +389,11 @@ func (tr *tracer) traceMinimax(node *Node, alpha, beta int, isMax bool) int {
 
 // Trace executes Minimax with alpha-beta pruning on the tree and returns the execution trace.
 func Trace(scores []int, branching int) []trace.Step {
+	if err := validateMinimaxInput(scores, branching); err != nil && len(scores) != 0 {
+		b := trace.NewBuilder()
+		b.AddStep("L1", trace.ActionDone, err.Error(), renderers.MinimaxLessonState{Phase: "invalid-input"}, map[string]any{"error": err.Error()})
+		return b.Steps()
+	}
 	root := BuildTree(scores, branching)
 	tr := newTracer(root)
 
@@ -331,7 +408,7 @@ func Trace(scores []int, branching int) []trace.Step {
 	// Determine optimal move from root
 	var bestChild *Node
 	for _, child := range root.Children {
-		if child.Val == bestVal {
+		if tr.evaluated[child.ID] && tr.values[child.ID] == bestVal {
 			bestChild = child
 			break
 		}
@@ -350,11 +427,21 @@ func Trace(scores []int, branching int) []trace.Step {
 	tr.b.AddStep("L24", trace.ActionDone,
 		fmt.Sprintf("Minimax search completed! Optimal root score is %d (chosen move: %s).", bestVal, optID),
 		tr.makeTreeState(),
-		tr.vars(root, NegInfinity, Infinity, map[string]any{
+		tr.vars(root, bestVal, Infinity, map[string]any{
 			"optimalMove": optID,
 			"bestValue":   bestVal,
 		}),
 	)
 
-	return tr.b.Steps()
+	steps := tr.b.Steps()
+	if len(scores) == 0 {
+		steps[len(steps)-1].Explanation = "Empty input: terminal root utility 0; no game move."
+	}
+	for i := 0; i+1 < len(steps); i++ {
+		if steps[i].LineID == "L2" && steps[i+1].LineID == "L3" {
+			steps[i].HoldMS = 600
+			steps[i+1].HoldMS = 1200
+		}
+	}
+	return steps
 }

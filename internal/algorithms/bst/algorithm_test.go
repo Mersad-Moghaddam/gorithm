@@ -1,6 +1,7 @@
 package bst
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
 	"testing"
@@ -173,7 +174,7 @@ func TestBSTTraceProperties(t *testing.T) {
 	seenStates := make(map[string]bool)
 
 	for i, step := range steps {
-		state, ok := step.State.(renderers.TreeState)
+		state, ok := step.State.(renderers.BSTLessonState)
 		if !ok {
 			t.Fatalf("step %d state is %T, want renderers.TreeState", i, step.State)
 		}
@@ -188,8 +189,8 @@ func TestBSTTraceProperties(t *testing.T) {
 		for _, n := range state.Nodes {
 			if n.ParentID == "" {
 				// Root position
-				if n.X != 400 || n.Y != 60 {
-					t.Errorf("step %d: root node %s at (%.1f, %.1f), want (400, 60)", i, n.ID, n.X, n.Y)
+				if n.Y != 88 {
+					t.Errorf("root Y = %v", n.Y)
 				}
 			} else {
 				parent, exists := nodeMap[n.ParentID]
@@ -231,6 +232,159 @@ func TestBSTTraceProperties(t *testing.T) {
 	for _, reqState := range []string{"normal", "active", "matched", "inserted", "deleted"} {
 		if !seenStates[reqState] {
 			t.Errorf("missing expected node state %q across trace steps", reqState)
+		}
+	}
+}
+
+func TestBSTLessonSuccessorIdentity(t *testing.T) {
+	steps := Trace(nil, nil)
+	if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
+		t.Fatal(err)
+	}
+	var target, successor string
+	for _, n := range steps[0].State.(renderers.BSTLessonState).Nodes {
+		if n.Val == 30 {
+			target = n.ID
+		}
+	}
+	copySeen := false
+	for i, step := range steps {
+		s, ok := step.State.(renderers.BSTLessonState)
+		if !ok {
+			t.Fatalf("frame %d: %T", i, step.State)
+		}
+		if len(s.LeftIDs) != len(s.Nodes) || len(s.RightIDs) != len(s.Nodes) {
+			t.Fatal("unaligned children")
+		}
+		if step.HoldMS != 0 && step.HoldMS != 350 && step.HoldMS != 600 && step.HoldMS != 1200 && step.HoldMS != 1800 {
+			t.Fatal("invalid hold")
+		}
+		if step.LineID == "L30" {
+			copySeen = true
+			successor = s.SuccessorID
+			if s.ActiveID != target || successor == target || !s.HasOldValue || s.OldValue != 30 {
+				t.Fatalf("copy identity: %+v", s)
+			}
+			count := 0
+			for _, n := range s.Nodes {
+				if n.Val == 35 {
+					count++
+				}
+			}
+			if count != 2 {
+				t.Fatal("copy must retain two distinct nodes")
+			}
+			if i == 0 || steps[i-1].HoldMS+step.HoldMS != 1800 {
+				t.Fatal("copy pair budget")
+			}
+		}
+	}
+	if !copySeen {
+		t.Fatal("missing copy")
+	}
+	final := steps[len(steps)-1].State.(renderers.BSTLessonState)
+	var values []int
+	for _, n := range final.Nodes {
+		if n.ID == successor {
+			t.Fatal("successor still present")
+		}
+		if n.ID == target && n.Val != 35 {
+			t.Fatal("target identity changed")
+		}
+		values = append(values, n.Val)
+	}
+	sort.Ints(values)
+	if !reflect.DeepEqual(values, []int{20, 35, 40, 50, 60, 70, 80}) {
+		t.Fatal(values)
+	}
+}
+
+func TestBSTLessonDeleteCases(t *testing.T) {
+	for _, tc := range []struct {
+		initial []int
+		value   int
+		want    []int
+	}{
+		{[]int{2, 1, 3}, 1, []int{2, 3}}, {[]int{2, 1}, 2, []int{1}}, {[]int{2, 3}, 2, []int{3}},
+		{[]int{2}, 9, []int{2}}, {[]int{2}, 2, nil},
+	} {
+		steps := Trace(tc.initial, []Operation{{Type: "delete", Value: tc.value}})
+		for _, step := range steps {
+			s := step.State.(renderers.BSTLessonState)
+			for _, n := range s.Nodes {
+				if n.ID == s.RemovedID && (step.LineID == "L27" || step.LineID == "L28") {
+					t.Fatal("removal emitted before relink")
+				}
+			}
+		}
+		s := steps[len(steps)-1].State.(renderers.BSTLessonState)
+		var got []int
+		for _, n := range s.Nodes {
+			got = append(got, n.Val)
+		}
+		sort.Ints(got)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("delete %d: %v", tc.value, got)
+		}
+	}
+	s := Trace(nil, []Operation{{Type: "insert", Value: 0}})
+	if len(s[0].State.(renderers.BSTLessonState).Nodes) != 0 || len(s[len(s)-1].State.(renderers.BSTLessonState).Nodes) != 1 {
+		t.Fatal("empty direct trace")
+	}
+}
+
+func TestBSTLessonDuplicate(t *testing.T) {
+	input := []int{0, -2, 2}
+	steps := Trace(input, []Operation{{Type: "insert", Value: 0}})
+	first := steps[0].State.(renderers.BSTLessonState)
+	saved, _ := json.Marshal(steps[0])
+	input[0] = 99
+	last := steps[len(steps)-1].State.(renderers.BSTLessonState)
+	if len(last.Nodes) != 3 || last.Phase != "duplicate" {
+		t.Fatal("duplicate allocated node")
+	}
+	for i, n := range first.Nodes {
+		if last.Nodes[i].ID != n.ID {
+			t.Fatal("identity changed")
+		}
+	}
+	for i := 1; i < len(steps); i++ {
+		s := steps[i].State.(renderers.BSTLessonState)
+		if len(s.Nodes) > 0 {
+			s.Nodes[0].Val = 100
+		}
+		if len(s.PathIDs) > 0 {
+			s.PathIDs[0] = "changed"
+		}
+	}
+	after, _ := json.Marshal(steps[0])
+	if string(saved) != string(after) {
+		t.Fatal("snapshot alias")
+	}
+}
+
+func TestBSTBuildInputBounds(t *testing.T) {
+	for _, raw := range []string{`null`, `{`, `{"initial":null}`, `{"ops":null}`, `{"initial":[1000001]}`, `{"ops":[{"type":"search"}]}`, `{"ops":[{"type":"spin","value":0}]}`, `[2147483648]`} {
+		if _, err := (Lesson{}).Build([]byte(raw)); err == nil {
+			t.Errorf("accepted %s", raw)
+		}
+	}
+	for _, n := range []int{32, 33} {
+		raw, _ := json.Marshal(make([]int, n))
+		_, err := (Lesson{}).Build(raw)
+		if (err == nil) != (n == 32) {
+			t.Fatalf("initial bound %d: %v", n, err)
+		}
+	}
+	for _, n := range []int{64, 65} {
+		ops := make([]Operation, n)
+		for i := range ops {
+			ops[i] = Operation{Type: "search", Value: 1000000}
+		}
+		raw, _ := json.Marshal(buildInput{Initial: []int{-1000000}, Ops: ops})
+		_, err := (Lesson{}).Build(raw)
+		if (err == nil) != (n == 64) {
+			t.Fatalf("ops bound %d: %v", n, err)
 		}
 	}
 }

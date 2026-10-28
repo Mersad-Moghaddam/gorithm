@@ -1,8 +1,11 @@
 package prim
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -117,18 +120,71 @@ func layoutNodesFromEdges(edges []WeightedEdge) []renderers.GraphNode {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges, start := DefaultGraph()
 	if len(input) > 0 {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("input must be a graph object")
+		}
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Edges) > 0 {
-			edges = custom.Edges
-			if custom.Start != "" {
-				start = custom.Start
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid graph: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(input, &fields)
+		for _, key := range []string{"nodes", "edges", "start"} {
+			if bytes.Equal(bytes.TrimSpace(fields[key]), []byte("null")) {
+				return nil, fmt.Errorf("%s must not be null", key)
 			}
-			if len(custom.Nodes) > 0 {
+		}
+		for _, key := range []string{"nodes", "edges"} {
+			var entries []map[string]json.RawMessage
+			if fields[key] != nil {
+				if err := json.Unmarshal(fields[key], &entries); err != nil {
+					return nil, fmt.Errorf("invalid %s: %w", key, err)
+				}
+			}
+			for _, entry := range entries {
+				if entry == nil {
+					return nil, fmt.Errorf("%s entries must be objects", key)
+				}
+				for name, value := range entry {
+					if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+						return nil, fmt.Errorf("%s.%s must not be null", key, name)
+					}
+				}
+			}
+		}
+		if len(custom.Edges) > 0 || fields["nodes"] != nil || fields["edges"] != nil {
+			edges = custom.Edges
+			if fields["nodes"] != nil {
 				nodes = custom.Nodes
 			} else {
 				nodes = layoutNodesFromEdges(edges)
 			}
+			start = ""
 		}
+		if custom.Start != "" {
+			start = custom.Start
+		}
+	}
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("graph limit: 32 nodes, 128 edges")
+	}
+	seen := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		if n.ID == "" || seen[n.ID] || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node IDs must be unique, nonempty; IDs and labels at most 64 characters")
+		}
+		if math.IsNaN(n.X) || math.IsInf(n.X, 0) || math.IsNaN(n.Y) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+			return nil, fmt.Errorf("coordinates must be finite within ±1000000")
+		}
+		seen[n.ID] = true
+	}
+	for _, e := range edges {
+		if !seen[e.From] || !seen[e.To] || e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("edge endpoints must exist; weights within ±10000")
+		}
+	}
+	if start != "" && !seen[start] {
+		return nil, fmt.Errorf("start must name an existing node")
 	}
 	return Trace(nodes, edges, start), nil
 }

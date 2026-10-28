@@ -2,326 +2,221 @@ package genetic
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
-	"strconv"
 	"strings"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// buildTableState formats the population into a TableState for visualization.
-func buildTableState(pop []Individual, target string, bestIdx int, highlightIdx int) renderers.TableState {
-	targetLen := len(target)
-	popSize := len(pop)
-
-	rowHeaders := make([]string, popSize)
-	for i := 0; i < popSize; i++ {
-		rowHeaders[i] = fmt.Sprintf("Ind %d", i)
-	}
-
-	if targetLen <= 10 {
-		colHeaders := make([]string, targetLen+1)
-		for c := 0; c < targetLen; c++ {
-			colHeaders[c] = fmt.Sprintf("G%d", c)
-		}
-		colHeaders[targetLen] = "Fitness"
-
-		cells := make([]renderers.TableCell, 0, popSize*(targetLen+1))
-		for r := 0; r < popSize; r++ {
-			ind := pop[r]
-			genes := ind.Genes
-
-			for c := 0; c < targetLen; c++ {
-				ch := ""
-				if c < len(genes) {
-					ch = string(genes[c])
-				}
-				cellState := "normal"
-				if c < len(genes) && c < len(target) && genes[c] == target[c] {
-					cellState = "computed"
-				} else if r == highlightIdx {
-					cellState = "active"
-				} else if r == bestIdx {
-					cellState = "source"
-				}
-
-				cells = append(cells, renderers.TableCell{
-					Row:   r,
-					Col:   c,
-					Value: ch,
-					State: cellState,
-				})
-			}
-
-			// Fitness column
-			fitState := "normal"
-			if ind.Fitness == targetLen {
-				fitState = "computed"
-			} else if r == bestIdx {
-				fitState = "active"
-			}
-			cells = append(cells, renderers.TableCell{
-				Row:   r,
-				Col:   targetLen,
-				Value: strconv.Itoa(ind.Fitness),
-				State: fitState,
-			})
-		}
-
-		return renderers.TableState{
-			RowHeaders: rowHeaders,
-			ColHeaders: colHeaders,
-			Cells:      cells,
+func geneticPrintable(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 32 || s[i] > 126 {
+			return false
 		}
 	}
-
-	// For longer sequences (> 10 characters), use 2-column layout
-	colHeaders := []string{"Chromosome", "Fitness"}
-	cells := make([]renderers.TableCell, 0, popSize*2)
-	for r := 0; r < popSize; r++ {
-		ind := pop[r]
-		chromState := "normal"
-		if r == highlightIdx {
-			chromState = "active"
-		} else if r == bestIdx {
-			chromState = "source"
-		}
-
-		cells = append(cells, renderers.TableCell{
-			Row:   r,
-			Col:   0,
-			Value: ind.Genes,
-			State: chromState,
-		})
-
-		fitState := "normal"
-		if ind.Fitness == targetLen {
-			fitState = "computed"
-		} else if r == bestIdx {
-			fitState = "active"
-		}
-		cells = append(cells, renderers.TableCell{
-			Row:   r,
-			Col:   1,
-			Value: strconv.Itoa(ind.Fitness),
-			State: fitState,
-		})
-	}
-
-	return renderers.TableState{
-		RowHeaders: rowHeaders,
-		ColHeaders: colHeaders,
-		Cells:      cells,
-	}
+	return true
 }
 
-// Trace produces a step-by-step visual execution of the genetic algorithm.
+func geneticValidate(cfg Config) error {
+	if len(cfg.Target) < 1 || len(cfg.Target) > 24 || !geneticPrintable(cfg.Target) {
+		return fmt.Errorf("target must contain 1–24 printable ASCII bytes")
+	}
+	if cfg.PopSize < 1 || cfg.PopSize > 24 || cfg.MaxGenerations < 1 || cfg.MaxGenerations > 100 {
+		return fmt.Errorf("population must be 1–24 and generations 1–100")
+	}
+	if math.IsNaN(cfg.MutationRate) || math.IsInf(cfg.MutationRate, 0) || cfg.MutationRate <= 0 || cfg.MutationRate > 1 {
+		return fmt.Errorf("mutationRate must be finite and in (0,1]")
+	}
+	if cfg.TournamentSize < 1 || cfg.TournamentSize > 24 || !geneticPrintable(cfg.Charset) {
+		return fmt.Errorf("invalid tournament or non-ASCII charset")
+	}
+	return nil
+}
+
+// geneticSelectIndex mirrors SelectTournament's draws and strict first-winner tie
+// rule, retaining the actual winner's identity even for identical chromosomes.
+func geneticSelectIndex(pop []renderers.GeneticIndividualView, k int, rng *rand.Rand) int {
+	if k > len(pop) {
+		k = len(pop)
+	}
+	best := rng.Intn(len(pop))
+	for i := 1; i < k; i++ {
+		j := rng.Intn(len(pop))
+		if pop[j].Fitness > pop[best].Fitness {
+			best = j
+		}
+	}
+	return best
+}
+
+// Trace records real operators without additional RNG draws for presentation.
 func Trace(cfg Config) []trace.Step {
 	if cfg.Target == "" {
 		cfg.Target = "GENETIC"
 	}
-	if cfg.PopSize <= 0 {
+	if cfg.PopSize == 0 {
 		cfg.PopSize = 8
 	}
-	if cfg.MutationRate <= 0 {
-		cfg.MutationRate = 0.08
-	}
-	if cfg.MaxGenerations <= 0 {
+	if cfg.MaxGenerations == 0 {
 		cfg.MaxGenerations = 15
 	}
-	if cfg.TournamentSize <= 0 {
+	if cfg.MutationRate == 0 {
+		cfg.MutationRate = .08
+	}
+	if cfg.TournamentSize == 0 {
 		cfg.TournamentSize = 3
 	}
 	if cfg.Charset == "" {
 		cfg.Charset = DefaultCharset(cfg.Target)
 	}
+	b := trace.NewBuilder()
+	if err := geneticValidate(cfg); err != nil {
+		b.AddStep("L1", trace.ActionDone, err.Error(), renderers.GeneticLessonState{Phase: "invalid-input", StopReason: "invalid-input"}, nil)
+		return b.Steps()
+	}
 	if cfg.RNG == nil {
 		cfg.RNG = rand.New(rand.NewSource(42))
 	}
-
-	b := trace.NewBuilder()
-	targetLen := len(cfg.Target)
-
-	vars := func(gen, bestFitness int, bestGenes string) map[string]any {
-		return map[string]any{
-			"generation":  gen,
-			"bestFitness": bestFitness,
-			"bestGenes":   bestGenes,
-			"target":      cfg.Target,
-			"popSize":     cfg.PopSize,
+	s := renderers.GeneticLessonState{Target: cfg.Target, MaxGenerations: cfg.MaxGenerations, MutationRate: cfg.MutationRate, BestIndex: 0, Population: make([]renderers.GeneticIndividualView, cfg.PopSize)}
+	best := renderers.GeneticIndividualView{}
+	emit := func(line string, action trace.ActionType, phase, reason string) {
+		s.Phase = phase
+		snap := s
+		snap.Population = append([]renderers.GeneticIndividualView(nil), s.Population...)
+		snap.NextPopulation = append([]renderers.GeneticIndividualView(nil), s.NextPopulation...)
+		snap.BestFitnessHistory = append([]int(nil), s.BestFitnessHistory...)
+		for j := range s.ChangedLoci {
+			snap.ChangedLoci[j] = append([]int(nil), s.ChangedLoci[j]...)
 		}
+		snap.TableState = buildTableState(snap.Population, cfg.Target, s.BestIndex)
+		b.AddStep(line, action, reason, snap, map[string]any{"generation": s.Generation, "bestFitness": best.Fitness, "bestGenes": best.Genes, "target": cfg.Target, "popSize": cfg.PopSize})
 	}
-
-	// L1: Start
-	placeholderPop := make([]Individual, cfg.PopSize)
-	for i := 0; i < cfg.PopSize; i++ {
-		placeholderPop[i] = Individual{Genes: strings.Repeat("-", targetLen), Fitness: 0}
+	for i := range s.Population {
+		s.Population[i] = renderers.GeneticIndividualView{ID: fmt.Sprintf("g0-i%d", i), Genes: strings.Repeat("-", len(cfg.Target))}
 	}
-	emptyState := buildTableState(placeholderPop, cfg.Target, -1, -1)
-	b.AddStep("L1", trace.ActionInit,
-		fmt.Sprintf("Starting Genetic Algorithm targeting %q (population: %d, max generations: %d).", cfg.Target, cfg.PopSize, cfg.MaxGenerations),
-		emptyState, vars(0, 0, ""))
-
-	// L2: Initialize Population
-	pop := make([]Individual, cfg.PopSize)
-	for i := 0; i < cfg.PopSize; i++ {
-		pop[i] = RandomIndividual(targetLen, cfg.Charset, cfg.RNG)
+	emit("L1", trace.ActionInit, "start", "Each slot is a distinct candidate; fitness counts target-byte matches.")
+	for i := range s.Population {
+		s.Population[i].Genes = RandomIndividual(len(cfg.Target), cfg.Charset, cfg.RNG).Genes
 		b.IncOperations()
 	}
-	initState := buildTableState(pop, cfg.Target, -1, -1)
-	b.AddStep("L2", trace.ActionInit,
-		fmt.Sprintf("Initialized random population of %d individuals.", cfg.PopSize),
-		initState, vars(0, 0, ""))
-
-	// L3: Initial Fitness Evaluation
-	bestIdx := 0
-	for i := 0; i < cfg.PopSize; i++ {
-		pop[i].Fitness = CalculateFitness(pop[i].Genes, cfg.Target)
+	emit("L2", trace.ActionInit, "initialization", "Random population created using the fixed input seed.")
+	for i := range s.Population {
+		s.Population[i].Fitness = CalculateFitness(s.Population[i].Genes, cfg.Target)
 		b.IncComparisons()
-		if pop[i].Fitness > pop[bestIdx].Fitness {
-			bestIdx = i
+		if s.Population[i].Fitness > s.Population[s.BestIndex].Fitness {
+			s.BestIndex = i
 		}
 	}
-	bestOverall := pop[bestIdx]
-	evalState := buildTableState(pop, cfg.Target, bestIdx, -1)
-	b.AddStep("L3", trace.ActionCompare,
-		fmt.Sprintf("Evaluated initial population fitness. Best individual #%d %q with fitness %d/%d.", bestIdx, bestOverall.Genes, bestOverall.Fitness, targetLen),
-		evalState, vars(0, bestOverall.Fitness, bestOverall.Genes))
-
-	// Check if already solved
-	if bestOverall.Fitness == targetLen {
-		doneState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L6", trace.ActionDone,
-			fmt.Sprintf("Optimal solution %q found in initial generation!", bestOverall.Genes),
-			doneState, vars(0, bestOverall.Fitness, bestOverall.Genes))
+	best = s.Population[s.BestIndex]
+	s.BestFitnessHistory = append(s.BestFitnessHistory, best.Fitness)
+	emit("L3", trace.ActionCompare, "fitness", fmt.Sprintf("Best candidate %s matches %d/%d target bytes.", best.ID, best.Fitness, len(cfg.Target)))
+	finish := func() bool {
+		if best.Fitness != len(cfg.Target) {
+			return false
+		}
+		s.StopReason = "target-found"
+		emit("L6", trace.ActionDone, "complete", "Exact target found; no further reproduction.")
+		return true
+	}
+	if finish() {
 		return b.Steps()
 	}
-
-	// Evolution loop
-	for gen := 0; gen < cfg.MaxGenerations; gen++ {
-		// L4: Generation start
-		genState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L4", trace.ActionVisit,
-			fmt.Sprintf("Beginning Generation %d / %d.", gen+1, cfg.MaxGenerations),
-			genState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
-
-		// L5: Find best in current generation
-		bestIdx = 0
-		for i := 1; i < len(pop); i++ {
+	for gen := 1; gen <= cfg.MaxGenerations; gen++ {
+		s.Generation = gen
+		s.NextPopulation = nil
+		s.Parents = [2]renderers.GeneticIndividualView{}
+		s.Crossed = [2]renderers.GeneticIndividualView{}
+		s.Mutated = [2]renderers.GeneticIndividualView{}
+		s.ChangedLoci = [2][]int{}
+		s.Pair = 0
+		s.Cut = 0
+		emit("L4", trace.ActionVisit, "generation", fmt.Sprintf("Generation %d of %d: preserve best, then breed remaining slots.", gen, cfg.MaxGenerations))
+		for i := 1; i < len(s.Population); i++ {
 			b.IncComparisons()
-			if pop[i].Fitness > pop[bestIdx].Fitness {
-				bestIdx = i
+		}
+		emit("L5", trace.ActionHighlight, "best", fmt.Sprintf("Elite %s has fitness %d/%d.", best.ID, best.Fitness, len(cfg.Target)))
+		s.EliteID = best.ID
+		s.NextPopulation = append(s.NextPopulation, best)
+		emit("L7", trace.ActionSet, "elitism", "Copy the elite unchanged into next generation; its identity survives.")
+		for len(s.NextPopulation) < cfg.PopSize {
+			s.Pair++
+			s.Cut = 0
+			s.Crossed = [2]renderers.GeneticIndividualView{}
+			s.Mutated = [2]renderers.GeneticIndividualView{}
+			s.ChangedLoci = [2][]int{}
+			s.UsedOffspring = [2]bool{}
+			for j := range s.Parents {
+				s.Parents[j] = s.Population[geneticSelectIndex(s.Population, cfg.TournamentSize, cfg.RNG)]
+			}
+			b.IncComparisons()
+			emit("L9", trace.ActionCompare, "selection", fmt.Sprintf("Pair %d: tournament winners %s and %s (k=%d).", s.Pair, s.Parents[0].ID, s.Parents[1].ID, cfg.TournamentSize))
+			s.Cut = 1
+			if len(cfg.Target) > 1 {
+				s.Cut = cfg.RNG.Intn(len(cfg.Target)-1) + 1
+			}
+			a, c := Crossover(Individual{Genes: s.Parents[0].Genes}, Individual{Genes: s.Parents[1].Genes}, s.Cut)
+			slot := len(s.NextPopulation)
+			for j, child := range []Individual{a, c} {
+				s.Crossed[j] = renderers.GeneticIndividualView{ID: fmt.Sprintf("g%d-i%d", gen, slot+j), Genes: child.Genes, Fitness: CalculateFitness(child.Genes, cfg.Target)}
+			}
+			b.IncSwaps()
+			emit("L10", trace.ActionSwap, "crossover", fmt.Sprintf("Cut at byte %d: exchange suffixes, preserving parent segment identity.", s.Cut))
+			for j, child := range []Individual{a, c} {
+				s.Mutated[j] = s.Crossed[j]
+				// ponytail: preserve historical first-pair second-child draw even when full;
+				// later pairs mutate second child only when capacity permits.
+				if j == 0 || s.Pair == 1 || len(s.NextPopulation) < cfg.PopSize {
+					changed := Mutate(child, cfg.MutationRate, cfg.Charset, cfg.RNG)
+					s.Mutated[j].Genes = changed.Genes
+					s.Mutated[j].Fitness = CalculateFitness(changed.Genes, cfg.Target)
+					for k := range child.Genes {
+						if child.Genes[k] != changed.Genes[k] {
+							s.ChangedLoci[j] = append(s.ChangedLoci[j], k)
+						}
+					}
+				}
+				if len(s.NextPopulation) < cfg.PopSize {
+					s.NextPopulation = append(s.NextPopulation, s.Mutated[j])
+					s.UsedOffspring[j] = true
+				}
+			}
+			b.IncOperations()
+			emit("L11", trace.ActionSet, "mutation", fmt.Sprintf("Mutation rate %.2f; append only available slots. Gold marks observed byte changes, not unchanged replacements.", cfg.MutationRate))
+		}
+		s.Population = append([]renderers.GeneticIndividualView(nil), s.NextPopulation...)
+		s.NextPopulation = nil
+		s.BestIndex = -1
+		emit("L13", trace.ActionSet, "replacement", "Next generation replaces population, including unchanged elite.")
+		s.BestIndex = 0
+		for i := range s.Population {
+			b.IncComparisons()
+			if s.Population[i].Fitness > s.Population[s.BestIndex].Fitness {
+				s.BestIndex = i
 			}
 		}
-		if pop[bestIdx].Fitness > bestOverall.Fitness {
-			bestOverall = pop[bestIdx]
-		}
-		hlState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L5", trace.ActionHighlight,
-			fmt.Sprintf("Generation %d fittest candidate #%d: %q (fitness %d/%d).", gen+1, bestIdx, pop[bestIdx].Genes, pop[bestIdx].Fitness, targetLen),
-			hlState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
-
-		// L6: Check termination
-		if bestOverall.Fitness == targetLen {
-			doneState := buildTableState(pop, cfg.Target, bestIdx, -1)
-			b.AddStep("L6", trace.ActionDone,
-				fmt.Sprintf("Target sequence %q achieved at Generation %d!", bestOverall.Genes, gen+1),
-				doneState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
+		best = s.Population[s.BestIndex]
+		s.BestFitnessHistory = append(s.BestFitnessHistory, best.Fitness)
+		emit("L14", trace.ActionCompare, "fitness", fmt.Sprintf("Best fitness %d/%d. Elitism protects best-so-far, not every child.", best.Fitness, len(cfg.Target)))
+		if finish() {
 			return b.Steps()
 		}
-
-		// L7 & L8: Prepare next generation
-		nextGen := make([]Individual, 0, cfg.PopSize)
-		// Elitism
-		nextGen = append(nextGen, bestOverall)
-
-		// L9: Selection
-		p1 := SelectTournament(pop, cfg.TournamentSize, cfg.RNG)
-		p2 := SelectTournament(pop, cfg.TournamentSize, cfg.RNG)
-		b.IncComparisons()
-		selState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L9", trace.ActionCompare,
-			fmt.Sprintf("Selected parent candidates %q and %q using tournament selection (k=%d).", p1.Genes, p2.Genes, cfg.TournamentSize),
-			selState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
-
-		// L10: Crossover
-		cut := 1
-		if targetLen > 1 {
-			cut = cfg.RNG.Intn(targetLen-1) + 1
-		}
-		c1, c2 := Crossover(p1, p2, cut)
-		b.IncSwaps()
-		crossState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L10", trace.ActionSwap,
-			fmt.Sprintf("Single-point crossover at split point %d created offspring %q and %q.", cut, c1.Genes, c2.Genes),
-			crossState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
-
-		// L11: Mutation
-		c1 = Mutate(c1, cfg.MutationRate, cfg.Charset, cfg.RNG)
-		c2 = Mutate(c2, cfg.MutationRate, cfg.Charset, cfg.RNG)
-		b.IncOperations()
-		mutState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L11", trace.ActionSet,
-			fmt.Sprintf("Mutated offspring with rate %.2f: %q and %q.", cfg.MutationRate, c1.Genes, c2.Genes),
-			mutState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
-
-		// Populate rest of next generation
-		c1.Fitness = CalculateFitness(c1.Genes, cfg.Target)
-		nextGen = append(nextGen, c1)
-		if len(nextGen) < cfg.PopSize {
-			c2.Fitness = CalculateFitness(c2.Genes, cfg.Target)
-			nextGen = append(nextGen, c2)
-		}
-
-		for len(nextGen) < cfg.PopSize {
-			pa := SelectTournament(pop, cfg.TournamentSize, cfg.RNG)
-			pb := SelectTournament(pop, cfg.TournamentSize, cfg.RNG)
-			split := 1
-			if targetLen > 1 {
-				split = cfg.RNG.Intn(targetLen-1) + 1
-			}
-			off1, off2 := Crossover(pa, pb, split)
-			off1 = Mutate(off1, cfg.MutationRate, cfg.Charset, cfg.RNG)
-			off1.Fitness = CalculateFitness(off1.Genes, cfg.Target)
-			nextGen = append(nextGen, off1)
-
-			if len(nextGen) < cfg.PopSize {
-				off2 = Mutate(off2, cfg.MutationRate, cfg.Charset, cfg.RNG)
-				off2.Fitness = CalculateFitness(off2.Genes, cfg.Target)
-				nextGen = append(nextGen, off2)
-			}
-		}
-
-		// L13: Update population
-		pop = nextGen
-		updState := buildTableState(pop, cfg.Target, -1, -1)
-		b.AddStep("L13", trace.ActionSet,
-			fmt.Sprintf("Updated population to Generation %d offspring.", gen+1),
-			updState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
-
-		// L14: Evaluate Fitness
-		bestIdx = 0
-		for i := 0; i < len(pop); i++ {
-			b.IncComparisons()
-			if pop[i].Fitness > pop[bestIdx].Fitness {
-				bestIdx = i
-			}
-		}
-		if pop[bestIdx].Fitness > bestOverall.Fitness {
-			bestOverall = pop[bestIdx]
-		}
-		newEvalState := buildTableState(pop, cfg.Target, bestIdx, -1)
-		b.AddStep("L14", trace.ActionCompare,
-			fmt.Sprintf("Re-evaluated Generation %d fitness. Best fitness now %d/%d.", gen+1, bestOverall.Fitness, targetLen),
-			newEvalState, vars(gen+1, bestOverall.Fitness, bestOverall.Genes))
 	}
-
-	// L16: Done
-	finalState := buildTableState(pop, cfg.Target, bestIdx, -1)
-	b.AddStep("L16", trace.ActionDone,
-		fmt.Sprintf("Evolution complete after %d generations. Best candidate: %q with fitness %d/%d.", cfg.MaxGenerations, bestOverall.Genes, bestOverall.Fitness, targetLen),
-		finalState, vars(cfg.MaxGenerations, bestOverall.Fitness, bestOverall.Genes))
-
+	s.StopReason = "generation-limit"
+	emit("L16", trace.ActionDone, "complete", fmt.Sprintf("Generation budget exhausted; best fitness %d/%d, not an exact solution.", best.Fitness, len(cfg.Target)))
 	return b.Steps()
+}
+
+func buildTableState(pop []renderers.GeneticIndividualView, target string, best int) renderers.TableState {
+	s := renderers.TableState{ColHeaders: []string{"Chromosome", "Fitness"}}
+	for i, p := range pop {
+		s.RowHeaders = append(s.RowHeaders, p.ID)
+		state := "normal"
+		if i == best {
+			state = "active"
+		}
+		s.Cells = append(s.Cells, renderers.TableCell{Row: i, Col: 0, Value: p.Genes, State: state}, renderers.TableCell{Row: i, Col: 1, Value: fmt.Sprint(p.Fitness), State: state})
+	}
+	return s
 }

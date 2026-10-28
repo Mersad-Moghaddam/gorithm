@@ -106,7 +106,7 @@ func TestPrimLessonValidation(t *testing.T) {
 		t.Errorf("expected last action to be done, got %s", lastStep.Action)
 	}
 
-	state, ok := lastStep.State.(renderers.GraphState)
+	state, ok := lastStep.State.(renderers.PrimLessonState)
 	if !ok {
 		t.Fatalf("expected last step state to be renderers.GraphState, got %T", lastStep.State)
 	}

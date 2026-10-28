@@ -149,9 +149,9 @@ func TestTraceValidation(t *testing.T) {
 	}
 
 	for i, step := range steps {
-		tableState, ok := step.State.(renderers.TableState)
+		tableState, ok := step.State.(renderers.CoinChangeLessonState)
 		if !ok {
-			t.Fatalf("step %d state is not renderers.TableState: %T", i, step.State)
+			t.Fatalf("step %d state is not renderers.CoinChangeLessonState: %T", i, step.State)
 		}
 		if len(tableState.RowHeaders) == 0 || len(tableState.ColHeaders) == 0 {
 			t.Fatalf("step %d has empty headers", i)
@@ -207,10 +207,9 @@ func TestRenderTableSVG(t *testing.T) {
 		t.Fatalf("failed to build trace: %v", err)
 	}
 	for i, step := range steps {
-		svg := renderers.RenderTableSVG(step, 800, 450)
+		svg := renderers.RenderCoinChangeLessonSVG(step, 800, 450)
 		if svg == "" {
 			t.Errorf("step %d produced empty SVG", i)
 		}
 	}
 }
-

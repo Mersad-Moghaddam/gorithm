@@ -2,273 +2,171 @@ package kosaraju
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-// Trace generates execution steps for Kosaraju's Strongly Connected Components algorithm.
-// ponytail: two-pass DFS trace with graph reversal; upgrade to iterative trace if recursion exceeds stack limits.
+// Trace records actual recursive calls; unknown endpoints are ignored by the direct API.
 func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge) []trace.Step {
 	b := trace.NewBuilder()
 	if len(nodes) == 0 {
 		return b.Steps()
 	}
-
-	clonedNodes := make([]renderers.GraphNode, len(nodes))
-	copy(clonedNodes, nodes)
-	clonedEdges := make([]renderers.GraphEdge, len(edges))
-	copy(clonedEdges, edges)
-
-	for i := range clonedNodes {
-		clonedNodes[i].State = "unvisited"
+	s := renderers.KosarajuLessonState{GraphState: renderers.GraphState{Nodes: slices.Clone(nodes), Edges: slices.Clone(edges)}, Pass: 1, OrderIndex: -1, EdgeIndex: -1, OriginalEdges: slices.Clone(edges), ComponentOf: map[string]int{}, VisitedForward: map[string]bool{}, VisitedReverse: map[string]bool{}}
+	idx := map[string]int{}
+	for i, n := range s.Nodes {
+		idx[n.ID] = i
+		s.Nodes[i].State = "unvisited"
 	}
-	for i := range clonedEdges {
-		clonedEdges[i].Active = false
-	}
-
-	nodeIdx := make(map[string]int, len(clonedNodes))
-	for i, n := range clonedNodes {
-		nodeIdx[n.ID] = i
-	}
-
-	adj := make(map[string][]string, len(clonedNodes))
-	revAdj := make(map[string][]string, len(clonedNodes))
-	for _, n := range clonedNodes {
-		adj[n.ID] = nil
-		revAdj[n.ID] = nil
-	}
-	for _, e := range clonedEdges {
-		adj[e.From] = append(adj[e.From], e.To)
-		revAdj[e.To] = append(revAdj[e.To], e.From)
-	}
-
-	snapshot := func() renderers.GraphState {
-		snNodes := make([]renderers.GraphNode, len(clonedNodes))
-		copy(snNodes, clonedNodes)
-		snEdges := make([]renderers.GraphEdge, len(clonedEdges))
-		copy(snEdges, clonedEdges)
-		return renderers.GraphState{
-			Nodes: snNodes,
-			Edges: snEdges,
+	adj, rev := map[string][]int{}, map[string][]int{}
+	for i, e := range edges {
+		if _, ok := idx[e.From]; !ok {
+			continue
 		}
-	}
-
-	setEdgeActive := func(from, to string, active bool) {
-		for i := range clonedEdges {
-			if clonedEdges[i].From == from && clonedEdges[i].To == to {
-				clonedEdges[i].Active = active
-				return
-			}
+		if _, ok := idx[e.To]; !ok {
+			continue
 		}
+		adj[e.From] = append(adj[e.From], i)
+		rev[e.To] = append(rev[e.To], i)
 	}
-
-	components := make([][]string, 0)
-	order := make([]string, 0, len(clonedNodes))
-
-	b.AddStep("L1", trace.ActionInit, "Initialize Kosaraju's algorithm to compute Strongly Connected Components.", snapshot(), map[string]any{
-		"components": cloneComponents(components),
-		"order":      cloneSlice(order),
-		"pass":       1,
-	})
-
-	b.AddStep("L2", trace.ActionSet, "Build forward adjacency list and transposed (reversed) adjacency list.", snapshot(), map[string]any{
-		"components": cloneComponents(components),
-		"order":      cloneSlice(order),
-		"pass":       1,
-	})
-
-	visited := make(map[string]bool, len(clonedNodes))
-	b.AddStep("L3", trace.ActionSet, "Initialize visited map and finish order stack for Pass 1.", snapshot(), map[string]any{
-		"components": cloneComponents(components),
-		"order":      cloneSlice(order),
-		"pass":       1,
-	})
-
-	var dfs1 func(u string)
-	dfs1 = func(u string) {
-		visited[u] = true
-		clonedNodes[nodeIdx[u]].State = "visiting"
+	add := func(line string, action trace.ActionType, text string) {
+		out := s
+		out.Nodes = slices.Clone(s.Nodes)
+		out.Edges = slices.Clone(s.Edges)
+		out.OriginalEdges = slices.Clone(s.OriginalEdges)
+		out.Stack = slices.Clone(s.Stack)
+		out.FinishOrder = slices.Clone(s.FinishOrder)
+		out.CurrentComponent = slices.Clone(s.CurrentComponent)
+		out.Components = cloneComponents(s.Components)
+		out.ComponentOf = maps.Clone(s.ComponentOf)
+		out.VisitedForward = maps.Clone(s.VisitedForward)
+		out.VisitedReverse = maps.Clone(s.VisitedReverse)
+		b.AddStep(line, action, text, out, map[string]any{"components": cloneComponents(s.Components), "order": slices.Clone(s.FinishOrder), "pass": s.Pass, "u": s.Current, "order_index": s.OrderIndex, "current_component": slices.Clone(s.CurrentComponent)})
+	}
+	add("L1", trace.ActionInit, "Find strongly connected components: every pair must have paths in both directions.")
+	add("L2", trace.ActionSet, "Build forward and reverse adjacency lists; retain original edge indices.")
+	add("L3", trace.ActionSet, "Start forward DFS with empty visited map and finish stack.")
+	var dfs func(string, bool)
+	dfs = func(u string, reverse bool) {
+		s.Stack = append(s.Stack, u)
+		s.Current = u
+		s.Neighbor = ""
+		s.EdgeIndex = -1
+		s.FinishedVertex = ""
+		s.ReturningFrom = ""
+		line := "L5"
+		links := adj[u]
+		seen := s.VisitedForward
+		if reverse {
+			line = "L12"
+			links = rev[u]
+			seen = s.VisitedReverse
+			s.CurrentComponent = append(s.CurrentComponent, u)
+			s.ComponentOf[u] = len(s.Components)
+		}
+		seen[u] = true
+		s.Nodes[idx[u]].State = "visiting"
 		b.IncOperations()
-		b.AddStep("L5", trace.ActionVisit, fmt.Sprintf("Pass 1: Visit vertex %s and explore unvisited outgoing edges.", u), snapshot(), map[string]any{
-			"u":          u,
-			"order":      cloneSlice(order),
-			"components": cloneComponents(components),
-			"pass":       1,
-		})
-
-		for _, v := range adj[u] {
-			if _, exists := nodeIdx[v]; !exists {
-				continue
+		add(line, trace.ActionVisit, fmt.Sprintf("Pass %d: enter %s; call stack %v.", s.Pass, u, s.Stack))
+		for _, ei := range links {
+			v := edges[ei].To
+			if reverse {
+				v = edges[ei].From
 			}
+			s.Current = u
+			s.Neighbor = v
+			s.EdgeIndex = ei
+			s.ReturningFrom = ""
+			s.FinishedVertex = ""
+			s.Edges[ei].Active = true
 			b.IncComparisons()
-			setEdgeActive(u, v, true)
-			b.AddStep("L5", trace.ActionHighlight, fmt.Sprintf("Pass 1: Explore outgoing edge (%s -> %s). Target visited: %t.", u, v, visited[v]), snapshot(), map[string]any{
-				"u":          u,
-				"v":          v,
-				"visited":    visited[v],
-				"order":      cloneSlice(order),
-				"components": cloneComponents(components),
-				"pass":       1,
-			})
-
-			if !visited[v] {
-				dfs1(v)
+			add(line, trace.ActionHighlight, fmt.Sprintf("Probe edge #%d: %s → %s; visited: %t.", ei, u, v, seen[v]))
+			if !seen[v] {
+				dfs(v, reverse)
+				s.Current = u
+				s.Neighbor = v
+				s.EdgeIndex = ei
+				s.ReturningFrom = v
+				s.FinishedVertex = ""
+				add(line, trace.ActionSet, fmt.Sprintf("Return from %s to %s.", v, u))
 			}
-			setEdgeActive(u, v, false)
+			s.Edges[ei].Active = false
 		}
-
-		order = append(order, u)
-		clonedNodes[nodeIdx[u]].State = "visited"
-		b.IncOperations()
-		b.AddStep("L5", trace.ActionPush, fmt.Sprintf("Pass 1: Vertex %s finished. Push to finish order: %v.", u, order), snapshot(), map[string]any{
-			"u":          u,
-			"order":      cloneSlice(order),
-			"components": cloneComponents(components),
-			"pass":       1,
-		})
+		s.Current = u
+		s.Neighbor = ""
+		s.EdgeIndex = -1
+		s.ReturningFrom = ""
+		s.Stack = s.Stack[:len(s.Stack)-1]
+		s.Nodes[idx[u]].State = "visited"
+		if !reverse {
+			s.FinishOrder = append(s.FinishOrder, u)
+			s.FinishedVertex = u
+			b.IncOperations()
+			add(line, trace.ActionPush, fmt.Sprintf("Finish %s; push onto finish stack.", u))
+		} else {
+			add(line, trace.ActionSet, fmt.Sprintf("Reverse call for %s complete.", u))
+		}
 	}
-
-	for _, n := range clonedNodes {
-		u := n.ID
+	for _, n := range nodes {
+		s.Current = n.ID
+		s.FinishedVertex = ""
+		s.ReturningFrom = ""
 		b.IncComparisons()
-		b.AddStep("L4", trace.ActionCompare, fmt.Sprintf("Pass 1: Check root vertex %s. Visited: %t.", u, visited[u]), snapshot(), map[string]any{
-			"u":          u,
-			"visited":    visited[u],
-			"order":      cloneSlice(order),
-			"components": cloneComponents(components),
-			"pass":       1,
-		})
-		if !visited[u] {
-			dfs1(u)
+		add("L4", trace.ActionCompare, fmt.Sprintf("Check root %s; visited: %t.", n.ID, s.VisitedForward[n.ID]))
+		if !s.VisitedForward[n.ID] {
+			dfs(n.ID, false)
 		}
 	}
-
-	b.AddStep("L6", trace.ActionSet, fmt.Sprintf("Pass 1 complete. Finish order computed: %v.", order), snapshot(), map[string]any{
-		"order":      cloneSlice(order),
-		"components": cloneComponents(components),
-		"pass":       1,
-	})
-
-	// Transpose graph: reverse edges in state and reset node states
-	for i := range clonedNodes {
-		clonedNodes[i].State = "unvisited"
+	s.Current = ""
+	s.FinishedVertex = ""
+	add("L6", trace.ActionSet, "Forward pass complete; finish order is not discovery order.")
+	s.Pass = 2
+	s.Transposed = true
+	for i := range s.Nodes {
+		s.Nodes[i].State = "unvisited"
 	}
-	for i := range clonedEdges {
-		clonedEdges[i].From, clonedEdges[i].To = clonedEdges[i].To, clonedEdges[i].From
-		clonedEdges[i].Active = false
+	for i := range s.Edges {
+		s.Edges[i].From, s.Edges[i].To = s.Edges[i].To, s.Edges[i].From
+		s.Edges[i].Active = false
 	}
-
-	b.AddStep("L7", trace.ActionSet, "Pass 2 setup: Transpose graph (reverse all directed edges) and reset node states for component decomposition.", snapshot(), map[string]any{
-		"order":      cloneSlice(order),
-		"components": cloneComponents(components),
-		"pass":       2,
-	})
-
-	visitedRev := make(map[string]bool, len(clonedNodes))
-	var dfs2 func(u string, comp *[]string)
-	dfs2 = func(u string, comp *[]string) {
-		visitedRev[u] = true
-		clonedNodes[nodeIdx[u]].State = "path"
-		*comp = append(*comp, u)
-		b.IncOperations()
-		b.AddStep("L12", trace.ActionVisit, fmt.Sprintf("Pass 2: Reached vertex %s in transposed graph. Add to current SCC: %v.", u, *comp), snapshot(), map[string]any{
-			"u":                 u,
-			"current_component": cloneSlice(*comp),
-			"components":        cloneComponents(components),
-			"order":             cloneSlice(order),
-			"pass":              2,
-		})
-
-		for _, v := range revAdj[u] {
-			if _, exists := nodeIdx[v]; !exists {
-				continue
-			}
-			b.IncComparisons()
-			setEdgeActive(u, v, true)
-			b.AddStep("L12", trace.ActionHighlight, fmt.Sprintf("Pass 2: Traverse transposed edge (%s -> %s). Target visited: %t.", u, v, visitedRev[v]), snapshot(), map[string]any{
-				"from":              u,
-				"to":                v,
-				"visited":           visitedRev[v],
-				"current_component": cloneSlice(*comp),
-				"components":        cloneComponents(components),
-				"order":             cloneSlice(order),
-				"pass":              2,
-			})
-
-			if !visitedRev[v] {
-				dfs2(v, comp)
-			}
-			setEdgeActive(u, v, false)
-		}
-	}
-
-	for i := len(order) - 1; i >= 0; i-- {
-		u := order[i]
+	add("L7", trace.ActionSet, "Switch display to transpose already built at L2; reset reverse visited map.")
+	for i := len(s.FinishOrder) - 1; i >= 0; i-- {
+		u := s.FinishOrder[i]
+		s.Current = u
+		s.OrderIndex = i
+		s.ReturningFrom = ""
 		b.IncComparisons()
-		b.AddStep("L8", trace.ActionCompare, fmt.Sprintf("Pass 2: Inspect vertex %s with latest finish time. Already assigned: %t.", u, visitedRev[u]), snapshot(), map[string]any{
-			"u":                 u,
-			"order_index":       i,
-			"visited_in_pass_2": visitedRev[u],
-			"components":        cloneComponents(components),
-			"order":             cloneSlice(order),
-			"pass":              2,
-		})
-
-		if !visitedRev[u] {
-			b.AddStep("L11", trace.ActionSet, fmt.Sprintf("Pass 2: Start new Strongly Connected Component seeded by root vertex %s.", u), snapshot(), map[string]any{
-				"u":          u,
-				"components": cloneComponents(components),
-				"order":      cloneSlice(order),
-				"pass":       2,
-			})
-
-			var comp []string
-			dfs2(u, &comp)
-			components = append(components, cloneSlice(comp))
-
-			b.AddStep("L13", trace.ActionSet, fmt.Sprintf("SCC #%d identified: %v.", len(components), comp), snapshot(), map[string]any{
-				"component":  cloneSlice(comp),
-				"components": cloneComponents(components),
-				"order":      cloneSlice(order),
-				"pass":       2,
-			})
+		add("L8", trace.ActionCompare, fmt.Sprintf("Inspect finish index %d: %s; assigned: %t.", i, u, s.VisitedReverse[u]))
+		if !s.VisitedReverse[u] {
+			s.CurrentComponent = nil
+			add("L11", trace.ActionSet, fmt.Sprintf("Start empty component seeded by %s.", u))
+			dfs(u, true)
+			s.Components = append(s.Components, slices.Clone(s.CurrentComponent))
+			add("L13", trace.ActionSet, fmt.Sprintf("Commit SCC %d: %v. Paths exist both ways.", len(s.Components), s.CurrentComponent))
 		}
 	}
-
-	// Restore original edge orientations for final graph display
-	for i := range clonedEdges {
-		clonedEdges[i].From, clonedEdges[i].To = clonedEdges[i].To, clonedEdges[i].From
-		clonedEdges[i].Active = false
+	s.Transposed = false
+	s.Current = ""
+	s.Neighbor = ""
+	s.OrderIndex = -1
+	s.EdgeIndex = -1
+	s.CurrentComponent = nil
+	s.ReturningFrom = ""
+	s.Edges = slices.Clone(s.OriginalEdges)
+	for i := range s.Edges {
+		s.Edges[i].Active = false
 	}
-
-	b.AddStep("L16", trace.ActionDone, fmt.Sprintf("Kosaraju's algorithm complete. Identified %d strongly connected component(s): %v.", len(components), components), snapshot(), map[string]any{
-		"components": cloneComponents(components),
-		"order":      cloneSlice(order),
-		"count":      len(components),
-		"status":     "complete",
-	})
-
+	add("L16", trace.ActionDone, fmt.Sprintf("Restore original graph: %d SCCs. One-way bridges do not merge components.", len(s.Components)))
 	return b.Steps()
 }
 
 func cloneComponents(c [][]string) [][]string {
-	if c == nil {
-		return [][]string{}
-	}
 	out := make([][]string, len(c))
-	for i, comp := range c {
-		out[i] = make([]string, len(comp))
-		copy(out[i], comp)
+	for i := range c {
+		out[i] = slices.Clone(c[i])
 	}
-	return out
-}
-
-func cloneSlice(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	out := make([]string, len(s))
-	copy(out, s)
 	return out
 }

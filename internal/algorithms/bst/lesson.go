@@ -1,7 +1,9 @@
 package bst
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -79,19 +81,75 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 
 	if len(input) > 0 {
-		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && (len(custom.Initial) > 0 || len(custom.Ops) > 0) {
-			if len(custom.Initial) > 0 {
-				initial = custom.Initial
+		raw := bytes.TrimSpace(input)
+		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+			return nil, fmt.Errorf("BST input must be object or integer array")
+		}
+		if raw[0] == '[' {
+			var values []int
+			if err := json.Unmarshal(raw, &values); err != nil {
+				return nil, err
 			}
-			if len(custom.Ops) > 0 {
-				ops = custom.Ops
+			if len(values) > 0 {
+				initial = values
 			}
 		} else {
-			var customArr []int
-			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
-				initial = customArr
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				return nil, err
 			}
+			if fields == nil {
+				return nil, fmt.Errorf("BST input must be object")
+			}
+			if value, ok := fields["initial"]; ok {
+				var values []int
+				if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+					return nil, fmt.Errorf("initial cannot be null")
+				}
+				if err := json.Unmarshal(value, &values); err != nil {
+					return nil, err
+				}
+				if len(values) > 0 {
+					initial = values
+				}
+			}
+			if value, ok := fields["ops"]; ok {
+				var entries []struct {
+					Type  string `json:"type"`
+					Value *int   `json:"value"`
+				}
+				if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+					return nil, fmt.Errorf("ops cannot be null")
+				}
+				if err := json.Unmarshal(value, &entries); err != nil {
+					return nil, err
+				}
+				if len(entries) > 0 {
+					ops = make([]Operation, len(entries))
+					for i, e := range entries {
+						if e.Value == nil {
+							return nil, fmt.Errorf("operation %d requires value", i)
+						}
+						ops[i] = Operation{Type: e.Type, Value: *e.Value}
+					}
+				}
+			}
+		}
+	}
+	if len(initial) > 32 || len(ops) > 64 {
+		return nil, fmt.Errorf("BST permits at most 32 initial values and 64 operations")
+	}
+	for _, v := range initial {
+		if v < -1000000 || v > 1000000 {
+			return nil, fmt.Errorf("initial value outside [-1000000,1000000]")
+		}
+	}
+	for _, op := range ops {
+		if op.Type != "insert" && op.Type != "search" && op.Type != "delete" {
+			return nil, fmt.Errorf("unknown BST operation %q", op.Type)
+		}
+		if op.Value < -1000000 || op.Value > 1000000 {
+			return nil, fmt.Errorf("operation value outside [-1000000,1000000]")
 		}
 	}
 

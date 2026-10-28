@@ -2,74 +2,37 @@ package qlearning
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-func formatStateHeader(env *GridWorld, s Coord) string {
-	if s == env.Start {
-		return fmt.Sprintf("(%d,%d) S", s.Row, s.Col)
-	}
-	if s == env.Goal {
-		return fmt.Sprintf("(%d,%d) G", s.Row, s.Col)
-	}
-	if env.Obstacles[s] {
-		return fmt.Sprintf("(%d,%d) X", s.Row, s.Col)
-	}
-	return fmt.Sprintf("(%d,%d)", s.Row, s.Col)
+func qlearningRateValid(x float64) bool {
+	return !math.IsNaN(x) && !math.IsInf(x, 0) && x > 0 && x <= 1
 }
 
-// buildTableState formats the Q-table into a renderers.TableState.
-// ponytail: dense matrix allocated for states x actions; migrate to sparse map if state space exceeds 1000 cells.
-func buildTableState(
-	env *GridWorld,
-	q [][]float64,
-	activeRow, activeCol int,
-	sourceRow, sourceCol int,
-	updatedRow, updatedCol int,
-) renderers.TableState {
-	rowHeaders := make([]string, env.NumStates())
-	for i := 0; i < env.NumStates(); i++ {
-		s := env.IndexToState(i)
-		rowHeaders[i] = formatStateHeader(env, s)
+func qlearningEnvValid(env *GridWorld) bool {
+	if env.Rows < 1 || env.Cols < 1 || env.Rows > 64 || env.Cols > 64 || env.Rows*env.Cols > 64 {
+		return false
 	}
-	colHeaders := []string{"Up", "Right", "Down", "Left"}
-
-	cells := make([]renderers.TableCell, 0, env.NumStates()*4)
-	for r := 0; r < env.NumStates(); r++ {
-		for c := 0; c < 4; c++ {
-			st := "normal"
-			if r == updatedRow && c == updatedCol {
-				st = "computed"
-			} else if r == activeRow && c == activeCol {
-				st = "active"
-			} else if r == sourceRow && c == sourceCol {
-				st = "source"
-			}
-			cells = append(cells, renderers.TableCell{
-				Row:   r,
-				Col:   c,
-				Value: fmt.Sprintf("%.2f", q[r][c]),
-				State: st,
-			})
+	inside := func(s Coord) bool { return s.Row >= 0 && s.Row < env.Rows && s.Col >= 0 && s.Col < env.Cols }
+	if !inside(env.Start) || !inside(env.Goal) || env.Obstacles[env.Start] || env.Obstacles[env.Goal] {
+		return false
+	}
+	for p := range env.Obstacles {
+		if !inside(p) {
+			return false
 		}
 	}
-
-	return renderers.TableState{
-		RowHeaders: rowHeaders,
-		ColHeaders: colHeaders,
-		Cells:      cells,
-	}
+	return true
 }
 
-// Trace executes Q-learning with a default deterministic seed and returns step-by-step trace data.
 func Trace(env *GridWorld, episodes int, alpha, gamma, epsilon float64) []trace.Step {
 	return TraceWithSeed(env, episodes, alpha, gamma, epsilon, 7)
 }
 
-// TraceWithSeed runs Q-learning with a specified random seed.
 func TraceWithSeed(env *GridWorld, episodes int, alpha, gamma, epsilon float64, seed int64) []trace.Step {
 	if env == nil {
 		env = DefaultGridWorld()
@@ -80,197 +43,153 @@ func TraceWithSeed(env *GridWorld, episodes int, alpha, gamma, epsilon float64, 
 	if episodes > 20 {
 		episodes = 20
 	}
-	if alpha <= 0 {
-		alpha = 0.5
+	// Preserve direct API's documented nonpositive defaults; Build rejects explicit zero.
+	if alpha <= 0 && !math.IsInf(alpha, 0) {
+		alpha = .5
 	}
-	if gamma <= 0 {
-		gamma = 0.9
+	if gamma <= 0 && !math.IsInf(gamma, 0) {
+		gamma = .9
 	}
-	if epsilon <= 0 {
-		epsilon = 0.2
+	if epsilon <= 0 && !math.IsInf(epsilon, 0) {
+		epsilon = .2
 	}
-
 	b := trace.NewBuilder()
-	rng := rand.New(rand.NewSource(seed))
+	if !qlearningEnvValid(env) || !qlearningRateValid(alpha) || !qlearningRateValid(gamma) || !qlearningRateValid(epsilon) {
+		b.AddStep("L2", trace.ActionDone, "Invalid input: grid must contain 1–64 cells with valid unblocked start/goal and rates in (0,1].", renderers.QLearningLessonState{Phase: "invalid-input", Action: -1, BestNextAction: -1}, map[string]any{"state": "invalid", "action": "-", "reward": 0.0})
+		return b.Steps()
+	}
 	agent := NewQAgent(env, alpha, gamma, epsilon)
-
-	// L2: Initialize Q-table
-	initTable := buildTableState(env, agent.Q, -1, -1, -1, -1, -1, -1)
-	b.AddStep("L2", trace.ActionInit, "Initialize Q-table with zeros for all state-action pairs.", initTable, map[string]any{
-		"state":   fmt.Sprintf("(%d,%d)", env.Start.Row, env.Start.Col),
-		"action":  "-",
-		"reward":  0.0,
-		"episode": 0,
-	})
-
-	maxStepsPerEpisode := 12
-
-	for ep := 0; ep < episodes; ep++ {
-		// L3: Outer episode loop
-		b.AddStep("L3", trace.ActionHighlight, fmt.Sprintf("Starting episode %d of %d.", ep+1, episodes),
-			buildTableState(env, agent.Q, -1, -1, -1, -1, -1, -1),
-			map[string]any{
-				"state":   fmt.Sprintf("(%d,%d)", env.Start.Row, env.Start.Col),
-				"action":  "-",
-				"reward":  0.0,
-				"episode": ep + 1,
-			},
-		)
-
-		state := env.Start
-		sIdx := env.StateIndex(state)
-
-		// L4: Reset environment
-		b.AddStep("L4", trace.ActionSet, fmt.Sprintf("Reset agent to start state (%d,%d).", state.Row, state.Col),
-			buildTableState(env, agent.Q, sIdx, -1, -1, -1, -1, -1),
-			map[string]any{
-				"state":   fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-				"action":  "-",
-				"reward":  0.0,
-				"episode": ep + 1,
-			},
-		)
-
-		for step := 0; step < maxStepsPerEpisode; step++ {
-			// L5: Terminal check
-			if env.IsTerminal(state) {
-				b.AddStep("L5", trace.ActionDone, fmt.Sprintf("State (%d,%d) is goal. Episode %d finished in %d steps.", state.Row, state.Col, ep+1, step),
-					buildTableState(env, agent.Q, env.StateIndex(state), -1, -1, -1, -1, -1),
-					map[string]any{
-						"state":   fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-						"action":  "-",
-						"reward":  0.0,
-						"episode": ep + 1,
-					},
-				)
-				break
-			}
-
-			b.AddStep("L5", trace.ActionCompare, fmt.Sprintf("State (%d,%d) is not goal. Proceed with step %d.", state.Row, state.Col, step+1),
-				buildTableState(env, agent.Q, env.StateIndex(state), -1, -1, -1, -1, -1),
-				map[string]any{
-					"state":   fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":  "-",
-					"reward":  0.0,
-					"episode": ep + 1,
-				},
-			)
-
-			// L6: Choose action
-			action := agent.ChooseAction(state, rng)
-			sIdx = env.StateIndex(state)
-			b.AddStep("L6", trace.ActionHighlight, fmt.Sprintf("State (%d,%d): selected action %s (epsilon-greedy).", state.Row, state.Col, ActionNames[action]),
-				buildTableState(env, agent.Q, sIdx, int(action), -1, -1, -1, -1),
-				map[string]any{
-					"state":   fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":  ActionNames[action],
-					"reward":  0.0,
-					"episode": ep + 1,
-				},
-			)
-
-			// L7: Environment step
-			nextState, reward, done := env.Step(state, action)
-			b.IncOperations()
-			b.AddStep("L7", trace.ActionSet, fmt.Sprintf("Executed action %s -> next state (%d,%d), reward = %.1f.", ActionNames[action], nextState.Row, nextState.Col, reward),
-				buildTableState(env, agent.Q, sIdx, int(action), -1, -1, -1, -1),
-				map[string]any{
-					"state":     fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":    ActionNames[action],
-					"reward":    reward,
-					"nextState": fmt.Sprintf("(%d,%d)", nextState.Row, nextState.Col),
-					"episode":   ep + 1,
-				},
-			)
-
-			// L8: Max next Q
-			bestNextA, bestNextQ := agent.MaxQ(nextState)
-			if done {
-				bestNextQ = 0.0
-			}
-			nextIdx := env.StateIndex(nextState)
-			srcA := int(bestNextA)
-			if done {
-				srcA = -1
-			}
-			b.AddStep("L8", trace.ActionCompare, fmt.Sprintf("Next state (%d,%d): max future Q(s', a') = %.2f.", nextState.Row, nextState.Col, bestNextQ),
-				buildTableState(env, agent.Q, sIdx, int(action), nextIdx, srcA, -1, -1),
-				map[string]any{
-					"state":     fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":    ActionNames[action],
-					"reward":    reward,
-					"bestNextQ": bestNextQ,
-					"episode":   ep + 1,
-				},
-			)
-
-			// L9: TD target
-			tdTarget := reward + agent.Gamma*bestNextQ
-			b.AddStep("L9", trace.ActionSet, fmt.Sprintf("Calculated TD target: %.1f + %.2f * %.2f = %.2f.", reward, agent.Gamma, bestNextQ, tdTarget),
-				buildTableState(env, agent.Q, sIdx, int(action), nextIdx, srcA, -1, -1),
-				map[string]any{
-					"state":    fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":   ActionNames[action],
-					"reward":   reward,
-					"tdTarget": tdTarget,
-					"episode":  ep + 1,
-				},
-			)
-
-			// L10: Bellman update
-			oldQ := agent.Q[sIdx][action]
-			newQ, _ := agent.BellmanUpdate(state, action, reward, nextState, done)
-			b.IncOperations()
-			b.AddStep("L10", trace.ActionSet, fmt.Sprintf("Bellman update Q((%d,%d), %s): %.2f -> %.2f.", state.Row, state.Col, ActionNames[action], oldQ, newQ),
-				buildTableState(env, agent.Q, -1, -1, -1, -1, sIdx, int(action)),
-				map[string]any{
-					"state":    fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":   ActionNames[action],
-					"reward":   reward,
-					"oldQ":     oldQ,
-					"newQ":     newQ,
-					"tdTarget": tdTarget,
-					"episode":  ep + 1,
-				},
-			)
-
-			// L11: Update state
-			state = nextState
-			b.AddStep("L11", trace.ActionSet, fmt.Sprintf("Agent advanced to state (%d,%d).", state.Row, state.Col),
-				buildTableState(env, agent.Q, env.StateIndex(state), -1, -1, -1, -1, -1),
-				map[string]any{
-					"state":   fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-					"action":  ActionNames[action],
-					"reward":  reward,
-					"episode": ep + 1,
-				},
-			)
-
-			if done {
-				b.AddStep("L5", trace.ActionDone, fmt.Sprintf("Goal reached at (%d,%d)! Episode %d finished.", state.Row, state.Col, ep+1),
-					buildTableState(env, agent.Q, env.StateIndex(state), -1, -1, -1, -1, -1),
-					map[string]any{
-						"state":   fmt.Sprintf("(%d,%d)", state.Row, state.Col),
-						"action":  ActionNames[action],
-						"reward":  reward,
-						"episode": ep + 1,
-					},
-				)
-				break
+	rng := rand.New(rand.NewSource(seed))
+	coord := func(p Coord) [2]int { return [2]int{p.Row, p.Col} }
+	s := renderers.QLearningLessonState{Rows: env.Rows, Cols: env.Cols, Start: coord(env.Start), Goal: coord(env.Goal), State: coord(env.Start), NextState: coord(env.Start), Episodes: episodes, Alpha: alpha, Gamma: gamma, Epsilon: epsilon, Action: -1, BestNextAction: -1}
+	// Row-major traversal fixes obstacle order without depending on map iteration.
+	for r := 0; r < env.Rows; r++ {
+		for c := 0; c < env.Cols; c++ {
+			if env.Obstacles[Coord{r, c}] {
+				s.Obstacles = append(s.Obstacles, [2]int{r, c})
 			}
 		}
 	}
-
-	// L14: Complete
-	b.AddStep("L14", trace.ActionDone, fmt.Sprintf("Q-learning completed across %d episodes. Q-table values learned.", episodes),
-		buildTableState(env, agent.Q, -1, -1, -1, -1, -1, -1),
-		map[string]any{
-			"state":    fmt.Sprintf("(%d,%d)", env.Start.Row, env.Start.Col),
-			"action":   "-",
-			"reward":   0.0,
-			"episodes": episodes,
-		},
-	)
-
-	return b.Steps()
+	add := func(line string, action trace.ActionType, phase, reason string) {
+		s.Phase = phase
+		snapshot := s
+		snapshot.Obstacles = append([][2]int(nil), s.Obstacles...)
+		snapshot.Q = make([][]float64, len(agent.Q))
+		table := renderers.TableState{ColHeaders: []string{"Up", "Right", "Down", "Left"}}
+		for i, row := range agent.Q {
+			snapshot.Q[i] = append([]float64(nil), row...)
+			p := env.IndexToState(i)
+			label := fmt.Sprintf("(%d,%d)", p.Row, p.Col)
+			if p == env.Start {
+				label += " S"
+			}
+			if p == env.Goal {
+				label += " G"
+			}
+			if env.Obstacles[p] {
+				label += " X"
+			}
+			table.RowHeaders = append(table.RowHeaders, label)
+			for a, v := range row {
+				kind := "normal"
+				if coord(p) == s.State && a == s.Action {
+					kind = "active"
+				}
+				if phase == "update" && coord(p) == s.State && a == s.Action {
+					kind = "computed"
+				}
+				table.Cells = append(table.Cells, renderers.TableCell{Row: i, Col: a, Value: fmt.Sprintf("%.2f", v), State: kind})
+			}
+		}
+		snapshot.TableState = table
+		actionName := "-"
+		if s.Action >= 0 {
+			actionName = ActionNames[s.Action]
+		}
+		b.AddStep(line, action, reason, snapshot, map[string]any{"state": fmt.Sprintf("(%d,%d)", s.State[0], s.State[1]), "action": actionName, "reward": s.Reward, "episode": s.Episode, "episodeStep": s.EpisodeStep, "nextState": s.NextState, "bestNextQ": s.BestNextQ, "tdTarget": s.TDTarget, "oldQ": s.OldQ, "newQ": s.NewQ})
+	}
+	clearTransition := func() {
+		s.Action = -1
+		s.BestNextAction = -1
+		s.Reward = 0
+		s.BestNextQ = 0
+		s.TDTarget = 0
+		s.OldQ = 0
+		s.NewQ = 0
+		s.TransitionValid = false
+		s.UpdateValid = false
+		s.Terminal = false
+		s.NextState = s.State
+	}
+	add("L2", trace.ActionInit, "initialize", "Initialize all state-action estimates to zero; ties are not a learned route.")
+	for ep := 1; ep <= episodes; ep++ {
+		s.Episode = ep
+		s.EpisodeStep = 0
+		s.EpisodeStopReason = ""
+		clearTransition()
+		add("L3", trace.ActionHighlight, "episode", fmt.Sprintf("Start episode %d of %d. Keep learned Q estimates.", ep, episodes))
+		state := env.Start
+		s.State = coord(state)
+		clearTransition()
+		add("L4", trace.ActionSet, "reset", "Reset agent to S without resetting Q.")
+		for n := 0; n < 12; n++ {
+			clearTransition()
+			s.EpisodeStep = n
+			if env.IsTerminal(state) {
+				s.Terminal = true
+				s.EpisodeStopReason = "goal"
+				s.CompletedEpisodes = ep
+				add("L5", trace.ActionDone, "episode-end", "Agent is at goal; episode ends.")
+				break
+			}
+			add("L5", trace.ActionCompare, "terminal-check", "Current state is not goal; select an action.")
+			action := agent.ChooseAction(state, rng)
+			s.Action = int(action)
+			s.EpisodeStep = n + 1
+			s.OldQ = agent.Q[env.StateIndex(state)][action]
+			add("L6", trace.ActionHighlight, "select-action", fmt.Sprintf("Epsilon-greedy selected action %s; no claim of a unique optimal route.", ActionNames[action]))
+			next, reward, done := env.Step(state, action)
+			s.NextState = coord(next)
+			s.Reward = reward
+			s.Terminal = done
+			s.TransitionValid = true
+			b.IncOperations()
+			add("L7", trace.ActionSet, "transition", fmt.Sprintf("%s reaches (%d,%d), reward %g. Hollow marker previews next position; agent stays until assignment.", ActionNames[action], next.Row, next.Col, reward))
+			if !done {
+				a, q := agent.MaxQ(next)
+				s.BestNextAction = int(a)
+				s.BestNextQ = q
+			}
+			add("L8", trace.ActionCompare, "future", fmt.Sprintf("Future maximum = %g; terminal states contribute zero.", s.BestNextQ))
+			s.TDTarget = reward + gamma*s.BestNextQ
+			add("L9", trace.ActionSet, "target", fmt.Sprintf("TD target = %g + %g × %g = %g.", reward, gamma, s.BestNextQ, s.TDTarget))
+			s.NewQ, _ = agent.BellmanUpdate(state, action, reward, next, done)
+			s.UpdateValid = true
+			b.IncOperations()
+			add("L10", trace.ActionSet, "update", fmt.Sprintf("Update one Q cell: %g + %g × (%g − %g) = %g.", s.OldQ, alpha, s.TDTarget, s.OldQ, s.NewQ))
+			state = next
+			s.State = coord(state)
+			add("L11", trace.ActionSet, "assign-state", "Assign next state to current state. Agent now moves to recorded endpoint.")
+			if done {
+				s.EpisodeStopReason = "goal"
+				s.CompletedEpisodes = ep
+				add("L5", trace.ActionDone, "episode-end", fmt.Sprintf("Goal reached after %d transitions; episode ends.", n+1))
+				break
+			}
+			if n == 11 {
+				s.EpisodeStopReason = "step-limit"
+				s.CompletedEpisodes = ep
+				add("L12", trace.ActionHighlight, "episode-end", "12-transition budget exhausted; goal not reached. Keep Q estimates for next episode.")
+			}
+		}
+	}
+	add("L14", trace.ActionDone, "complete", fmt.Sprintf("%d episodes completed; estimates learned. Finite training does not prove convergence or optimality.", episodes))
+	steps := b.Steps()
+	for i := range steps {
+		if steps[i].LineID == "L9" && i+1 < len(steps) && steps[i+1].LineID == "L10" {
+			steps[i].HoldMS = 600
+			steps[i+1].HoldMS = 1200
+		}
+	}
+	return steps
 }

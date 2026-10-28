@@ -1,7 +1,9 @@
 package bubble
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -45,9 +47,21 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{29, 10, 14, 37, 13}
 	if len(input) > 0 {
 		var custom []int
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom) > 0 {
-			arr = custom
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("Bubble Sort input must be an array of integers: %w", err)
 		}
+		if bytes.Contains(input, []byte("null")) {
+			return nil, fmt.Errorf("Bubble Sort input must contain integers, not null")
+		}
+		if len(custom) == 0 || len(custom) > 64 {
+			return nil, fmt.Errorf("Bubble Sort input must contain 1–64 integers")
+		}
+		for _, value := range custom {
+			if value < -1000000 || value > 1000000 {
+				return nil, fmt.Errorf("Bubble Sort values must be between -1000000 and 1000000")
+			}
+		}
+		arr = custom
 	}
 	return Trace(arr), nil
 }

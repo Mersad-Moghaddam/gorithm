@@ -1,7 +1,10 @@
 package trie
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -72,8 +75,30 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	prefix := "go"
 
 	if len(input) > 0 {
+		input = bytes.TrimSpace(input)
+		if len(input) == 0 || bytes.Equal(input, []byte("null")) {
+			return nil, fmt.Errorf("trie input must be an object or word array")
+		}
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && (len(custom.Words) > 0 || custom.Search != "" || custom.Prefix != "") {
+		var rawWords []json.RawMessage
+		if input[0] == '{' {
+			if err := json.Unmarshal(input, &custom); err != nil {
+				return nil, fmt.Errorf("invalid trie input: %w", err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(input, &fields); err != nil {
+				return nil, err
+			}
+			for _, key := range []string{"words", "search", "prefix"} {
+				if value, ok := fields[key]; ok && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+					return nil, fmt.Errorf("%s must not be null", key)
+				}
+			}
+			if value, ok := fields["words"]; ok {
+				if err := json.Unmarshal(value, &rawWords); err != nil {
+					return nil, err
+				}
+			}
 			if len(custom.Words) > 0 {
 				words = custom.Words
 			}
@@ -83,11 +108,32 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 			if custom.Prefix != "" {
 				prefix = custom.Prefix
 			}
-		} else {
+		} else if input[0] == '[' {
+			if err := json.Unmarshal(input, &rawWords); err != nil {
+				return nil, err
+			}
 			var customList []string
-			if err := json.Unmarshal(input, &customList); err == nil && len(customList) > 0 {
+			if err := json.Unmarshal(input, &customList); err != nil {
+				return nil, fmt.Errorf("invalid trie words: %w", err)
+			}
+			if len(customList) > 0 {
 				words = customList
 			}
+		} else {
+			return nil, fmt.Errorf("trie input must be an object or word array")
+		}
+		for _, word := range rawWords {
+			if bytes.Equal(bytes.TrimSpace(word), []byte("null")) {
+				return nil, fmt.Errorf("trie words must be strings, not null")
+			}
+		}
+	}
+	if len(words) > 32 {
+		return nil, fmt.Errorf("trie accepts at most 32 words")
+	}
+	for _, word := range append(append([]string(nil), words...), search, prefix) {
+		if utf8.RuneCountInString(word) > 32 {
+			return nil, fmt.Errorf("trie words, search and prefix accept at most 32 runes")
 		}
 	}
 

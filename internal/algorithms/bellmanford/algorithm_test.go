@@ -130,7 +130,7 @@ func TestBellmanFordTraceProperties(t *testing.T) {
 	}
 
 	lastStep := steps[len(steps)-1]
-	_, ok := lastStep.State.(renderers.GraphState)
+	_, ok := lastStep.State.(renderers.BellmanFordLessonState)
 	if !ok {
 		t.Fatalf("expected last step state to be renderers.GraphState, got %T", lastStep.State)
 	}

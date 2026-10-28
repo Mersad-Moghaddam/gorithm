@@ -1,7 +1,11 @@
 package bfs
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -53,7 +57,7 @@ func (l Lesson) Source() []trace.SourceLine {
 type buildInput struct {
 	Nodes []renderers.GraphNode `json:"nodes"`
 	Edges []renderers.GraphEdge `json:"edges"`
-	Start string               `json:"start"`
+	Start string                `json:"start"`
 }
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
@@ -79,8 +83,19 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	start := "A"
 
 	if len(input) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil || fields == nil {
+			return nil, fmt.Errorf("BFS input must be a JSON object")
+		}
+		for _, key := range []string{"nodes", "edges", "start"} {
+			if bytes.Equal(bytes.TrimSpace(fields[key]), []byte("null")) {
+				return nil, fmt.Errorf("%s must not be null", key)
+			}
+		}
 		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil {
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid BFS input: %w", err)
+		} else {
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
 			}
@@ -90,6 +105,30 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 			if custom.Start != "" {
 				start = custom.Start
 			}
+		}
+	}
+	if len(nodes) > 32 || len(edges) > 128 {
+		return nil, fmt.Errorf("BFS supports at most 32 nodes and 128 edges")
+	}
+	ids := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		if n.ID == "" || ids[n.ID] || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+			return nil, fmt.Errorf("node IDs must be unique, nonempty, and IDs/labels at most 64 characters")
+		}
+		if math.IsNaN(n.X) || math.IsNaN(n.Y) || math.IsInf(n.X, 0) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+			return nil, fmt.Errorf("node coordinates must be finite within ±1000000")
+		}
+		ids[n.ID] = true
+	}
+	if !ids[start] {
+		return nil, fmt.Errorf("unknown BFS start %q", start)
+	}
+	for _, e := range edges {
+		if !ids[e.From] || !ids[e.To] {
+			return nil, fmt.Errorf("edge references unknown node")
+		}
+		if e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("edge weight must be within ±10000")
 		}
 	}
 

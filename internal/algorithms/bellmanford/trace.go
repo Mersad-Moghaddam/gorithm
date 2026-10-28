@@ -2,207 +2,137 @@ package bellmanford
 
 import (
 	"fmt"
-	"math"
-	"strconv"
-
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
+	"math"
 )
 
-func cloneNodes(nodes []renderers.GraphNode) []renderers.GraphNode {
-	c := make([]renderers.GraphNode, len(nodes))
-	copy(c, nodes)
-	return c
-}
-
-func cloneEdges(edges []renderers.GraphEdge) []renderers.GraphEdge {
-	c := make([]renderers.GraphEdge, len(edges))
-	copy(c, edges)
-	return c
-}
-
-func cloneDist(dist map[string]int) map[string]int {
-	c := make(map[string]int, len(dist))
-	for k, v := range dist {
-		c[k] = v
+func cloneDist(src map[string]int) map[string]int {
+	dst := make(map[string]int, len(src))
+	for k, v := range src {
+		dst[k] = v
 	}
-	return c
+	return dst
 }
 
-func findNodeIndex(nodes []renderers.GraphNode, id string) int {
-	for i, n := range nodes {
-		if n.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
-func formatDist(d int) string {
-	if d == math.MaxInt {
-		return "∞"
-	}
-	return strconv.Itoa(d)
-}
-
-// Trace executes Bellman-Ford and records each step for visualization.
+// Trace records in-place relaxation; cycle detection never changes distances.
 func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start string) []trace.Step {
 	b := trace.NewBuilder()
-	currNodes := cloneNodes(nodes)
-	currEdges := cloneEdges(edges)
-
-	dist := make(map[string]int, len(nodes))
+	s := renderers.BellmanFordLessonState{GraphState: renderers.GraphState{Nodes: append([]renderers.GraphNode(nil), nodes...), Edges: append([]renderers.GraphEdge(nil), edges...)}, Start: start, Distance: map[string]int{}, EdgeIndex: -1, WitnessEdge: -1, MaxPasses: len(nodes) - 1}
 	for _, n := range nodes {
-		dist[n.ID] = math.MaxInt
+		s.Distance[n.ID] = math.MaxInt
 	}
-
-	startIdx := findNodeIndex(currNodes, start)
-	if startIdx < 0 {
-		b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Start node %q not found in graph.", start), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist)})
-		b.AddStep("L18", trace.ActionDone, "Search terminated: invalid start node.", renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"distances": cloneDist(dist)})
+	if s.MaxPasses < 0 {
+		s.MaxPasses = 0
+	}
+	s.PassStartDistance = cloneDist(s.Distance)
+	add := func(line string, action trace.ActionType, explanation string, hold int) {
+		snap := s
+		snap.Nodes = append([]renderers.GraphNode(nil), s.Nodes...)
+		snap.Edges = append([]renderers.GraphEdge(nil), s.Edges...)
+		snap.Distance = cloneDist(s.Distance)
+		snap.PassStartDistance = cloneDist(s.PassStartDistance)
+		b.AddStep(line, action, explanation, snap, map[string]any{"start": start, "pass": s.Pass, "from": s.From, "to": s.To, "distances": cloneDist(s.Distance), "relaxed": s.ChangedThisPass, "negativeCycle": s.NegativeCycle})
+		steps := b.Steps()
+		steps[len(steps)-1].HoldMS = hold
+	}
+	if _, ok := s.Distance[start]; !ok {
+		s.InvalidStart = true
+		add("L1", trace.ActionInit, "Start node not found.", 0)
+		add("L18", trace.ActionDone, "Invalid start: no shortest-path result.", 0)
 		return b.Steps()
 	}
-
-	b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Initialize Bellman-Ford algorithm from source node %s.", start), renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"start": start, "distances": cloneDist(dist)})
-
-	dist[start] = 0
-	currNodes[startIdx].State = "visiting"
+	add("L1", trace.ActionInit, "Initialize all distances to infinity.", 0)
+	s.Distance[start] = 0
 	b.IncOperations()
-	b.AddStep("L2", trace.ActionSet, fmt.Sprintf("Initialize distances: dist[%s] = 0, all other nodes = ∞.", start), renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"current": start, "distances": cloneDist(dist)})
-
-	numPasses := len(nodes) - 1
-	for pass := 1; pass <= numPasses; pass++ {
-		b.AddStep("L3", trace.ActionHighlight, fmt.Sprintf("Starting relaxation pass %d of %d.", pass, numPasses), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"pass": pass, "distances": cloneDist(dist)})
-
-		relaxed := false
-		b.AddStep("L4", trace.ActionSet, fmt.Sprintf("Pass %d: reset relaxed flag to false.", pass), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"pass": pass, "relaxed": false, "distances": cloneDist(dist)})
-
-		for eIdx := range currEdges {
-			edge := currEdges[eIdx]
-			u := edge.From
-			v := edge.To
-			w := edge.Weight
-
-			currEdges[eIdx].Active = true
-			b.AddStep("L5", trace.ActionVisit, fmt.Sprintf("Pass %d: inspecting directed edge (%s -> %s, weight %d).", pass, u, v, w), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"pass": pass, "from": u, "to": v, "weight": w, "distances": cloneDist(dist)})
-
-			b.IncComparisons()
-			if dist[u] != math.MaxInt && dist[u]+w < dist[v] {
-				newDist := dist[u] + w
-				oldDistStr := formatDist(dist[v])
-				b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("Relaxation check passed: dist[%s] (%d) + weight (%d) = %d < dist[%s] (%s).", u, dist[u], w, newDist, v, oldDistStr), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"pass": pass, "from": u, "to": v, "newDist": newDist, "relaxed": true, "distances": cloneDist(dist)})
-
-				dist[v] = newDist
-				b.IncOperations()
-
-				vIdx := findNodeIndex(currNodes, v)
-				if vIdx >= 0 {
-					currNodes[vIdx].State = "visited"
-				}
-
-				b.AddStep("L7", trace.ActionSet, fmt.Sprintf("Updated shortest distance to %s: dist[%s] = %d.", v, v, newDist), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"pass": pass, "updatedNode": v, "distances": cloneDist(dist)})
-
-				relaxed = true
-				b.AddStep("L8", trace.ActionSet, fmt.Sprintf("Edge relaxed in pass %d. Set relaxed = true.", pass), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"pass": pass, "relaxed": true, "distances": cloneDist(dist)})
-			} else {
-				reason := "predecessor distance is ∞"
-				if dist[u] != math.MaxInt {
-					reason = fmt.Sprintf("candidate %d >= dist[%s] (%d)", dist[u]+w, v, dist[v])
-				}
-				b.AddStep("L6", trace.ActionCompare, fmt.Sprintf("Edge (%s -> %s) cannot be relaxed: %s.", u, v, reason), renderers.GraphState{
-					Nodes: cloneNodes(currNodes),
-					Edges: cloneEdges(currEdges),
-				}, map[string]any{"pass": pass, "from": u, "to": v, "distances": cloneDist(dist)})
-			}
-
-			currEdges[eIdx].Active = false
+	add("L2", trace.ActionSet, "Source distance is zero; other vertices remain unreachable.", 0)
+	focus := func(i int) {
+		s.EdgeIndex = i
+		s.From = edges[i].From
+		s.To = edges[i].To
+		s.Weight = edges[i].Weight
+		s.OldDistance = s.Distance[s.To]
+		s.HasCandidate = false
+		s.Improved = false
+		for j := range s.Edges {
+			s.Edges[j].Active = j == i
+			s.Edges[j].Directed = true
 		}
-
-		b.AddStep("L11", trace.ActionCompare, fmt.Sprintf("Pass %d complete. Any edges relaxed: %t.", pass, relaxed), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"pass": pass, "relaxed": relaxed, "distances": cloneDist(dist)})
-
-		if !relaxed {
-			b.AddStep("L11", trace.ActionHighlight, "No edge was relaxed in this pass. Distances have converged early.", renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"pass": pass, "distances": cloneDist(dist)})
+		u, okU := s.Distance[s.From]
+		_, okV := s.Distance[s.To]
+		w := s.Weight
+		if okU && okV && u != math.MaxInt && !(w > 0 && u > math.MaxInt-w) && !(w < 0 && u < math.MinInt-w) {
+			s.Candidate = u + w
+			s.HasCandidate = true
+			s.Improved = s.Candidate < s.OldDistance
+		}
+	}
+	for pass := 1; pass <= s.MaxPasses; pass++ {
+		s.Pass = pass
+		s.PassStartDistance = cloneDist(s.Distance)
+		s.EdgeIndex = -1
+		s.From = ""
+		s.To = ""
+		s.HasCandidate = false
+		s.Improved = false
+		add("L3", trace.ActionHighlight, fmt.Sprintf("Begin pass %d of %d using current distances.", pass, s.MaxPasses), 0)
+		s.ChangedThisPass = false
+		add("L4", trace.ActionSet, "Reset changed flag for this pass.", 350)
+		for i := range edges {
+			focus(i)
+			add("L5", trace.ActionVisit, fmt.Sprintf("Inspect edge %d: %s → %s, weight %d.", i+1, s.From, s.To, s.Weight), 350)
+			b.IncComparisons()
+			hold := 0
+			if s.Improved {
+				hold = 600
+			}
+			explanation := "Source unreachable: skip arithmetic."
+			if s.HasCandidate {
+				explanation = fmt.Sprintf("Candidate %d; previous target %s. Improvement: %t.", s.Candidate, renderers.BellmanFordDistanceLabel(s.OldDistance), s.Improved)
+			}
+			add("L6", trace.ActionCompare, explanation, hold)
+			if s.Improved {
+				s.Distance[s.To] = s.Candidate
+				b.IncOperations()
+				add("L7", trace.ActionSet, fmt.Sprintf("Updated %s to %d; not yet final.", s.To, s.Candidate), 1200)
+				s.ChangedThisPass = true
+				add("L8", trace.ActionSet, "At least one distance changed this pass.", 350)
+			}
+		}
+		for i := range s.Edges {
+			s.Edges[i].Active = false
+		}
+		s.EdgeIndex = -1
+		s.From = ""
+		s.To = ""
+		s.HasCandidate = false
+		s.Improved = false
+		add("L11", trace.ActionCompare, fmt.Sprintf("Pass %d complete; changed: %t. Stop early if unchanged.", pass, s.ChangedThisPass), 0)
+		if !s.ChangedThisPass {
 			break
 		}
 	}
-
-	// Negative cycle detection pass
-	b.AddStep("L13", trace.ActionHighlight, "Checking for reachable negative-weight cycles with a final edge scan.", renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"distances": cloneDist(dist)})
-
-	for eIdx := range currEdges {
-		edge := currEdges[eIdx]
-		u := edge.From
-		v := edge.To
-		w := edge.Weight
-
-		currEdges[eIdx].Active = true
+	s.CheckingCycle = true
+	add("L13", trace.ActionHighlight, "Can any reachable edge still improve?", 0)
+	for i := range edges {
+		focus(i)
 		b.IncComparisons()
-
-		if dist[u] != math.MaxInt && dist[u]+w < dist[v] {
-			b.AddStep("L14", trace.ActionCompare, fmt.Sprintf("Negative cycle check: edge (%s -> %s) can still be relaxed (%d + %d = %d < %s).", u, v, dist[u], w, dist[u]+w, formatDist(dist[v])), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"from": u, "to": v, "distances": cloneDist(dist), "negativeCycle": true})
-
-			b.AddStep("L15", trace.ActionDone, fmt.Sprintf("Negative cycle detected reachable via edge (%s -> %s)!", u, v), renderers.GraphState{
-				Nodes: cloneNodes(currNodes),
-				Edges: cloneEdges(currEdges),
-			}, map[string]any{"from": u, "to": v, "distances": cloneDist(dist), "negativeCycle": true})
-
+		add("L14", trace.ActionCompare, "Test reachable source and candidate against stored target distance.", 0)
+		if s.Improved {
+			s.NegativeCycle = true
+			s.WitnessEdge = i
+			add("L15", trace.ActionDone, "Reachable negative cycle: this edge can still improve. No finite optimum.", 0)
 			return b.Steps()
 		}
-
-		b.AddStep("L14", trace.ActionCompare, fmt.Sprintf("Negative cycle check: edge (%s -> %s) is stable.", u, v), renderers.GraphState{
-			Nodes: cloneNodes(currNodes),
-			Edges: cloneEdges(currEdges),
-		}, map[string]any{"from": u, "to": v, "distances": cloneDist(dist)})
-
-		currEdges[eIdx].Active = false
 	}
-
-	b.AddStep("L18", trace.ActionDone, fmt.Sprintf("Bellman-Ford completed! Optimal shortest paths from %s found with no negative cycles.", start), renderers.GraphState{
-		Nodes: cloneNodes(currNodes),
-		Edges: cloneEdges(currEdges),
-	}, map[string]any{"start": start, "distances": cloneDist(dist), "negativeCycle": false})
-
+	s.EdgeIndex = -1
+	s.From = ""
+	s.To = ""
+	s.HasCandidate = false
+	s.Improved = false
+	for i := range s.Edges {
+		s.Edges[i].Active = false
+	}
+	add("L18", trace.ActionDone, "No reachable negative cycle. Finite distances are shortest; infinity remains unreachable.", 0)
 	return b.Steps()
 }

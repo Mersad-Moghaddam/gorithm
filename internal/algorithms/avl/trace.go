@@ -12,6 +12,10 @@ type tracer struct {
 	nodeIDs   map[*Node]string
 	nodeIDSeq int
 	root      *Node
+	rotation, rotationCase string
+	rotationPart int
+	pivot, newRoot, transfer *Node
+	pending bool
 }
 
 func newTracer() *tracer {
@@ -34,18 +38,24 @@ func (tr *tracer) idFor(n *Node) string {
 	return id
 }
 
-func (tr *tracer) treeState(states map[*Node]string) renderers.TreeState {
+func (tr *tracer) treeState(states map[*Node]string) renderers.AVLLessonState {
+	s:=renderers.AVLLessonState{Rotation:tr.rotation,Case:tr.rotationCase,RotationPart:tr.rotationPart,PivotID:tr.idFor(tr.pivot),NewRootID:tr.idFor(tr.newRoot),TransferID:tr.idFor(tr.transfer),HeightsPending:tr.pending}
 	if tr.root == nil {
-		return renderers.TreeState{Nodes: []renderers.TreeNode{}}
+		return s
 	}
 
 	var nodes []renderers.TreeNode
+	var count func(*Node) int
+	count=func(n *Node)int {if n==nil{return 0};return 1+count(n.Left)+count(n.Right)}
+	w:=max(800,88*(count(tr.root)+1));slot:=0
 	var layout func(n *Node, x, y, dx float64, parentID string)
 	layout = func(n *Node, x, y, dx float64, parentID string) {
 		if n == nil {
 			return
 		}
 		id := tr.idFor(n)
+		layout(n.Left,0,y+104,0,id)
+		slot++; x=float64(w)/2+88*float64(slot)-44*float64(count(tr.root)+1)
 		st := "normal"
 		if states != nil {
 			if s, ok := states[n]; ok {
@@ -60,35 +70,21 @@ func (tr *tracer) treeState(states map[*Node]string) renderers.TreeState {
 			ParentID: parentID,
 			State:    st,
 		})
-
-		nextDx := dx / 2
-		if nextDx < 16 {
-			nextDx = 16
-		}
-
-		if n.Left != nil {
-			lx := x - dx
-			if lx < 30 {
-				lx = 30
-			}
-			layout(n.Left, lx, y+70, nextDx, id)
-		}
-		if n.Right != nil {
-			rx := x + dx
-			if rx > 770 {
-				rx = 770
-			}
-			layout(n.Right, rx, y+70, nextDx, id)
-		}
+		s.LeftIDs=append(s.LeftIDs,tr.idFor(n.Left));s.RightIDs=append(s.RightIDs,tr.idFor(n.Right))
+		s.Heights=append(s.Heights,n.Height);s.Balances=append(s.Balances,BalanceFactor(n))
+		if st=="active"||st=="inserted"||st=="matched" {s.ActiveID=id}
+		layout(n.Right,0,y+104,0,id)
 	}
 
-	layout(tr.root, 400, 60, 180, "")
-	return renderers.TreeState{Nodes: nodes}
+	layout(tr.root, 0, 96, 0, "")
+	s.TreeState=renderers.TreeState{Nodes:nodes}
+	return s
 }
 
 func (tr *tracer) traceRightRotate(y *Node, setParent func(*Node)) *Node {
 	x := y.Left
 	t2 := x.Right
+	tr.rotation="right";tr.pivot=y;tr.newRoot=x;tr.transfer=t2
 
 	tr.b.IncOperations()
 	tr.b.AddStep("L18", trace.ActionSwap, fmt.Sprintf("Right Rotation around node %d: left child %d becomes new root of this subtree.", y.Val, x.Val),
@@ -97,10 +93,13 @@ func (tr *tracer) traceRightRotate(y *Node, setParent func(*Node)) *Node {
 
 	x.Right = y
 	y.Left = t2
+	setParent(x)
+	tr.pending=true
+	tr.b.AddStep("L19",trace.ActionSet,"Rewire right rotation; stored heights await recomputation.",tr.treeState(map[*Node]string{x:"active"}),nil)
 
 	updateHeight(y)
 	updateHeight(x)
-	setParent(x)
+	tr.pending=false
 
 	tr.b.AddStep("L20", trace.ActionSet, fmt.Sprintf("Right Rotation done. Subtree root %d height is %d, child %d height is %d.", x.Val, x.Height, y.Val, y.Height),
 		tr.treeState(map[*Node]string{x: "matched", y: "normal"}),
@@ -112,6 +111,7 @@ func (tr *tracer) traceRightRotate(y *Node, setParent func(*Node)) *Node {
 func (tr *tracer) traceLeftRotate(x *Node, setParent func(*Node)) *Node {
 	y := x.Right
 	t2 := y.Left
+	tr.rotation="left";tr.pivot=x;tr.newRoot=y;tr.transfer=t2
 
 	tr.b.IncOperations()
 	tr.b.AddStep("L22", trace.ActionSwap, fmt.Sprintf("Left Rotation around node %d: right child %d becomes new root of this subtree.", x.Val, y.Val),
@@ -120,10 +120,13 @@ func (tr *tracer) traceLeftRotate(x *Node, setParent func(*Node)) *Node {
 
 	y.Left = x
 	x.Right = t2
+	setParent(y)
+	tr.pending=true
+	tr.b.AddStep("L23",trace.ActionSet,"Rewire left rotation; stored heights await recomputation.",tr.treeState(map[*Node]string{y:"active"}),nil)
 
 	updateHeight(x)
 	updateHeight(y)
-	setParent(y)
+	tr.pending=false
 
 	tr.b.AddStep("L24", trace.ActionSet, fmt.Sprintf("Left Rotation done. Subtree root %d height is %d, child %d height is %d.", y.Val, y.Height, x.Val, x.Height),
 		tr.treeState(map[*Node]string{y: "matched", x: "normal"}),
@@ -178,6 +181,7 @@ func (tr *tracer) insertHelper(node *Node, val int, setParent func(*Node)) *Node
 
 	// Case 1: Left-Left (LL) -> Right Rotation
 	if bf > 1 && val < node.Left.Val {
+		tr.rotationCase="LL";tr.rotationPart=1
 		tr.b.AddStep("L8", trace.ActionCompare, fmt.Sprintf("Imbalance at node %d: bf=%d > 1 and inserted %d < left child %d (Left-Left case). Triggers Right Rotation.", node.Val, bf, val, node.Left.Val),
 			tr.treeState(map[*Node]string{node: "active", node.Left: "active"}),
 			map[string]any{"node": node.Val, "case": "LL", "bf": bf, "balanceFactor": bf})
@@ -186,6 +190,7 @@ func (tr *tracer) insertHelper(node *Node, val int, setParent func(*Node)) *Node
 
 	// Case 2: Right-Right (RR) -> Left Rotation
 	if bf < -1 && val > node.Right.Val {
+		tr.rotationCase="RR";tr.rotationPart=1
 		tr.b.AddStep("L9", trace.ActionCompare, fmt.Sprintf("Imbalance at node %d: bf=%d < -1 and inserted %d > right child %d (Right-Right case). Triggers Left Rotation.", node.Val, bf, val, node.Right.Val),
 			tr.treeState(map[*Node]string{node: "active", node.Right: "active"}),
 			map[string]any{"node": node.Val, "case": "RR", "bf": bf, "balanceFactor": bf})
@@ -194,6 +199,7 @@ func (tr *tracer) insertHelper(node *Node, val int, setParent func(*Node)) *Node
 
 	// Case 3: Left-Right (LR) -> Left Rotate Left Child, then Right Rotate Root
 	if bf > 1 && val > node.Left.Val {
+		tr.rotationCase="LR";tr.rotationPart=1
 		tr.b.AddStep("L10", trace.ActionCompare, fmt.Sprintf("Imbalance at node %d: bf=%d > 1 and inserted %d > left child %d (Left-Right case). Triggers Double Rotation (Left on %d, then Right on %d).", node.Val, bf, val, node.Left.Val, node.Left.Val, node.Val),
 			tr.treeState(map[*Node]string{node: "active", node.Left: "active"}),
 			map[string]any{"node": node.Val, "case": "LR", "bf": bf, "balanceFactor": bf})
@@ -202,6 +208,7 @@ func (tr *tracer) insertHelper(node *Node, val int, setParent func(*Node)) *Node
 			tr.treeState(map[*Node]string{node.Left: "active"}),
 			map[string]any{"step": "LR-1", "node": node.Left.Val, "bf": BalanceFactor(node.Left), "balanceFactor": BalanceFactor(node.Left)})
 		node.Left = tr.traceLeftRotate(node.Left, func(n *Node) { node.Left = n })
+		tr.rotationPart=2
 
 		tr.b.AddStep("L11", trace.ActionSwap, fmt.Sprintf("LR step 2: Right Rotate node %d.", node.Val),
 			tr.treeState(map[*Node]string{node: "active"}),
@@ -211,6 +218,7 @@ func (tr *tracer) insertHelper(node *Node, val int, setParent func(*Node)) *Node
 
 	// Case 4: Right-Left (RL) -> Right Rotate Right Child, then Left Rotate Root
 	if bf < -1 && val < node.Right.Val {
+		tr.rotationCase="RL";tr.rotationPart=1
 		tr.b.AddStep("L13", trace.ActionCompare, fmt.Sprintf("Imbalance at node %d: bf=%d < -1 and inserted %d < right child %d (Right-Left case). Triggers Double Rotation (Right on %d, then Left on %d).", node.Val, bf, val, node.Right.Val, node.Right.Val, node.Val),
 			tr.treeState(map[*Node]string{node: "active", node.Right: "active"}),
 			map[string]any{"node": node.Val, "case": "RL", "bf": bf, "balanceFactor": bf})
@@ -219,6 +227,7 @@ func (tr *tracer) insertHelper(node *Node, val int, setParent func(*Node)) *Node
 			tr.treeState(map[*Node]string{node.Right: "active"}),
 			map[string]any{"step": "RL-1", "node": node.Right.Val, "bf": BalanceFactor(node.Right), "balanceFactor": BalanceFactor(node.Right)})
 		node.Right = tr.traceRightRotate(node.Right, func(n *Node) { node.Right = n })
+		tr.rotationPart=2
 
 		tr.b.AddStep("L14", trace.ActionSwap, fmt.Sprintf("RL step 2: Left Rotate node %d.", node.Val),
 			tr.treeState(map[*Node]string{node: "active"}),
@@ -243,9 +252,10 @@ func Trace(values []int) []trace.Step {
 
 	tr.b.AddStep("L1", trace.ActionInit, fmt.Sprintf("AVL Tree initialized. Inserting values: %v.", values),
 		tr.treeState(nil),
-		map[string]any{"values": values})
+		map[string]any{"values": append([]int(nil),values...)})
 
 	for _, v := range values {
+		tr.rotation="";tr.rotationCase="";tr.rotationPart=0;tr.pivot=nil;tr.newRoot=nil;tr.transfer=nil
 		tr.b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Begin Insert(%d).", v),
 			tr.treeState(nil),
 			map[string]any{"val": v, "op": "insert"})
@@ -262,5 +272,21 @@ func Trace(values []int) []trace.Step {
 			"balanceFactor": BalanceFactor(tr.root),
 		})
 
-	return tr.b.Steps()
+	steps:=tr.b.Steps()
+	for i:=range steps {
+		s:=steps[i].State.(renderers.AVLLessonState)
+		if v,ok:=steps[i].Variables["val"].(int);ok {s.Target=v} else if i>0 {s.Target=steps[i-1].State.(renderers.AVLLessonState).Target}
+		switch steps[i].LineID {
+		case "L6","L20","L24":s.Phase="height"
+		case "L7","L8","L9","L10","L13":s.Phase="balance"
+		case "L18","L19","L22","L23","L11","L14":s.Phase="rotation"
+		case "L5","L16":s.Phase="done"
+		case "L2":s.Phase="insert"
+		default:if steps[i].Action==trace.ActionCompare {s.Phase="compare"} else {s.Phase="insert"}
+		}
+		if s.ActiveID!="" {byID:=map[string]renderers.TreeNode{};for _,n:=range s.Nodes {byID[n.ID]=n};for id:=s.ActiveID;id!="";id=byID[id].ParentID {s.PathIDs=append([]string{id},s.PathIDs...)}}
+		steps[i].State=s
+		if (steps[i].LineID=="L19"||steps[i].LineID=="L23") && i>0 {steps[i-1].HoldMS=600;steps[i].HoldMS=1200}
+	}
+	return steps
 }

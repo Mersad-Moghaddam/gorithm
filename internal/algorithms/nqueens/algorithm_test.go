@@ -130,9 +130,9 @@ func TestTraceValidation(t *testing.T) {
 	hasVars := false
 	hasConflictHighlight := false
 	for i, step := range steps {
-		tbl, ok := step.State.(renderers.TableState)
+		tbl, ok := step.State.(renderers.NQueensLessonState)
 		if !ok {
-			t.Fatalf("step %d state is not renderers.TableState: %T", i, step.State)
+			t.Fatalf("step %d state is not renderers.NQueensLessonState: %T", i, step.State)
 		}
 		if len(tbl.Cells) != 16 { // default n=4 -> 4x4
 			t.Fatalf("step %d expected 16 cells, got %d", i, len(tbl.Cells))

@@ -1,7 +1,9 @@
 package fibonacci
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -45,18 +47,30 @@ func (l Lesson) Source() []trace.SourceLine {
 
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	n := 8
+	input = bytes.TrimSpace(input)
 	if len(input) > 0 {
-		var payload struct {
-			N *int `json:"n"`
+		if bytes.Equal(input, []byte("null")) {
+			return nil, fmt.Errorf("n must be an integer from 0 to 46")
 		}
-		if err := json.Unmarshal(input, &payload); err == nil && payload.N != nil {
-			n = *payload.N
-		} else {
-			var directInt int
-			if err := json.Unmarshal(input, &directInt); err == nil {
-				n = directInt
+		if input[0] == '{' {
+			var payload map[string]json.RawMessage
+			if err := json.Unmarshal(input, &payload); err != nil {
+				return nil, fmt.Errorf("invalid Fibonacci input: %w", err)
 			}
+			if raw, ok := payload["n"]; ok {
+				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+					return nil, fmt.Errorf("n must be an integer from 0 to 46")
+				}
+				if err := json.Unmarshal(raw, &n); err != nil {
+					return nil, fmt.Errorf("invalid n: %w", err)
+				}
+			}
+		} else if err := json.Unmarshal(input, &n); err != nil {
+			return nil, fmt.Errorf("invalid n: %w", err)
 		}
+	}
+	if n < 0 || n > 46 {
+		return nil, fmt.Errorf("n must be between 0 and 46")
 	}
 	return Trace(n), nil
 }

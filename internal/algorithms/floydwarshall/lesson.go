@@ -2,6 +2,9 @@ package floydwarshall
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -76,8 +79,54 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 
 	if len(input) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, fmt.Errorf("invalid graph JSON: %w", err)
+		}
+		if fields == nil {
+			return nil, fmt.Errorf("graph input must be an object")
+		}
+		for _, key := range []string{"nodes", "edges", "graphNodes", "graphEdges"} {
+			if raw, ok := fields[key]; ok {
+				var values []json.RawMessage
+				if err := json.Unmarshal(raw, &values); err != nil || values == nil {
+					return nil, fmt.Errorf("%s must be an array", key)
+				}
+				for _, value := range values {
+					if string(value) == "null" {
+						return nil, fmt.Errorf("%s cannot contain null", key)
+					}
+					if key != "nodes" {
+						var object map[string]json.RawMessage
+						if err := json.Unmarshal(value, &object); err != nil || object == nil {
+							return nil, fmt.Errorf("%s entries must be objects", key)
+						}
+						for _, field := range []string{"id", "label", "x", "y", "from", "to", "weight", "directed", "active", "state"} {
+							if raw, exists := object[field]; exists && string(raw) == "null" {
+								return nil, fmt.Errorf("%s cannot be null", field)
+							}
+						}
+					}
+				}
+			}
+		}
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil {
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid graph fields: %w", err)
+		} else {
+			if len(custom.Nodes) > 16 || len(custom.GraphNodes) > 16 || len(custom.Edges) > 128 || len(custom.GraphEdges) > 128 {
+				return nil, fmt.Errorf("graph exceeds 16 nodes or 128 edges")
+			}
+			graphIDs := make(map[string]bool, len(custom.GraphNodes))
+			for _, n := range custom.GraphNodes {
+				if graphIDs[n.ID] {
+					return nil, fmt.Errorf("duplicate graph node ID")
+				}
+				graphIDs[n.ID] = true
+				if utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 || math.IsNaN(n.X) || math.IsInf(n.X, 0) || math.IsNaN(n.Y) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+					return nil, fmt.Errorf("invalid graph node label or coordinate")
+				}
+			}
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
 			} else if len(custom.GraphNodes) > 0 {
@@ -103,6 +152,27 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		}
 	}
 
+	if len(nodes) > 16 {
+		return nil, fmt.Errorf("Floyd–Warshall accepts at most 16 nodes")
+	}
+	if len(edges) > 128 {
+		return nil, fmt.Errorf("graph accepts at most 128 edges")
+	}
+	ids := make(map[string]bool, len(nodes))
+	for _, id := range nodes {
+		if utf8.RuneCountInString(id) > 64 || ids[id] {
+			return nil, fmt.Errorf("node IDs must be unique and at most 64 Unicode code points")
+		}
+		ids[id] = true
+	}
+	for _, e := range edges {
+		if !ids[e.From] || !ids[e.To] {
+			return nil, fmt.Errorf("edge endpoints must exist")
+		}
+		if e.Weight < -10000 || e.Weight > 10000 {
+			return nil, fmt.Errorf("edge weights must be within ±10000")
+		}
+	}
 	return Trace(nodes, edges), nil
 }
 

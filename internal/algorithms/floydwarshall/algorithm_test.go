@@ -139,7 +139,7 @@ func TestFloydWarshallTraceTableState(t *testing.T) {
 	hasDone := false
 
 	for i, step := range steps {
-		tableState, ok := step.State.(renderers.TableState)
+		tableState, ok := step.State.(renderers.FloydWarshallLessonState)
 		if !ok {
 			t.Fatalf("step %d: expected TableState, got %T", i, step.State)
 		}
@@ -185,7 +185,7 @@ func TestFloydWarshallBuildCustomInput(t *testing.T) {
 	}
 
 	lastStep := steps[len(steps)-1]
-	tableState, ok := lastStep.State.(renderers.TableState)
+	tableState, ok := lastStep.State.(renderers.FloydWarshallLessonState)
 	if !ok {
 		t.Fatalf("expected TableState in last step, got %T", lastStep.State)
 	}

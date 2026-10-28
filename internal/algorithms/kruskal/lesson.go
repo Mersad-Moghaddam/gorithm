@@ -1,8 +1,11 @@
 package kruskal
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
+	"unicode/utf8"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -53,7 +56,54 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	nodes, edges := defaultGraph()
 	if len(input) > 0 {
 		var custom LessonInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Nodes) > 0 && len(custom.Edges) > 0 {
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			return nil, fmt.Errorf("graph must be an object")
+		}
+		if err := json.Unmarshal(input, &custom); err != nil {
+			return nil, fmt.Errorf("invalid graph: %w", err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return nil, err
+		}
+		for _, name := range []string{"nodes", "edges"} {
+			if raw, present := fields[name]; present && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+				return nil, fmt.Errorf("%s must be an array, not null", name)
+			}
+			var rows []map[string]json.RawMessage
+			if err := json.Unmarshal(fields[name], &rows); len(fields[name]) > 0 && err != nil {
+				return nil, fmt.Errorf("invalid %s: %w", name, err)
+			}
+			for _, row := range rows {
+				if row == nil {
+					return nil, fmt.Errorf("%s entries must be objects", name)
+				}
+				for key, raw := range row {
+					if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+						return nil, fmt.Errorf("%s.%s must not be null", name, key)
+					}
+				}
+			}
+		}
+		if custom.Nodes != nil || custom.Edges != nil {
+			if len(custom.Nodes) == 0 || len(custom.Nodes) > 32 || len(custom.Edges) > 128 {
+				return nil, fmt.Errorf("graph requires 1–32 nodes and at most 128 edges")
+			}
+			seen := map[string]bool{}
+			for _, n := range custom.Nodes {
+				if n.ID == "" || seen[n.ID] || utf8.RuneCountInString(n.ID) > 64 || utf8.RuneCountInString(n.Label) > 64 {
+					return nil, fmt.Errorf("node IDs must be unique and nonempty; IDs and labels at most 64 characters")
+				}
+				if math.IsNaN(n.X) || math.IsNaN(n.Y) || math.IsInf(n.X, 0) || math.IsInf(n.Y, 0) || math.Abs(n.X) > 1000000 || math.Abs(n.Y) > 1000000 {
+					return nil, fmt.Errorf("coordinates must be finite within ±1000000")
+				}
+				seen[n.ID] = true
+			}
+			for _, e := range custom.Edges {
+				if !seen[e.From] || !seen[e.To] || e.Weight < -10000 || e.Weight > 10000 {
+					return nil, fmt.Errorf("edges require known endpoints and weights within ±10000")
+				}
+			}
 			nodes = custom.Nodes
 			edges = custom.Edges
 			for i := range nodes {

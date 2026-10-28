@@ -1,7 +1,9 @@
 package segmenttree
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
@@ -83,25 +85,72 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	updIdx, updVal := 2, 6
 
 	if len(input) > 0 {
-		var custom buildInput
-		if err := json.Unmarshal(input, &custom); err == nil && len(custom.Arr) > 0 {
-			arr = custom.Arr
-			if len(custom.Query) == 2 {
-				ql, qr = custom.Query[0], custom.Query[1]
-			} else {
-				ql, qr = 0, len(arr)-1
+		input = bytes.TrimSpace(input)
+		if len(input) == 0 || bytes.Equal(input, []byte("null")) {
+			return nil, fmt.Errorf("segment tree input must be an array or object")
+		}
+		if input[0] == '[' {
+			if err := json.Unmarshal(input, &arr); err != nil {
+				return nil, fmt.Errorf("invalid array: %w", err)
 			}
-			if custom.Update != nil {
-				updIdx = custom.Update.Index
-				updVal = custom.Update.Value
-			}
+			ql, qr = 0, len(arr)-1
 		} else {
-			var customArr []int
-			if err := json.Unmarshal(input, &customArr); err == nil && len(customArr) > 0 {
-				arr = customArr
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(input, &fields); err != nil {
+				return nil, fmt.Errorf("invalid segment tree input: %w", err)
+			}
+			if raw, ok := fields["arr"]; ok {
+				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+					return nil, fmt.Errorf("arr must not be null")
+				}
+				if err := json.Unmarshal(raw, &arr); err != nil {
+					return nil, fmt.Errorf("invalid arr: %w", err)
+				}
 				ql, qr = 0, len(arr)-1
+			}
+			if raw, ok := fields["query"]; ok {
+				var query []int
+				if err := json.Unmarshal(raw, &query); err != nil || len(query) != 2 {
+					return nil, fmt.Errorf("query requires two integer bounds")
+				}
+				ql, qr = query[0], query[1]
+			}
+			if raw, ok := fields["update"]; ok {
+				var update struct {
+					Index *int `json:"index"`
+					Value *int `json:"value"`
+				}
+				if err := json.Unmarshal(raw, &update); err != nil || update.Index == nil || update.Value == nil {
+					return nil, fmt.Errorf("update requires integer index and value")
+				}
+				updIdx, updVal = *update.Index, *update.Value
 			}
 		}
+	}
+	if len(arr) < 1 || len(arr) > 64 {
+		return nil, fmt.Errorf("arr requires 1–64 values")
+	}
+	for _, v := range arr {
+		if v < -1000000 || v > 1000000 {
+			return nil, fmt.Errorf("array values must be within ±1000000")
+		}
+	}
+	if ql < 0 || qr < ql || qr >= len(arr) {
+		return nil, fmt.Errorf("query must satisfy 0 <= left <= right < array length")
+	}
+	// Omitted update retains Trace's existing index normalization on short arrays.
+	if updIdx == 2 && len(arr) < 3 {
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(input, &fields)
+		if _, explicit := fields["update"]; !explicit {
+			updIdx = 0
+		}
+	}
+	if updIdx < 0 || updIdx >= len(arr) {
+		return nil, fmt.Errorf("update index must be within array")
+	}
+	if updVal < -1000000 || updVal > 1000000 {
+		return nil, fmt.Errorf("update value must be within ±1000000")
 	}
 
 	return Trace(arr, ql, qr, updIdx, updVal), nil

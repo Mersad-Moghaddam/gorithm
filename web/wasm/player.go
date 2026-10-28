@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"math"
 	"math/rand"
 	"strings"
 	"sync"
@@ -18,15 +19,20 @@ import (
 )
 
 type Player struct {
-	lesson         catalog.Lesson
-	steps          []trace.Step
-	stepIdx        int
-	playing        bool
-	speed          float64
-	doc            js.Value
-	mu             sync.Mutex
-	stopChannel    chan struct{}
-	lastActiveLine string
+	lesson             catalog.Lesson
+	steps              []trace.Step
+	stepIdx            int
+	playing            bool
+	speed              float64
+	doc                js.Value
+	mu                 sync.Mutex
+	stopChannel        chan struct{}
+	lastActiveLine     string
+	animations         []js.Value
+	motionListener     js.Func
+	visibilityListener js.Func
+	resizeListener     js.Func
+	resizeObserver     js.Value
 
 	// Cached DOM references
 	elSvgStage        js.Value
@@ -43,7 +49,7 @@ type Player struct {
 
 func NewPlayer(doc js.Value) *Player {
 	get := func(id string) js.Value { return doc.Call("getElementById", id) }
-	return &Player{
+	p := &Player{
 		speed:             1.0,
 		doc:               doc,
 		elSvgStage:        get("svg-stage"),
@@ -57,6 +63,8 @@ func NewPlayer(doc js.Value) *Player {
 		elMetricSwaps:     get("metric-swaps"),
 		elMetricOps:       get("metric-ops"),
 	}
+	p.initMotion()
+	return p
 }
 
 func (p *Player) LoadLesson(l catalog.Lesson) {
@@ -315,16 +323,27 @@ func (p *Player) renderLegend(cat catalog.Category) {
 	}
 
 	var sb strings.Builder
+	if legend := renderers.LessonLegend(p.lesson.Meta().ID); len(legend) > 0 {
+		items = nil
+		for _, entry := range legend {
+			items = append(items, legendEntry{entry.Label, entry.Color})
+		}
+	}
 	for _, it := range items {
 		sb.WriteString(fmt.Sprintf(
 			`<div class="legend-chip"><span class="legend-dot" style="background-color: %s;"></span><span class="legend-text">%s</span></div>`,
-			it.color, it.label,
+			html.EscapeString(it.color), html.EscapeString(it.label),
 		))
 	}
 	legendEl.Set("innerHTML", sb.String())
 }
 
 func (p *Player) RenderStep(idx int) {
+	p.Pause()
+	p.renderStep(idx, false)
+}
+
+func (p *Player) renderStep(idx int, animate bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -337,25 +356,34 @@ func (p *Player) RenderStep(idx int) {
 	if idx >= len(p.steps) {
 		idx = len(p.steps) - 1
 	}
+	previous := p.stagePositions()
+	p.cancelMotion()
+	animate = animate && idx == p.stepIdx+1
 	p.stepIdx = idx
 	step := p.steps[idx]
 
 	// 1. Render Visualizer SVG
 	rendererType := p.lesson.Meta().Renderer
-	var svgContent string
-	switch rendererType {
-	case "graph":
-		svgContent = renderers.RenderGraphSVG(step, 800, 450)
-	case "tree":
-		svgContent = renderers.RenderTreeSVG(step, 800, 450)
-	case "table":
-		svgContent = renderers.RenderTableSVG(step, 800, 450)
-	case "hanoi":
-		svgContent = renderers.RenderHanoiSVG(step, 800, 450)
-	default:
-		svgContent = renderers.RenderArraySVG(step, 800, 450)
+	svgContent, dedicated := renderers.RenderLessonSVG(p.lesson.Meta().ID, step, 800, 450)
+	if !dedicated {
+		switch rendererType {
+		case "graph":
+			svgContent = renderers.RenderGraphSVG(step, 800, 450)
+		case "tree":
+			svgContent = renderers.RenderTreeSVG(step, 800, 450)
+		case "table":
+			svgContent = renderers.RenderTableSVG(step, 800, 450)
+		case "hanoi":
+			svgContent = renderers.RenderHanoiSVG(step, 800, 450)
+		default:
+			svgContent = renderers.RenderArraySVG(step, 800, 450)
+		}
 	}
 	p.elSvgStage.Set("innerHTML", svgContent)
+	p.sizeStage()
+	if animate {
+		p.animateStage(previous, motionDuration(step, p.speed, 750))
+	}
 
 	// 2. Update line highlight & auto-scroll
 	if p.lastActiveLine != step.LineID {
@@ -414,14 +442,16 @@ func (p *Player) RenderStep(idx int) {
 }
 
 func (p *Player) Next() {
+	p.Pause()
 	if p.stepIdx < len(p.steps)-1 {
-		p.RenderStep(p.stepIdx + 1)
+		p.renderStep(p.stepIdx+1, true)
 	} else {
 		p.Pause()
 	}
 }
 
 func (p *Player) Prev() {
+	p.Pause()
 	if p.stepIdx > 0 {
 		p.RenderStep(p.stepIdx - 1)
 	}
@@ -437,11 +467,18 @@ func (p *Player) Reset() {
 }
 
 func (p *Player) Play() {
+	p.play(true)
+}
+
+func (p *Player) play(replay bool) {
 	if p.playing {
 		return
 	}
+	if len(p.steps) == 0 || p.doc.Get("hidden").Bool() {
+		return
+	}
 	p.mu.Lock()
-	if len(p.steps) > 0 && p.stepIdx >= len(p.steps)-1 {
+	if replay && len(p.steps) > 0 && p.stepIdx >= len(p.steps)-1 {
 		p.mu.Unlock()
 		p.RenderStep(0)
 	} else {
@@ -460,42 +497,49 @@ func (p *Player) Play() {
 			default:
 				p.mu.Lock()
 				currentIdx := p.stepIdx
-				maxIdx := len(p.steps) - 1
-				sp := p.speed
+				hold := renderers.StepHoldMS(p.steps[currentIdx], p.speed)
 				p.mu.Unlock()
-
-				if currentIdx >= maxIdx {
-					p.Pause()
-					return
+				// Bound conversion to time.Duration; tiny valid speeds can saturate int.
+				maxMS := int64(math.MaxInt64) / int64(time.Millisecond)
+				if int64(hold) > maxMS {
+					hold = int(maxMS)
 				}
-
-				interval := time.Duration(float64(500*time.Millisecond) / sp)
+				interval := time.Duration(hold) * time.Millisecond
 				select {
 				case <-stop:
 					return
 				case <-time.After(interval):
 				}
 
+				done := make(chan struct{})
 				var cb js.Func
 				cb = js.FuncOf(func(this js.Value, args []js.Value) any {
 					select {
 					case <-stop:
 					default:
-						p.Next()
+						if p.doc.Get("hidden").Bool() || p.stepIdx >= len(p.steps)-1 {
+							p.Pause()
+						} else {
+							p.renderStep(p.stepIdx+1, true)
+						}
 					}
 					cb.Release()
+					close(done)
 					return nil
 				})
 				js.Global().Call("requestAnimationFrame", cb)
+				select {
+				case <-stop:
+					return
+				case <-done:
+				}
 			}
 		}
 	}()
 }
 
 func (p *Player) Pause() {
-	if !p.playing {
-		return
-	}
+	p.cancelMotion()
 	p.playing = false
 	p.updatePlayButtonUI(false)
 	if p.stopChannel != nil {
@@ -548,9 +592,14 @@ func (p *Player) TogglePlay() {
 }
 
 func (p *Player) SetSpeed(speed float64) {
+	wasPlaying := p.playing
+	p.Pause()
 	p.mu.Lock()
 	p.speed = speed
 	p.mu.Unlock()
+	if wasPlaying {
+		p.play(false)
+	}
 }
 
 func escapeHTML(s string) string {

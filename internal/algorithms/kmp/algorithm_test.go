@@ -201,7 +201,7 @@ func TestKMPRenderTableSVG(t *testing.T) {
 		t.Fatalf("failed to build trace: %v", err)
 	}
 	for i, step := range steps {
-		svg := renderers.RenderTableSVG(step, 800, 450)
+		svg := renderers.RenderKMPLessonSVG(step, 800, 450)
 		if svg == "" {
 			t.Errorf("step %d produced empty SVG", i)
 		}

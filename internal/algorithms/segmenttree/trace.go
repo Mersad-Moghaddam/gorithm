@@ -7,223 +7,140 @@ import (
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-type nodeInfo struct {
-	id       string
-	parentID string
-	l, r     int
-	x, y     float64
-}
-
 type tracer struct {
-	b         *trace.Builder
-	arr       []int
-	tree      []int
-	n         int
-	nodeMap   map[int]nodeInfo
-	nodeOrder []int
+	b     *trace.Builder
+	s     renderers.SegmentTreeLessonState
+	nodes map[int]int
 }
 
-func newTracer(arr []int) *tracer {
-	n := len(arr)
-	tr := &tracer{
-		b:       trace.NewBuilder(),
-		arr:     make([]int, n),
-		tree:    make([]int, 4*n+1),
-		n:       n,
-		nodeMap: make(map[int]nodeInfo),
+func (tr *tracer) emit(line string, action trace.ActionType, node int, explanation string) {
+	s := tr.s
+	s.ActiveID = ""
+	if node > 0 {
+		s.ActiveID = fmt.Sprintf("node-%d", node)
 	}
-	copy(tr.arr, arr)
-
-	if n > 0 {
-		var recurseLayout func(node, l, r int, x, y, dx float64, parentID string)
-		recurseLayout = func(node, l, r int, x, y, dx float64, parentID string) {
-			id := fmt.Sprintf("node-%d", node)
-			tr.nodeMap[node] = nodeInfo{
-				id:       id,
-				parentID: parentID,
-				l:        l,
-				r:        r,
-				x:        x,
-				y:        y,
-			}
-			tr.nodeOrder = append(tr.nodeOrder, node)
-			if l == r {
-				return
-			}
-			mid := (l + r) / 2
-			nextDx := dx / 2
-			if nextDx < 20 {
-				nextDx = 20
-			}
-			recurseLayout(2*node, l, mid, x-dx, y+70, nextDx, id)
-			recurseLayout(2*node+1, mid+1, r, x+dx, y+70, nextDx, id)
-		}
-		recurseLayout(1, 0, n-1, 400, 60, 190, "")
-	}
-
-	return tr
+	s.Nodes = append([]renderers.SegmentTreeLessonNode(nil), s.Nodes...)
+	s.Values = append([]int(nil), s.Values...)
+	s.AcceptedIDs = append([]string(nil), s.AcceptedIDs...)
+	s.PathIDs = append([]string(nil), s.PathIDs...)
+	tr.b.AddStep(line, action, explanation, s, map[string]any{"L": s.QL, "R": s.QR, "node": node, "idx": s.UpdateIndex, "val": s.UpdateValue})
 }
 
-func (tr *tracer) treeState(nodeStates map[int]string) renderers.TreeState {
-	treeNodes := make([]renderers.TreeNode, 0, len(tr.nodeOrder))
-	for _, nodeIdx := range tr.nodeOrder {
-		info := tr.nodeMap[nodeIdx]
-		st := "normal"
-		if nodeStates != nil {
-			if s, ok := nodeStates[nodeIdx]; ok {
-				st = s
-			}
-		}
-		treeNodes = append(treeNodes, renderers.TreeNode{
-			ID:       info.id,
-			Val:      tr.tree[nodeIdx],
-			X:        info.x,
-			Y:        info.y,
-			ParentID: info.parentID,
-			State:    st,
-		})
-	}
-	return renderers.TreeState{Nodes: treeNodes}
+func (tr *tracer) clearResult() {
+	tr.s.Overlap = ""
+	tr.s.Result, tr.s.LeftResult, tr.s.RightResult = 0, 0, 0
+	tr.s.ResultKnown, tr.s.LeftKnown, tr.s.RightKnown = false, false, false
 }
 
-func (tr *tracer) traceBuild(node, l, r int) {
-	tr.b.AddStep("L4", trace.ActionVisit, fmt.Sprintf("Inspect node %d for range [%d, %d].", node, l, r),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"node": node, "l": l, "r": r})
-
-	if l == r {
-		tr.tree[node] = tr.arr[l]
+func (tr *tracer) build(node int) {
+	i := tr.nodes[node]
+	n := tr.s.Nodes[i]
+	tr.clearResult()
+	tr.emit("L4", trace.ActionVisit, node, fmt.Sprintf("Inspect interval [%d, %d]; its sum is not built yet.", n.L, n.R))
+	if n.L == n.R {
+		tr.s.Nodes[i].Sum = tr.s.Values[n.L]
+		tr.s.Nodes[i].Built = true
 		tr.b.IncOperations()
-		tr.b.AddStep("L5", trace.ActionSet, fmt.Sprintf("Leaf node %d covers index %d: value = %d.", node, l, tr.arr[l]),
-			tr.treeState(map[int]string{node: "inserted"}),
-			map[string]any{"node": node, "l": l, "val": tr.arr[l]})
+		tr.emit("L5", trace.ActionSet, node, fmt.Sprintf("Leaf [%d, %d] stores %d.", n.L, n.R, tr.s.Values[n.L]))
 		return
 	}
-
-	mid := (l + r) / 2
-	tr.b.AddStep("L6", trace.ActionSet, fmt.Sprintf("Split range [%d, %d] at mid = %d.", l, r, mid),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"node": node, "l": l, "r": r, "mid": mid})
-
-	tr.b.AddStep("L7", trace.ActionVisit, fmt.Sprintf("Recurse left child %d for range [%d, %d].", 2*node, l, mid),
-		tr.treeState(map[int]string{node: "active", 2 * node: "active"}),
-		map[string]any{"node": 2 * node, "l": l, "r": mid})
-	tr.traceBuild(2*node, l, mid)
-
-	tr.b.AddStep("L8", trace.ActionVisit, fmt.Sprintf("Recurse right child %d for range [%d, %d].", 2*node+1, mid+1, r),
-		tr.treeState(map[int]string{node: "active", 2*node + 1: "active"}),
-		map[string]any{"node": 2*node + 1, "l": mid + 1, "r": r})
-	tr.traceBuild(2*node+1, mid+1, r)
-
-	tr.tree[node] = tr.tree[2*node] + tr.tree[2*node+1]
-	tr.b.IncOperations()
-	tr.b.AddStep("L9", trace.ActionSet, fmt.Sprintf("Combine children sums for node %d: %d + %d = %d.", node, tr.tree[2*node], tr.tree[2*node+1], tr.tree[node]),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"node": node, "sum": tr.tree[node]})
-
-	tr.b.AddStep("L10", trace.ActionDone, fmt.Sprintf("Subtree at node %d built with sum %d.", node, tr.tree[node]),
-		tr.treeState(nil),
-		map[string]any{"node": node, "sum": tr.tree[node]})
+	tr.emit("L6", trace.ActionSet, node, fmt.Sprintf("Split [%d, %d] at %d.", n.L, n.R, (n.L+n.R)/2))
+	tr.emit("L7", trace.ActionVisit, node, "Build left interval first.")
+	tr.build(2 * node)
+	tr.emit("L8", trace.ActionVisit, node, "Build right interval next.")
+	tr.build(2*node + 1)
+	tr.combine(node)
+	tr.emit("L9", trace.ActionSet, node, fmt.Sprintf("Combine child sums: %d + %d = %d.", tr.s.LeftResult, tr.s.RightResult, tr.s.Result))
+	tr.emit("L10", trace.ActionDone, node, "This interval is built; return to its parent.")
 }
 
-func (tr *tracer) traceQuery(node, l, r, ql, qr int) int {
+func (tr *tracer) combine(node int) {
+	tr.clearResult()
+	tr.s.LeftResult = tr.s.Nodes[tr.nodes[2*node]].Sum
+	tr.s.RightResult = tr.s.Nodes[tr.nodes[2*node+1]].Sum
+	tr.s.Result = tr.s.LeftResult + tr.s.RightResult
+	tr.s.LeftKnown, tr.s.RightKnown, tr.s.ResultKnown = true, true, true
+	i := tr.nodes[node]
+	tr.s.Nodes[i].Sum = tr.s.Result
+	tr.s.Nodes[i].Built = true
+	tr.b.IncOperations()
+}
+
+func (tr *tracer) query(node int) int {
+	n := tr.s.Nodes[tr.nodes[node]]
+	tr.clearResult()
 	tr.b.IncComparisons()
-	tr.b.AddStep("L14", trace.ActionCompare, fmt.Sprintf("Query inspecting node %d [%d, %d] for range [%d, %d].", node, l, r, ql, qr),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"L": ql, "R": qr, "node": node, "l": l, "r": r})
-
-	if ql <= l && r <= qr {
+	tr.emit("L14", trace.ActionCompare, node, fmt.Sprintf("Compare interval [%d, %d] with query [%d, %d].", n.L, n.R, tr.s.QL, tr.s.QR))
+	if tr.s.QL <= n.L && n.R <= tr.s.QR {
+		tr.s.Overlap = "full"
+		tr.s.Result = n.Sum
+		tr.s.ResultKnown = true
+		tr.s.AcceptedIDs = append(tr.s.AcceptedIDs, n.ID)
 		tr.b.IncComparisons()
-		tr.b.AddStep("L15", trace.ActionHighlight, fmt.Sprintf("Node %d [%d, %d] fully inside [%d, %d]: return sum %d.", node, l, r, ql, qr, tr.tree[node]),
-			tr.treeState(map[int]string{node: "matched"}),
-			map[string]any{"L": ql, "R": qr, "node": node, "sum": tr.tree[node]})
-		return tr.tree[node]
+		tr.emit("L15", trace.ActionHighlight, node, fmt.Sprintf("Full overlap: accept [%d, %d] once, contributing %d.", n.L, n.R, n.Sum))
+		return n.Sum
 	}
-
-	if r < ql || l > qr {
+	if n.R < tr.s.QL || n.L > tr.s.QR {
+		tr.s.Overlap = "none"
+		tr.s.ResultKnown = true
 		tr.b.IncComparisons()
-		tr.b.AddStep("L16", trace.ActionDone, fmt.Sprintf("Node %d [%d, %d] disjoint from [%d, %d]: return 0.", node, l, r, ql, qr),
-			tr.treeState(nil),
-			map[string]any{"L": ql, "R": qr, "node": node})
+		tr.emit("L16", trace.ActionDone, node, "Disjoint interval contributes +0; do not add it to accepted cover.")
 		return 0
 	}
-
-	mid := (l + r) / 2
-	tr.b.AddStep("L17", trace.ActionSet, fmt.Sprintf("Partial overlap at node %d [%d, %d]. Split at mid = %d.", node, l, r, mid),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"L": ql, "R": qr, "mid": mid})
-
-	tr.b.AddStep("L18", trace.ActionVisit, fmt.Sprintf("Query left child %d [%d, %d].", 2*node, l, mid),
-		tr.treeState(map[int]string{node: "active", 2 * node: "active"}),
-		map[string]any{"L": ql, "R": qr, "child": 2 * node})
-	leftSum := tr.traceQuery(2*node, l, mid, ql, qr)
-
-	tr.b.AddStep("L19", trace.ActionVisit, fmt.Sprintf("Query right child %d [%d, %d].", 2*node+1, mid+1, r),
-		tr.treeState(map[int]string{node: "active", 2*node + 1: "active"}),
-		map[string]any{"L": ql, "R": qr, "child": 2*node + 1})
-	rightSum := tr.traceQuery(2*node+1, mid+1, r, ql, qr)
-
-	total := leftSum + rightSum
+	tr.s.Overlap = "partial"
+	tr.emit("L17", trace.ActionSet, node, "Partial overlap: split query across both children.")
+	tr.emit("L18", trace.ActionVisit, node, "Query left child; its subtotal is pending.")
+	left := tr.query(2 * node)
+	tr.clearResult()
+	tr.s.Overlap = "partial"
+	tr.s.LeftResult = left
+	tr.s.LeftKnown = true
+	tr.emit("L19", trace.ActionVisit, node, fmt.Sprintf("Left returned %d; query right child next.", left))
+	right := tr.query(2*node + 1)
+	tr.clearResult()
+	tr.s.Overlap = "partial"
+	tr.s.LeftResult, tr.s.RightResult, tr.s.Result = left, right, left+right
+	tr.s.LeftKnown, tr.s.RightKnown, tr.s.ResultKnown = true, true, true
 	tr.b.IncOperations()
-	tr.b.AddStep("L20", trace.ActionDone, fmt.Sprintf("Combine subqueries for node %d: %d + %d = %d.", node, leftSum, rightSum, total),
-		tr.treeState(map[int]string{node: "matched"}),
-		map[string]any{"L": ql, "R": qr, "sum": total})
-	return total
+	tr.emit("L20", trace.ActionDone, node, fmt.Sprintf("Return %d + %d = %d. Accepted cover is unchanged.", left, right, left+right))
+	return left + right
 }
 
-func (tr *tracer) traceUpdate(node, l, r, idx, val int) {
-	tr.b.AddStep("L24", trace.ActionVisit, fmt.Sprintf("Update inspecting node %d [%d, %d] for target index %d.", node, l, r, idx),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"node": node, "idx": idx, "val": val})
-
-	if l == r {
-		tr.tree[node] = val
-		tr.arr[idx] = val
+func (tr *tracer) update(node int) {
+	i := tr.nodes[node]
+	n := tr.s.Nodes[i]
+	tr.s.PathIDs = append(tr.s.PathIDs, n.ID)
+	tr.clearResult()
+	tr.emit("L24", trace.ActionVisit, node, fmt.Sprintf("Interval [%d, %d] covers update index %d.", n.L, n.R, tr.s.UpdateIndex))
+	if n.L == n.R {
+		tr.s.Nodes[i].Sum = tr.s.UpdateValue
+		tr.s.Values[n.L] = tr.s.UpdateValue
 		tr.b.IncOperations()
-		tr.b.AddStep("L25", trace.ActionSet, fmt.Sprintf("Reached leaf node %d (index %d). Set value to %d.", node, idx, val),
-			tr.treeState(map[int]string{node: "inserted"}),
-			map[string]any{"node": node, "idx": idx, "val": val})
+		tr.emit("L25", trace.ActionSet, node, fmt.Sprintf("Set array[%d] from %d to %d.", n.L, n.Sum, tr.s.UpdateValue))
 		return
 	}
-
-	mid := (l + r) / 2
+	mid := (n.L + n.R) / 2
 	tr.b.IncComparisons()
-	tr.b.AddStep("L26", trace.ActionCompare, fmt.Sprintf("Check index %d against mid = %d.", idx, mid),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"idx": idx, "mid": mid})
-
-	if idx <= mid {
-		tr.b.AddStep("L27", trace.ActionVisit, fmt.Sprintf("Index %d <= mid %d: traverse left child %d.", idx, mid, 2*node),
-			tr.treeState(map[int]string{node: "active", 2 * node: "active"}),
-			map[string]any{"child": 2 * node})
-		tr.traceUpdate(2*node, l, mid, idx, val)
+	tr.emit("L26", trace.ActionCompare, node, fmt.Sprintf("Compare update index %d with midpoint %d.", tr.s.UpdateIndex, mid))
+	if tr.s.UpdateIndex <= mid {
+		tr.emit("L27", trace.ActionVisit, node, "Target is in left interval; other child stays unchanged.")
+		tr.update(2 * node)
 	} else {
-		tr.b.AddStep("L28", trace.ActionVisit, fmt.Sprintf("Index %d > mid %d: traverse right child %d.", idx, mid, 2*node+1),
-			tr.treeState(map[int]string{node: "active", 2*node + 1: "active"}),
-			map[string]any{"child": 2*node + 1})
-		tr.traceUpdate(2*node+1, mid+1, r, idx, val)
+		tr.emit("L28", trace.ActionVisit, node, "Target is in right interval; other child stays unchanged.")
+		tr.update(2*node + 1)
 	}
-
-	tr.tree[node] = tr.tree[2*node] + tr.tree[2*node+1]
-	tr.b.IncOperations()
-	tr.b.AddStep("L29", trace.ActionSet, fmt.Sprintf("Recalculate ancestor node %d sum: %d + %d = %d.", node, tr.tree[2*node], tr.tree[2*node+1], tr.tree[node]),
-		tr.treeState(map[int]string{node: "active"}),
-		map[string]any{"node": node, "newSum": tr.tree[node]})
-
-	tr.b.AddStep("L30", trace.ActionDone, fmt.Sprintf("Node %d updated with new sum %d.", node, tr.tree[node]),
-		tr.treeState(nil),
-		map[string]any{"node": node, "newSum": tr.tree[node]})
+	tr.combine(node)
+	tr.emit("L29", trace.ActionSet, node, fmt.Sprintf("Recompute ancestor: %d + %d = %d.", tr.s.LeftResult, tr.s.RightResult, tr.s.Result))
+	tr.emit("L30", trace.ActionDone, node, "Ancestor sum settled; return upward.")
 }
 
-// Trace executes Segment Tree build, range query, and point update, emitting execution steps.
-// ponytail: array-backed 4n tree; dynamic pointer nodes save memory if array is sparse.
+// Trace preserves direct-call defaults and normalization; Lesson.Build validates browser input.
 func Trace(arr []int, ql, qr, updIdx, updVal int) []trace.Step {
 	if len(arr) == 0 {
 		arr = []int{1, 3, 5, 7, 9, 11}
 		ql, qr = 1, 4
 		updIdx, updVal = 2, 6
 	}
-
 	n := len(arr)
 	if ql < 0 {
 		ql = 0
@@ -237,44 +154,44 @@ func Trace(arr []int, ql, qr, updIdx, updVal int) []trace.Step {
 	if updIdx < 0 || updIdx >= n {
 		updIdx = 0
 	}
-
-	tr := newTracer(arr)
-
-	// Phase 1: Build
-	tr.b.AddStep("L1", trace.ActionInit, fmt.Sprintf("Build segment tree from array %v.", arr),
-		tr.treeState(nil),
-		map[string]any{"n": n})
-	tr.b.AddStep("L2", trace.ActionVisit, fmt.Sprintf("Call build on root node 1 covering range [0, %d].", n-1),
-		tr.treeState(map[int]string{1: "active"}),
-		map[string]any{"node": 1, "l": 0, "r": n - 1})
-	tr.traceBuild(1, 0, n-1)
-	tr.b.AddStep("L3", trace.ActionDone, fmt.Sprintf("Segment tree built. Root total sum = %d.", tr.tree[1]),
-		tr.treeState(nil),
-		map[string]any{"totalSum": tr.tree[1]})
-
-	// Phase 2: Range Query
-	tr.b.AddStep("L11", trace.ActionInit, fmt.Sprintf("Begin Query for range [%d, %d].", ql, qr),
-		tr.treeState(nil),
-		map[string]any{"L": ql, "R": qr, "op": "query"})
-	tr.b.AddStep("L12", trace.ActionVisit, fmt.Sprintf("Query root node 1 [0, %d] for range [%d, %d].", n-1, ql, qr),
-		tr.treeState(map[int]string{1: "active"}),
-		map[string]any{"L": ql, "R": qr, "node": 1})
-	ans := tr.traceQuery(1, 0, n-1, ql, qr)
-	tr.b.AddStep("L13", trace.ActionDone, fmt.Sprintf("Query for range [%d, %d] completed with sum = %d.", ql, qr, ans),
-		tr.treeState(nil),
-		map[string]any{"L": ql, "R": qr, "result": ans})
-
-	// Phase 3: Point Update
-	tr.b.AddStep("L21", trace.ActionInit, fmt.Sprintf("Begin Update(index=%d, val=%d).", updIdx, updVal),
-		tr.treeState(nil),
-		map[string]any{"idx": updIdx, "val": updVal, "op": "update"})
-	tr.b.AddStep("L22", trace.ActionVisit, fmt.Sprintf("Start update at root node 1 covering range [0, %d].", n-1),
-		tr.treeState(map[int]string{1: "active"}),
-		map[string]any{"node": 1, "idx": updIdx, "val": updVal})
-	tr.traceUpdate(1, 0, n-1, updIdx, updVal)
-	tr.b.AddStep("L23", trace.ActionDone, fmt.Sprintf("Update complete: array[%d] is now %d. New root sum = %d.", updIdx, updVal, tr.tree[1]),
-		tr.treeState(nil),
-		map[string]any{"idx": updIdx, "val": updVal, "rootSum": tr.tree[1]})
-
+	tr := &tracer{b: trace.NewBuilder(), nodes: make(map[int]int), s: renderers.SegmentTreeLessonState{Values: append([]int(nil), arr...), Phase: "build", QL: ql, QR: qr, UpdateIndex: updIdx, UpdateValue: updVal}}
+	var layout func(int, int, int, string)
+	layout = func(node, l, r int, parent string) {
+		id := fmt.Sprintf("node-%d", node)
+		tr.nodes[node] = len(tr.s.Nodes)
+		tr.s.Nodes = append(tr.s.Nodes, renderers.SegmentTreeLessonNode{ID: id, ParentID: parent, L: l, R: r})
+		if l < r {
+			mid := (l + r) / 2
+			layout(2*node, l, mid, id)
+			layout(2*node+1, mid+1, r, id)
+		}
+	}
+	layout(1, 0, n-1, "")
+	tr.emit("L1", trace.ActionInit, 0, fmt.Sprintf("Build intervals for %v. Query [%d, %d]; update index %d to %d (normalized parameters).", arr, ql, qr, updIdx, updVal))
+	tr.emit("L2", trace.ActionVisit, 1, "Build root interval.")
+	tr.build(1)
+	tr.clearResult()
+	tr.s.Result = tr.s.Nodes[0].Sum
+	tr.s.ResultKnown = true
+	tr.emit("L3", trace.ActionDone, 1, fmt.Sprintf("Build complete: root sum %d.", tr.s.Result))
+	tr.s.Phase = "query"
+	tr.clearResult()
+	tr.emit("L11", trace.ActionInit, 0, fmt.Sprintf("Query inclusive range [%d, %d].", ql, qr))
+	tr.emit("L12", trace.ActionVisit, 1, "Query root interval.")
+	ans := tr.query(1)
+	tr.clearResult()
+	tr.s.Result = ans
+	tr.s.ResultKnown = true
+	tr.emit("L13", trace.ActionDone, 1, fmt.Sprintf("Query complete: disjoint accepted intervals sum to %d.", ans))
+	tr.s.Phase = "update"
+	tr.s.AcceptedIDs = nil
+	tr.clearResult()
+	tr.emit("L21", trace.ActionInit, 0, fmt.Sprintf("Update index %d to %d; only covering ancestors change.", updIdx, updVal))
+	tr.emit("L22", trace.ActionVisit, 1, "Start update at root.")
+	tr.update(1)
+	tr.clearResult()
+	tr.s.Result = tr.s.Nodes[0].Sum
+	tr.s.ResultKnown = true
+	tr.emit("L23", trace.ActionDone, 1, fmt.Sprintf("Update complete: root sum %d. No second query was executed.", tr.s.Result))
 	return tr.b.Steps()
 }
