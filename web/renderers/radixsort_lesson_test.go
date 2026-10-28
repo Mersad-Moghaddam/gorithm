@@ -59,3 +59,32 @@ func TestRadixsortLessonSVG(t *testing.T) {
 		t.Fatal("phase unescaped")
 	}
 }
+
+func TestRadixsortCounterLabels(t *testing.T) {
+	for _, tc := range []struct {
+		phase string
+		exp   int
+		want  string
+	}{
+		{"pass", 1, "digit frequencies"},
+		{"pass-complete", 1, "cumulative positions"},
+		{"done", 1, "cumulative positions"},
+		{"done", 0, "digit frequencies"},
+	} {
+		svg := RenderRadixsortLessonSVG(trace.Step{State: RadixsortLessonState{ArrayState: ArrayState{Values: []int{0}}, IDs: []int{0}, Phase: tc.phase, Exp: tc.exp}}, 320, 360)
+		if !strings.Contains(svg, tc.want) {
+			t.Errorf("phase %s exp %d: missing %q", tc.phase, tc.exp, tc.want)
+		}
+	}
+}
+
+func TestRadixsortDoneDoesNotOverlapDigitAndCheck(t *testing.T) {
+	state := RadixsortLessonState{ArrayState: ArrayState{Values: []int{2}}, IDs: []int{0}, Exp: 100, Phase: "done"}
+	svg := RenderRadixsortLessonSVG(trace.Step{State: state}, 320, 360)
+	if strings.Contains(svg, `>digit 0</text>`) {
+		t.Fatal("completed sort still displays active digit beside completion check")
+	}
+	if !strings.Contains(svg, `>✓</text>`) {
+		t.Fatal("missing completion check")
+	}
+}

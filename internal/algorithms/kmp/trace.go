@@ -42,12 +42,12 @@ func Trace(text, pattern string) []trace.Step {
 	}
 	add("L1", trace.ActionInit, "init", "Search uses byte offsets, not Unicode character positions.")
 	if len(pattern) == 0 {
-		finish("L10", 0)
+		finish("empty", 0)
 		return b.Steps()
 	}
 	add("L2", trace.ActionSet, "init", fmt.Sprintf("Text has %d bytes; pattern has %d bytes.", len(text), len(pattern)))
 	if len(text) < len(pattern) {
-		finish("L19", -1)
+		finish("short", -1)
 		return b.Steps()
 	}
 	s.LPSIndex = 0

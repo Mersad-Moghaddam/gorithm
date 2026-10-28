@@ -117,3 +117,15 @@ func TestBinarySearchLessonSVGCompareAndFound(t *testing.T) {
 		}
 	}
 }
+
+func TestBinarySearchMarkerLabelsStaySeparatedAndInsideScene(t *testing.T) {
+	for _, step := range binarysearch.Trace([]int{2}, 1) {
+		svg := renderers.RenderBinarySearchLessonSVG(step, 320, 420)
+		if step.LineID == "L5" && !strings.Contains(svg, `y="49" text-anchor="middle" font-size="12">compare`) {
+			t.Fatal("comparison cue overlaps midpoint marker")
+		}
+		if step.LineID == "L13" && !strings.Contains(svg, `data-entity="binarysearch-high" data-x="32"`) {
+			t.Fatal("negative high marker clips at scene edge")
+		}
+	}
+}

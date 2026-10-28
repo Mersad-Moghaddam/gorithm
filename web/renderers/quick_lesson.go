@@ -117,7 +117,7 @@ func RenderQuickLessonSVG(step trace.Step, width, height int) string {
 			boundary--
 		}
 		if s.Scan == s.High {
-			scannedEnd = s.High - 1
+			scannedEnd = s.High
 		}
 		if s.Scan < 0 {
 			scannedEnd = s.Low - 1
@@ -128,6 +128,9 @@ func RenderQuickLessonSVG(step trace.Step, width, height int) string {
 		}
 		text(w/2, h-42, fmt.Sprintf("< pivot: [%d..%d] · scanned ≥ pivot: [%d..%d]", s.Low, boundary, greaterStart, scannedEnd), "#bbcab9", 14)
 		unscanned := scannedEnd + 1
+		if s.Scan == s.High {
+			unscanned = s.High
+		}
 		if s.Scan < 0 {
 			unscanned = s.Low
 		}

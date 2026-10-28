@@ -40,3 +40,27 @@ func TestQLearningLessonSVG(t *testing.T) {
 		t.Fatal("unescaped phase")
 	}
 }
+
+func TestQLearningAssignmentDoesNotSelectDestinationAction(t *testing.T) {
+	s := QLearningLessonState{Rows: 1, Cols: 2, Goal: [2]int{0, 1}, State: [2]int{0, 1}, NextState: [2]int{0, 1}, Q: [][]float64{{0, 0, 0, 0}, {0, 0, 0, 0}}, Action: 1, Phase: "assign-state", TransitionValid: true, UpdateValid: true}
+	svg := RenderQLearningLessonSVG(trace.Step{State: s}, 320, 650)
+	if strings.Contains(svg, `stroke="#ffe29a"`) || strings.Contains(svg, `fill="#ffe29a"`) {
+		t.Fatal("previous action highlighted at destination")
+	}
+}
+
+func TestQLearningResetDoesNotAnimateAcrossGrid(t *testing.T) {
+	s := QLearningLessonState{Rows: 1, Cols: 2, Goal: [2]int{0, 1}, State: [2]int{0, 0}, NextState: [2]int{0, 0}, Action: -1, Phase: "reset"}
+	svg := RenderQLearningLessonSVG(trace.Step{State: s}, 320, 650)
+	if strings.Contains(svg, `data-entity="agent:0"`) {
+		t.Fatal("episode reset must not animate agent from previous goal")
+	}
+}
+
+func TestQLearningUncalculatedValuesAreNotPresentedAsResults(t *testing.T) {
+	s := QLearningLessonState{Rows: 1, Cols: 2, Goal: [2]int{0, 1}, Q: [][]float64{{0, 0, 0, 0}, {0, 0, 0, 0}}, Action: -1, Phase: "initialize"}
+	svg := RenderQLearningLessonSVG(trace.Step{State: s}, 320, 650)
+	if strings.Contains(svg, "Next row (0,0)") || strings.Contains(svg, "reward 0 · old 0 · new 0") {
+		t.Fatal("uncalculated transition presented as result")
+	}
+}

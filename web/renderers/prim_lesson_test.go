@@ -2,8 +2,10 @@ package renderers
 
 import (
 	"encoding/xml"
+	"fmt"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -38,6 +40,23 @@ func TestPrimLessonSVG(t *testing.T) {
 	}
 }
 
+func TestPrimParallelSelfLoopsHaveSeparateVisibleLabels(t *testing.T) {
+	s := PrimLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "A"}}, Edges: []GraphEdge{{From: "A", To: "A", Weight: -10000}, {From: "A", To: "A", Weight: 10000}}}, ActiveEdge: -1}
+	for _, width := range []int{320, 960} {
+		svg := RenderPrimLessonSVG(trace.Step{State: s}, width, 640)
+		for i, weight := range []int{-10000, 10000} {
+			if !strings.Contains(svg, fmt.Sprintf("Edge #%d: A–A, weight %d", i, weight)) {
+				t.Fatalf("width %d: missing loop identity %d", width, i)
+			}
+		}
+		re := regexp.MustCompile(`data-entity="prim-loop:[01]"[^>]*transform="translate\(([^)]+)\)"`)
+		matches := re.FindAllStringSubmatch(svg, -1)
+		if len(matches) != 2 || matches[0][1] == matches[1][1] {
+			t.Fatalf("width %d: loop labels do not have separate positions: %v", width, matches)
+		}
+	}
+}
+
 func TestPrimMotionAndIndependentSnapshots(t *testing.T) {
 	s := PrimLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "A", Label: "A"}, {ID: "B", Label: "B"}, {ID: "C", Label: "C"}}, Edges: []GraphEdge{{From: "A", To: "B", Weight: 1}}}, ActiveEdge: 0, ActiveSerial: 2, InTree: map[string]bool{"A": true, "B": true}, SelectedEdges: []int{0}, TotalWeight: 1, CandidateWeight: 1}
 	for _, phase := range []string{"L1", "L7", "L9", "L12", "L13", "L18"} {
@@ -55,6 +74,16 @@ func TestPrimMotionAndIndependentSnapshots(t *testing.T) {
 		}
 		if phase == "L9" && !strings.Contains(svg, "Reject internal edge") {
 			t.Fatal("missing rejection label")
+		}
+	}
+}
+
+func TestPrimEmptyGraphShowsResult(t *testing.T) {
+	step := trace.Step{LineID: "L1", Action: trace.ActionDone, State: PrimLessonState{Connected: true, ActiveEdge: -1}}
+	for _, width := range []int{320, 960} {
+		svg := RenderPrimLessonSVG(step, width, 640)
+		if !strings.Contains(svg, "Empty graph") {
+			t.Errorf("width %d: missing empty graph result", width)
 		}
 	}
 }

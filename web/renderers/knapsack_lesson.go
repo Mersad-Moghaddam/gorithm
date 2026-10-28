@@ -31,6 +31,7 @@ func RenderKnapsackLessonSVG(step trace.Step, width, height int) string {
 	// ponytail: full matrix stays locally scrollable; virtualize only if public limits grow.
 	cols := len(s.DP[0])
 	rows := len(s.DP)
+	sharedSource := s.Fits && s.Sources[0] == s.Sources[1] && s.Sources[0][0] >= 0
 	cardCols := max(1, (max(320, min(width, 1440))-32)/200)
 	cardRows := (len(s.Weights) + cardCols - 1) / cardCols
 	top := 76 + cardRows*88
@@ -65,6 +66,9 @@ func RenderKnapsackLessonSVG(step trace.Step, width, height int) string {
 				label = fmt.Sprint(value)
 			}
 			for k, src := range s.Sources {
+				if sharedSource && k == 1 {
+					continue
+				}
 				if src == [2]int{r, c} && s.Column >= 0 {
 					stroke = []string{"#8bd5ff", "#c45d75"}[k]
 				}
@@ -79,6 +83,9 @@ func RenderKnapsackLessonSVG(step trace.Step, width, height int) string {
 		x, y := 80+s.Column*84, top+s.Item*44
 		fmt.Fprintf(&b, `<g data-entity="cursor:target" data-emphasis="compare" data-x="%d" data-y="%d" transform="translate(%d %d)"><rect width="80" height="40" rx="6" fill="none" stroke="#ffe29a" stroke-width="3"/></g>`, x, y, x, y)
 		for k, src := range s.Sources {
+			if sharedSource && k == 1 {
+				continue
+			}
 			if src[0] < 0 || src[1] < 0 {
 				continue
 			}
@@ -99,7 +106,9 @@ func RenderKnapsackLessonSVG(step trace.Step, width, height int) string {
 		} else {
 			fmt.Fprintf(&b, `<text x="16" y="%d" fill="#ffe29a">Compare candidates · target not written yet</text>`, y+52)
 		}
-		if s.Fits && s.Include == s.Exclude {
+		if sharedSource {
+			fmt.Fprintf(&b, `<text x="16" y="%d">Both use the same previous-row cell</text>`, y+78)
+		} else if s.Fits && s.Include == s.Exclude {
 			fmt.Fprintf(&b, `<text x="16" y="%d">Equal scores · no inclusion tie-break</text>`, y+78)
 		}
 		weight := 0

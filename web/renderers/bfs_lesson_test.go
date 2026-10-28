@@ -57,3 +57,11 @@ func TestBFSLessonSVG(t *testing.T) {
 		t.Fatal("missing dequeue alias")
 	}
 }
+
+func TestBFSQueueDistinguishesTruncatedIDs(t *testing.T) {
+	s := BFSLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "abcdefghij1"}, {ID: "abcdefghij2"}}}, Queue: []string{"abcdefghij1", "abcdefghij2"}, EdgeIndex: -1}
+	got := RenderBFSLessonSVG(trace.Step{State: s}, 320, 640)
+	if !strings.Contains(got, ">1: abcdef…</text>") || !strings.Contains(got, ">2: abcdef…</text>") {
+		t.Fatal("truncated queue IDs need visible distinct indices")
+	}
+}

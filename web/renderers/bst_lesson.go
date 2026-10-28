@@ -21,13 +21,16 @@ type BSTLessonState struct {
 	Found, ResultKnown                             bool
 }
 
+// BSTNodeSpacing leaves room for bounded integer values at 16px.
+const BSTNodeSpacing = 112
+
 func RenderBSTLessonSVG(step trace.Step, width, height int) string {
 	s, ok := step.State.(BSTLessonState)
 	if !ok {
 		return `<g data-lesson="bst" data-scene-width="800" data-scene-height="440"><text x="32" y="40" fill="#eff5ed" font-size="14">No BST state available</text></g>`
 	}
 	w := 800
-	if n := 64 * (len(s.Nodes) + 1); n > w {
+	if n := BSTNodeSpacing * (len(s.Nodes) + 1); n > w {
 		w = n
 	}
 	h := 440
@@ -53,7 +56,7 @@ func RenderBSTLessonSVG(step trace.Step, width, height int) string {
 			right = s.RightIDs[i]
 		}
 		place(left, depth+1)
-		positions[id] = [2]int{64*(rank+1) + (w-64*(len(s.Nodes)+1))/2, 88 + 76*depth}
+		positions[id] = [2]int{BSTNodeSpacing*(rank+1) + (w-BSTNodeSpacing*(len(s.Nodes)+1))/2, 88 + 76*depth}
 		rank++
 		if y := 152 + 76*depth; y > h {
 			h = y
@@ -81,7 +84,7 @@ func RenderBSTLessonSVG(step trace.Step, width, height int) string {
 		if s.Found {
 			result = "found"
 		}
-		if s.Operation == "delete" && s.Found {
+		if s.Operation == "delete" && s.Found && (s.Phase == "remove" || s.Phase == "done") {
 			result = "deleted"
 		}
 		fmt.Fprintf(&b, `<text x="480" y="24">%s</text>`, result)
@@ -129,7 +132,7 @@ func RenderBSTLessonSVG(step trace.Step, width, height int) string {
 		if n.Label != "" {
 			label = n.Label
 		}
-		fmt.Fprintf(&b, `<g id="bst-%s" data-entity="bst:%s" data-x="%d" data-y="%d" transform="translate(%d %d)"%s><title>%s</title><circle r="22" fill="%s" stroke="%s" stroke-width="3"/><text y="5" text-anchor="middle" font-size="16" fill="#101820">%s</text><text y="39" text-anchor="middle">%s</text><text y="-30" text-anchor="middle">%s</text></g>`, html.EscapeString(n.ID), html.EscapeString(n.ID), p[0], p[1], p[0], p[1], emphasis, html.EscapeString(label), palette[(ordinal-1)%5], stroke, html.EscapeString(label), html.EscapeString(n.ID), html.EscapeString(badge))
+		fmt.Fprintf(&b, `<g id="bst-%s" data-entity="bst:%s" data-x="%d" data-y="%d" transform="translate(%d %d)"%s><title>%s</title><ellipse rx="48" ry="22" fill="%s" stroke="%s" stroke-width="3"/><text y="5" text-anchor="middle" font-size="16" fill="#101820">%s</text><text y="39" text-anchor="middle">%s</text><text y="-30" text-anchor="middle">%s</text></g>`, html.EscapeString(n.ID), html.EscapeString(n.ID), p[0], p[1], p[0], p[1], emphasis, html.EscapeString(label), palette[(ordinal-1)%5], stroke, html.EscapeString(label), html.EscapeString(n.ID), html.EscapeString(badge))
 	}
 	if (s.Phase == "descend" || (s.ResultKnown && !s.Found)) && s.ParentID != "" {
 		if i, exists := indexes[s.ParentID]; exists {
@@ -152,8 +155,8 @@ func RenderBSTLessonSVG(step trace.Step, width, height int) string {
 		}
 	}
 	if s.Phase == "copy" {
-		if p, exists := positions[s.ActiveID]; exists {
-			fmt.Fprintf(&b, `<g data-entity="bst:copy" data-from-entity="bst:%s" data-x="%d" data-y="%d" transform="translate(%d %d)"><rect x="-46" y="-17" width="92" height="30" rx="8" fill="#8bd5ff"/><text text-anchor="middle" y="4" fill="#101820">copy %d</text></g>`, html.EscapeString(s.SuccessorID), p[0], p[1]-38, p[0], p[1]-38, s.Nodes[indexes[s.ActiveID]].Val)
+		if _, exists := positions[s.ActiveID]; exists {
+			fmt.Fprintf(&b, `<g data-entity="bst:copy" data-from-entity="bst:%s" data-x="680" data-y="24" transform="translate(680 24)"><rect x="-75" y="-17" width="150" height="30" rx="8" fill="#8bd5ff"/><text text-anchor="middle" y="4" fill="#101820">copy %d</text></g>`, html.EscapeString(s.SuccessorID), s.Nodes[indexes[s.ActiveID]].Val)
 		}
 	}
 	if len(s.Nodes) == 0 {

@@ -212,10 +212,14 @@ func RenderBellmanFordLessonSVG(step trace.Step, width, height int) string {
 	for i, n := range s.Nodes {
 		y := panelY + 56 + float64(i)*30
 		fmt.Fprintf(&b, `<g><title>%s</title>`, html.EscapeString(n.Label+" ("+n.ID+")"))
-		text(panelX+12, y, bellmanFordShort(n.Label, 8), colors[i%5])
+		label := n.Label
+		if label == "" {
+			label = n.ID
+		}
+		text(panelX+12, y, bellmanFordShort(label, 8), colors[i%5])
 		text(panelX+116, y, BellmanFordDistanceLabel(s.PassStartDistance[n.ID]), "#bbcab9")
 		value, exists := s.Distance[n.ID]
-		label := "unknown"
+		label = "unknown"
 		if exists {
 			label = BellmanFordDistanceLabel(value)
 		}
@@ -241,12 +245,10 @@ func RenderBellmanFordLessonSVG(step trace.Step, width, height int) string {
 		text(x+6, y+38, fmt.Sprintf("weight %d", e.Weight), "#bbcab9")
 		b.WriteString(`</g>`)
 	}
-	cursor := s.EdgeIndex
-	if cursor < 0 {
-		cursor = 0
+	if s.EdgeIndex >= 0 && s.EdgeIndex < len(s.Edges) {
+		cx, cy := 24+float64(s.EdgeIndex%cols)*104, stripY+18+float64(s.EdgeIndex/cols)*64
+		fmt.Fprintf(&b, `<g data-entity="bellmanford:cursor" data-x="%.0f" data-y="%.0f" transform="translate(%.0f %.0f)"><path d="M0 -5H96" stroke="#ffe29a" stroke-width="3"/></g>`, cx, cy, cx, cy)
 	}
-	cx, cy := 24+float64(cursor%cols)*104, stripY+18+float64(cursor/cols)*64
-	fmt.Fprintf(&b, `<g data-entity="bellmanford:cursor" data-x="%.0f" data-y="%.0f" transform="translate(%.0f %.0f)"><path d="M0 -5H96" stroke="#ffe29a" stroke-width="3"/></g>`, cx, cy, cx, cy)
 	equation := "Source distance 0; unknown vertices ∞."
 	result := "Distances remain tentative until final scan."
 	if s.From != "" {

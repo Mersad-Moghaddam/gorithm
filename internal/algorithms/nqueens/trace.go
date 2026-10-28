@@ -197,7 +197,7 @@ func Trace(n int) []trace.Step {
 	backtrack(0)
 
 	b.AddStep(
-		"L1",
+		"L4",
 		trace.ActionDone,
 		fmt.Sprintf("N-Queens backtracking complete. Found %d valid solutions", solutionsCount),
 		snapshot("done", 0, -1, absent, absent),

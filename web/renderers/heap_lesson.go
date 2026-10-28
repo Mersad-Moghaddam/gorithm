@@ -19,7 +19,7 @@ type HeapLessonState struct {
 func heapLessonPoint(slot int, width float64) (float64, float64) {
 	depth := int(math.Floor(math.Log2(float64(slot + 1))))
 	first := (1 << depth) - 1
-	return (float64(slot-first) + 0.5) * width / math.Exp2(float64(depth)), 100 + float64(depth)*88
+	return (float64(slot-first) + 0.5) * width / math.Exp2(float64(depth)), 116 + float64(depth)*88
 }
 
 // RenderHeapLessonSVG projects the same items onto heap slots and indexed storage.
@@ -37,7 +37,7 @@ func RenderHeapLessonSVG(step trace.Step, width, height int) string {
 	}
 	sceneW = math.Max(sceneW, math.Exp2(float64(depth))*112+64)
 	sceneW = math.Min(sceneW, 32768)
-	treeBottom := 100 + float64(depth)*88
+	treeBottom := 116 + float64(depth)*88
 	railY := treeBottom + 118
 	sceneH := math.Max(float64(height), railY+92)
 	size := min(max(0, s.HeapSize), n)

@@ -71,3 +71,34 @@ func TestKMPLessonFixedLPSAndSlidingPattern(t *testing.T) {
 	}
 	t.Fatal("missing fallback")
 }
+
+func TestKMPLessonControlCharactersProduceValidSVG(t *testing.T) {
+	step := kmp.Trace("a\x00\nb", "\x00")[0]
+	svg := renderers.RenderKMPLessonSVG(step, 320, 420)
+	dec := xml.NewDecoder(strings.NewReader(`<svg xmlns="http://www.w3.org/2000/svg">` + svg + `</svg>`))
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !strings.Contains(svg, `\x00`) || !strings.Contains(svg, `\n`) {
+		t.Fatal("original text must visibly escape control bytes")
+	}
+}
+
+func TestKMPLessonOperationLabelDoesNotOverlapMatchMarks(t *testing.T) {
+	for _, step := range kmp.Trace("ABAC", "ABC") {
+		if step.State.(renderers.KMPLessonState).Phase == "mismatch" {
+			svg := renderers.RenderKMPLessonSVG(step, 320, 420)
+			if strings.Contains(svg, `y="248" fill="#ff9b9b"`) {
+				t.Fatal("mismatch label overlaps matched-pattern marks at y=249")
+			}
+			return
+		}
+	}
+	t.Fatal("missing mismatch")
+}

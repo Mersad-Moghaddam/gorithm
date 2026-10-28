@@ -2,11 +2,39 @@ package renderers
 
 import (
 	"encoding/xml"
+	"fmt"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"io"
 	"strings"
 	"testing"
 )
+
+func TestToposortDefaultGraphHasRoomOnMobile(t *testing.T) {
+	s := ToposortLessonState{GraphState: GraphState{Nodes: []GraphNode{
+		{ID: "clean", X: 100, Y: 225}, {ID: "lint", X: 280, Y: 130},
+		{ID: "compile", X: 280, Y: 320}, {ID: "test", X: 460, Y: 130},
+		{ID: "docs", X: 460, Y: 320}, {ID: "package", X: 640, Y: 225},
+		{ID: "deploy", X: 800, Y: 225},
+	}}}
+	got := RenderToposortLessonSVG(trace.Step{State: s}, 320, 640)
+	var x1, y1, x2, y2 float64
+	for _, node := range []struct {
+		id   string
+		x, y *float64
+	}{{"1", &x1, &y1}, {"3", &x2, &y2}} {
+		prefix := `data-entity="toposort:node:` + node.id + `" data-x="`
+		part := strings.SplitN(got, prefix, 2)
+		if len(part) != 2 {
+			t.Fatal("missing node", node.id)
+		}
+		if _, err := fmt.Sscanf(part[1], `%f" data-y="%f`, node.x, node.y); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if x2-x1 < 92 && y2-y1 < 44 && y1-y2 < 44 {
+		t.Fatalf("task boxes overlap: (%v,%v), (%v,%v)", x1, y1, x2, y2)
+	}
+}
 
 func TestToposortScene(t *testing.T) {
 	s := ToposortLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "A", Label: `<script>&"`, X: 0, Y: 0}, {ID: "B", Label: "dependency", X: 1, Y: 0}}, Edges: []GraphEdge{{From: "A", To: "B"}, {From: "A", To: "B"}, {From: "B", To: "A"}, {From: "A", To: "A"}}}, InDegree: map[string]int{"A": 1, "B": 0}, Processed: map[string]bool{"A": true}, Order: []string{"A"}, Queue: []string{"B"}, Current: "A", Neighbor: "B", EdgeIndex: 1, OldInDegree: 1, NewInDegree: 0, Decremented: true, ResolvedEdges: []int{0, 1}}

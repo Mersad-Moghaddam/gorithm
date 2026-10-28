@@ -47,7 +47,17 @@ func RenderDFSLessonSVG(step trace.Step, width, height int) string {
 		panelH = math.Max(100, 44*float64(len(s.Stack))+64)
 	}
 	stripY := math.Max(440, py+panelH+28)
-	chipW := func(id string) float64 { return math.Max(48, float64(utf8.RuneCountInString(id))*8+20) }
+	chipW := func(id string) float64 { return math.Max(48, float64(utf8.RuneCountInString(id))*14+20) }
+	rowHeight := func(list []string) float64 {
+		h := 48.0
+		for _, id := range list {
+			cw := math.Min(w-48, chipW(id))
+			count := int((cw - 20) / 14)
+			lines := (utf8.RuneCountInString(id) + count - 1) / count
+			h = math.Max(h, float64(lines*18+16))
+		}
+		return h
+	}
 	stripHeight := func(list []string) float64 {
 		x, rows := 24.0, 1.0
 		for _, id := range list {
@@ -58,7 +68,7 @@ func RenderDFSLessonSVG(step trace.Step, width, height int) string {
 			}
 			x += cw + 8
 		}
-		return rows*56 + 48
+		return rows*(rowHeight(list)+8) + 48
 	}
 	finishY := stripY + stripHeight(s.Order) + 16
 	statusY := finishY + stripHeight(s.FinishOrder) + 20
@@ -236,20 +246,20 @@ func RenderDFSLessonSVG(step trace.Step, width, height int) string {
 		dfsLessonText(&b, 24, y, title)
 		x := 24.0
 		y += 12
+		h := rowHeight(list)
 		for _, id := range list {
 			cw := math.Min(w-48, chipW(id))
 			if x+cw > w-24 {
 				x = 24
-				y += 56
+				y += h + 8
 			}
-			fmt.Fprintf(&b, `<g><title>%s</title><rect x="%.0f" y="%.0f" width="%.0f" height="48" rx="8" fill="#101923" stroke="%s"/>`, html.EscapeString(id), x, y, cw, colors[idx[id]%5])
+			fmt.Fprintf(&b, `<g><title>%s</title><rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="8" fill="#101923" stroke="%s"/>`, html.EscapeString(id), x, y, cw, h, colors[idx[id]%5])
 			runes := []rune(id)
-			count := int((cw - 20) / 8)
-			if len(runes) > count {
-				dfsLessonText(&b, x+10, y+19, string(runes[:count]))
-				dfsLessonText(&b, x+10, y+37, string(runes[count:]))
-			} else {
-				dfsLessonText(&b, x+10, y+25, id)
+			count := int((cw - 20) / 14)
+			for line := 0; len(runes) > 0; line++ {
+				n := min(count, len(runes))
+				dfsLessonText(&b, x+10, y+19+float64(line)*18, string(runes[:n]))
+				runes = runes[n:]
 			}
 			b.WriteString(`</g>`)
 			x += cw + 8

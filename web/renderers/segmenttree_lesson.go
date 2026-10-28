@@ -30,7 +30,7 @@ func RenderSegmentTreeLessonSVG(step trace.Step, width, height int) string {
 	if !ok || len(s.Nodes) == 0 || len(s.Values) == 0 || len(s.Values) > 64 {
 		return `<g data-lesson="segmenttree" data-phase="empty" data-scene-width="800" data-scene-height="500"><title>Segment tree unavailable</title><text x="32" y="44" fill="#eff5ed" font-size="14">No segment tree state available</text></g>`
 	}
-	w := max(800, 64+76*len(s.Values))
+	w := max(800, 64+116*len(s.Values))
 	positions := make(map[string][2]float64, len(s.Nodes))
 	nodes := make(map[string]SegmentTreeLessonNode, len(s.Nodes))
 	for _, n := range s.Nodes {
@@ -49,7 +49,7 @@ func RenderSegmentTreeLessonSVG(step trace.Step, width, height int) string {
 			parent = p.ParentID
 		}
 		depthMax = max(depthMax, depth)
-		x := float64(w-76*len(s.Values))/2 + 76*float64(n.L+n.R+1)/2
+		x := float64(w-116*len(s.Values))/2 + 116*float64(n.L+n.R+1)/2
 		positions[n.ID] = [2]float64{x, float64(152 + 92*depth)}
 	}
 	h := max(500, 300+92*depthMax+24*((len(s.AcceptedIDs)+5)/6))
@@ -59,18 +59,18 @@ func RenderSegmentTreeLessonSVG(step trace.Step, width, height int) string {
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" text-anchor="middle" fill="%s" font-size="%d">%s</text>`, x, y, color, size, html.EscapeString(value))
 	}
 	palette := []string{"#c45d75", "#387faa", "#8763bb", "#b67b30", "#258b80"}
-	start := float64(w-76*len(s.Values)) / 2
+	start := float64(w-116*len(s.Values)) / 2
 	for i, v := range s.Values {
-		x := start + 76*(float64(i)+0.5)
+		x := start + 116*(float64(i)+0.5)
 		stroke := "#eff5ed"
 		if s.Phase == "update" && i == s.UpdateIndex {
 			stroke = "#8bd5ff"
 		}
-		fmt.Fprintf(&b, `<g data-entity="array:%d" data-x="%.1f" data-y="44" transform="translate(%.1f 44)"><rect x="-34" y="-22" width="68" height="44" rx="8" fill="%s" stroke="%s" stroke-width="2"/><text y="6" text-anchor="middle" fill="#ffffff" font-size="16">%d</text></g>`, i, x, x, palette[i%5], stroke, v)
+		fmt.Fprintf(&b, `<g data-entity="array:%d" data-x="%.1f" data-y="44" transform="translate(%.1f 44)"><rect x="-50" y="-22" width="100" height="44" rx="8" fill="%s" stroke="%s" stroke-width="2"/><text y="6" text-anchor="middle" fill="#ffffff" font-size="16">%d</text></g>`, i, x, x, palette[i%5], stroke, v)
 		text(x, 86, fmt.Sprintf("[%d]", i), "#bbcab9", 14)
 	}
 	if s.Phase == "query" && s.QL >= 0 && s.QR >= s.QL && s.QR < len(s.Values) {
-		fmt.Fprintf(&b, `<path d="M %.1f 94 v 8 H %.1f v -8" fill="none" stroke="#ffe29a" stroke-width="3"/>`, start+76*float64(s.QL)+4, start+76*float64(s.QR+1)-4)
+		fmt.Fprintf(&b, `<path d="M %.1f 94 v 8 H %.1f v -8" fill="none" stroke="#ffe29a" stroke-width="3"/>`, start+116*float64(s.QL)+4, start+116*float64(s.QR+1)-4)
 		text(float64(w)/2, 124, fmt.Sprintf("Query [%d, %d] inclusive", s.QL, s.QR), "#ffe29a", 14)
 	} else if s.Phase == "update" {
 		text(float64(w)/2, 124, fmt.Sprintf("Update [%d] = %d; leaf and ancestors only", s.UpdateIndex, s.UpdateValue), "#8bd5ff", 14)

@@ -123,7 +123,7 @@ func RenderKosarajuLessonSVG(step trace.Step, width, height int) string {
 	for j, id := range s.FinishOrder {
 		ni := index[id]
 		x := 24 + float64(j%columns)*72
-		cy := y + float64(j/columns)*48
+		cy := y + float64(j/columns)*64
 		alias := ""
 		if id == s.FinishedVertex && step.Action == trace.ActionPush {
 			alias = fmt.Sprintf(` data-from-entity="kosaraju-node:%d"`, ni)
@@ -132,10 +132,10 @@ func RenderKosarajuLessonSVG(step trace.Step, width, height int) string {
 		body.WriteString(`</g>`)
 	}
 	if s.OrderIndex >= 0 && s.OrderIndex < len(s.FinishOrder) {
-		x, cy := 24+float64(s.OrderIndex%columns)*72, y+float64(s.OrderIndex/columns)*48
+		x, cy := 24+float64(s.OrderIndex%columns)*72, y+float64(s.OrderIndex/columns)*64
 		fmt.Fprintf(&body, `<g data-entity="kosaraju-cursor:0" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"><path d="M15 -8H41" stroke="#ffe29a" stroke-width="4"/><text x="28" y="46" text-anchor="middle" fill="#ffe29a" font-size="12">Inspect</text></g>`, x, cy, x, cy)
 	}
-	y += float64((len(s.FinishOrder)+columns-1)/columns)*48 + 28
+	y += float64((len(s.FinishOrder)+columns-1)/columns)*64 + 28
 	componentLabel := "Strong components · mutual reachability"
 	if narrow {
 		componentLabel = "SCCs · mutual reachability"

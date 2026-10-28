@@ -107,7 +107,7 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 			if len(custom.Nodes) > 0 {
 				nodes = custom.Nodes
 			}
-			if len(custom.Edges) > 0 {
+			if _, ok := fields["edges"]; ok {
 				edges = custom.Edges
 			}
 		}
@@ -118,6 +118,9 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 	ids := map[string]bool{}
 	for _, n := range nodes {
+		if n.ID == "" {
+			return nil, fmt.Errorf("node ID must not be empty")
+		}
 		if ids[n.ID] {
 			return nil, fmt.Errorf("duplicate node ID %q", n.ID)
 		}

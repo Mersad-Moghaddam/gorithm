@@ -39,7 +39,10 @@ func RenderAVLLessonSVG(step trace.Step, width, height int) string {
 	fmt.Fprintf(&b, `<g data-lesson="avl" data-phase="%s" data-scene-width="%.0f" data-scene-height="%.0f" data-min-width="%.0f" font-family="system-ui,sans-serif" font-size="14"><title>AVL tree: %s</title>`, html.EscapeString(s.Phase), w, h, w, html.EscapeString(s.Phase))
 	label := s.Phase
 	if s.Case != "" {
-		label = fmt.Sprintf("%s · %s rotation %d", s.Case, s.Rotation, s.RotationPart)
+		label = fmt.Sprintf("%s rotation %d", s.Case, s.RotationPart)
+		if s.Rotation != "" {
+			label = fmt.Sprintf("%s · %s rotation %d", s.Case, s.Rotation, s.RotationPart)
+		}
 		if s.Case == "LR" || s.Case == "RL" {
 			label += "/2"
 		}
@@ -102,7 +105,11 @@ func RenderAVLLessonSVG(step trace.Step, width, height int) string {
 		if n.Label != "" {
 			text = n.Label
 		}
-		fmt.Fprintf(&b, `<g id="avl-%s" data-entity="avl:%s" data-x="%.0f" data-y="%.0f" data-motion="linear" transform="translate(%.0f %.0f)"><circle r="22" fill="%s" stroke="%s" stroke-width="3"/><text y="6" text-anchor="middle" fill="#ffffff" font-size="16">%s</text><text y="40" text-anchor="middle" fill="#eff5ed">%s</text>`, html.EscapeString(n.ID), html.EscapeString(n.ID), n.X, n.Y, n.X, n.Y, palette[(ordinal-1)%5], stroke, html.EscapeString(text), html.EscapeString(n.ID))
+		fit := ""
+		if len([]rune(text)) > 4 {
+			fit = ` textLength="38" lengthAdjust="spacingAndGlyphs"`
+		}
+		fmt.Fprintf(&b, `<g id="avl-%s" data-entity="avl:%s" data-x="%.0f" data-y="%.0f" data-motion="linear" transform="translate(%.0f %.0f)"><circle r="22" fill="%s" stroke="%s" stroke-width="3"/><text y="6" text-anchor="middle" fill="#ffffff" font-size="16"%s>%s</text><text y="40" text-anchor="middle" fill="#eff5ed">%s</text>`, html.EscapeString(n.ID), html.EscapeString(n.ID), n.X, n.Y, n.X, n.Y, palette[(ordinal-1)%5], stroke, fit, html.EscapeString(text), html.EscapeString(n.ID))
 		if i < len(s.Heights) && i < len(s.Balances) {
 			fmt.Fprintf(&b, `<text y="58" text-anchor="middle" fill="#eff5ed">h=%d</text><text y="76" text-anchor="middle" fill="#eff5ed">bf=%d</text>`, s.Heights[i], s.Balances[i])
 		}

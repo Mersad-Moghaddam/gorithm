@@ -276,6 +276,14 @@ func TestSegmentTreeLessonInputBounds(t *testing.T) {
 	}
 }
 
+func TestSegmentTreeRejectsNullArrayElements(t *testing.T) {
+	for _, input := range []string{`[null]`, `{"arr":[null]}`, `{"arr":[1],"query":[null,0]}`} {
+		if _, err := (Lesson{}).Build([]byte(input)); err == nil {
+			t.Errorf("accepted %s", input)
+		}
+	}
+}
+
 func TestSegmentTreeCustomInput(t *testing.T) {
 	lesson := Lesson{}
 	customInput := []byte(`{

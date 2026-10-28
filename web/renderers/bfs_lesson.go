@@ -116,7 +116,7 @@ func RenderBFSLessonSVG(step trace.Step, width, height int) string {
 		if label == "" {
 			label = n.ID
 		}
-		bfsLessonLabel(&b, 0, 42, label, 12)
+		bfsLessonLabel(&b, 0, 42, fmt.Sprintf("%d: %s", i+1, label), 12)
 		level := "?"
 		if d, yes := s.Distance[n.ID]; yes {
 			level = fmt.Sprint(d)
@@ -142,7 +142,7 @@ func RenderBFSLessonSVG(step trace.Step, width, height int) string {
 		if s.Finished[n.ID] {
 			status = "✓ finished"
 		}
-		text := fmt.Sprintf("%s · %s · %s · %s", bfsLessonShort(n.ID, 4), level, bfsLessonShort(parent, 4), status)
+		text := fmt.Sprintf("%d: %s · %s · %s · %s", i+1, bfsLessonShort(n.ID, 4), level, bfsLessonShort(parent, 4), status)
 		fmt.Fprintf(&b, `<text x="%.0f" y="%.0f"><title>%s · level %s · parent %s · %s</title>%s</text>`, px+8, py+48+30*float64(i), html.EscapeString(n.ID), level, html.EscapeString(parent), status, html.EscapeString(text))
 	}
 	for k, list := range [][]string{s.Queue, s.Order} {
@@ -161,7 +161,7 @@ func RenderBFSLessonSVG(step trace.Step, width, height int) string {
 			if k == 0 && s.Enqueued == id {
 				alias = fmt.Sprintf(` data-from-entity="bfs-node:%d"`, i)
 			}
-			fmt.Fprintf(&b, `<g data-entity="%s:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"%s><title>%s</title><rect width="96" height="32" rx="8" fill="#1d2d35" stroke="%s"/><text x="48" y="22" text-anchor="middle">%s</text></g>`, role, i, x, cy, x, cy, alias, html.EscapeString(id), bfsLessonColors[i%5], html.EscapeString(bfsLessonShort(id, 9)))
+			fmt.Fprintf(&b, `<g data-entity="%s:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"%s><title>%s</title><rect width="96" height="32" rx="8" fill="#1d2d35" stroke="%s"/><text x="48" y="22" text-anchor="middle">%s</text></g>`, role, i, x, cy, x, cy, alias, html.EscapeString(id), bfsLessonColors[i%5], html.EscapeString(fmt.Sprintf("%d: %s", i+1, bfsLessonShort(id, 7))))
 		}
 		if len(list) == 0 {
 			fmt.Fprintf(&b, `<text x="24" y="%.0f" fill="#bbcab9">empty</text>`, y+56)

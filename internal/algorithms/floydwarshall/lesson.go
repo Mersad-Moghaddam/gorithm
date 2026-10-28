@@ -44,8 +44,8 @@ func (l Lesson) Meta() catalog.Meta {
 
 func (l Lesson) Source() []trace.SourceLine {
 	return []trace.SourceLine{
-		{ID: "L1", Number: 1, Code: "func FloydWarshall(nodes []string, edges []WeightedEdge) ([][]int, bool) {"},
-		{ID: "L2", Number: 2, Code: "    dist := initDistanceMatrix(nodes, edges)"},
+		{ID: "L1", Number: 1, Code: "func FloydWarshallLesson(nodes []string, edges []WeightedEdge) ([][]int64, bool) {"},
+		{ID: "L2", Number: 2, Code: "    dist := initDistanceMatrix64(nodes, edges) // int64 distances"},
 		{ID: "L3", Number: 3, Code: "    for k := 0; k < len(nodes); k++ {"},
 		{ID: "L4", Number: 4, Code: "        for i := 0; i < len(nodes); i++ {"},
 		{ID: "L5", Number: 5, Code: "            for j := 0; j < len(nodes); j++ {"},
@@ -136,9 +136,9 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				}
 			}
 
-			if len(custom.Edges) > 0 {
+			if _, ok := fields["edges"]; ok {
 				edges = custom.Edges
-			} else if len(custom.GraphEdges) > 0 {
+			} else if _, ok := fields["graphEdges"]; ok {
 				edges = make([]WeightedEdge, len(custom.GraphEdges))
 				for i, ge := range custom.GraphEdges {
 					edges[i] = WeightedEdge{

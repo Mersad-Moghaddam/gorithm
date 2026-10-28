@@ -22,7 +22,7 @@ func Trace(initial []int) []trace.Step {
 		}
 	}
 	add := func(line string, action trace.ActionType, explanation string, current int, variables map[string]any) {
-		phase := map[string]string{"L1": "init", "L2": "maximum", "L3": "pass", "L4": "pass", "L7": "pass", "L8": "pass", "L9": "pass", "L10": "tally", "L11": "prefix", "L12": "output", "L13": "output", "L14": "output", "L15": "output", "L17": "copy", "L5": "pass", "L6": "done"}[line]
+		phase := map[string]string{"L1": "init", "L2": "maximum", "L3": "pass", "L4": "pass", "L7": "pass", "L8": "pass", "L9": "pass", "L10": "tally", "L11": "prefix", "L12": "output", "L13": "output", "L14": "output", "L15": "output", "L17": "copy", "L5": "pass-complete", "L6": "done"}[line]
 		base := renderers.ArrayState{Values: cloneSlice(arr), Current: current}
 		if line == "L6" {
 			base.Sorted = makeRange(0, n-1)

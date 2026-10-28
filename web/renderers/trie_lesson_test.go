@@ -147,3 +147,87 @@ func TestTrieLessonMaliciousLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestTrieTerminalSiblingsHaveLabelSpace(t *testing.T) {
+	steps := trie.Trace([]string{"a", "b"}, "a", "b")
+	svg := renderers.RenderTrieLessonSVG(steps[len(steps)-1], 800, 480)
+	d := xml.NewDecoder(strings.NewReader("<svg>" + svg + "</svg>"))
+	var xs []float64
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			break
+		}
+		if el, ok := tok.(xml.StartElement); ok && el.Name.Local == "g" {
+			attrs := map[string]string{}
+			for _, a := range el.Attr {
+				attrs[a.Name.Local] = a.Value
+			}
+			if strings.HasPrefix(attrs["data-entity"], "node:node-") {
+				x, err := strconv.ParseFloat(attrs["data-x"], 64)
+				if err != nil {
+					t.Fatal(err)
+				}
+				xs = append(xs, x)
+			}
+		}
+	}
+	if len(xs) != 2 || xs[1]-xs[0] < 90 {
+		t.Fatalf("terminal sibling labels need room: x positions %v", xs)
+	}
+}
+
+func TestTrieEdgesDoNotDuplicateNodeLabels(t *testing.T) {
+	steps := trie.Trace([]string{"ab"}, "ab", "a")
+	svg := renderers.RenderTrieLessonSVG(steps[len(steps)-1], 800, 480)
+	d := xml.NewDecoder(strings.NewReader("<svg>" + svg + "</svg>"))
+	inEdge := false
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			break
+		}
+		switch el := tok.(type) {
+		case xml.StartElement:
+			for _, a := range el.Attr {
+				if a.Name.Local == "data-edge" {
+					inEdge = true
+				}
+			}
+			if inEdge && el.Name.Local == "text" {
+				t.Fatal("edge label overlaps parent identity on vertical edges")
+			}
+		case xml.EndElement:
+			if el.Name.Local == "g" && inEdge {
+				inEdge = false
+			}
+		}
+	}
+}
+
+func TestTrieVerticalLabelsHaveSpace(t *testing.T) {
+	steps := trie.Trace([]string{"ab"}, "ab", "a")
+	svg := renderers.RenderTrieLessonSVG(steps[len(steps)-1], 800, 480)
+	d := xml.NewDecoder(strings.NewReader("<svg>" + svg + "</svg>"))
+	var ys []float64
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			break
+		}
+		if el, ok := tok.(xml.StartElement); ok {
+			for _, a := range el.Attr {
+				if a.Name.Local == "data-y" {
+					y, err := strconv.ParseFloat(a.Value, 64)
+					if err != nil {
+						t.Fatal(err)
+					}
+					ys = append(ys, y)
+				}
+			}
+		}
+	}
+	if len(ys) != 3 || ys[1]-ys[0] < 96 || ys[2]-ys[1] < 96 {
+		t.Fatalf("parent identity and child cue need separate baselines: %v", ys)
+	}
+}

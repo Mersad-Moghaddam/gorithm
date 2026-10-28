@@ -161,16 +161,33 @@ func RenderGradientDescentLessonSVG(step trace.Step, width, height int) string {
 	}
 	out.WriteString(`</g>`)
 	colors := []string{"#c45d75", "#387faa", "#8763bb", "#b67b30", "#258b80"}
-	for i, x := range s.X {
-		if i >= len(s.Y) {
-			break
+	for pass := 0; pass < 2; pass++ {
+		for i, x := range s.X {
+			if i >= len(s.Y) {
+				break
+			}
+			active := i == s.Sample
+			if active != (pass == 1) {
+				continue
+			}
+			px, py := dx(x), dy(s.Y[i])
+			stroke, strokeWidth := "#eff5ed", 1
+			if active {
+				stroke, strokeWidth = "#ffe29a", 3
+			}
+			fmt.Fprintf(&out, `<g data-entity="sample:P%d" data-x="%.3f" data-y="%.3f" transform="translate(%.3f %.3f)"><title>P%d: x=%.6g, y=%.6g</title><circle r="6" fill="%s" stroke="%s" stroke-width="%d"/>`, i, px, py, px, py, i, x, s.Y[i], colors[i%len(colors)], stroke, strokeWidth)
+			if active {
+				labelX, labelY, anchor := 8, -8, "start"
+				if px > x1+plotW-42 {
+					labelX, anchor = -8, "end"
+				}
+				if py < y1+22 {
+					labelY = 20
+				}
+				fmt.Fprintf(&out, `<text x="%d" y="%d" text-anchor="%s">P%d</text>`, labelX, labelY, anchor, i)
+			}
+			out.WriteString(`</g>`)
 		}
-		px, py := dx(x), dy(s.Y[i])
-		stroke, strokeWidth := "#eff5ed", 1
-		if i == s.Sample {
-			stroke, strokeWidth = "#ffe29a", 3
-		}
-		fmt.Fprintf(&out, `<g data-entity="sample:P%d" data-x="%.3f" data-y="%.3f" transform="translate(%.3f %.3f)"><title>P%d: x=%.6g, y=%.6g</title><circle r="6" fill="%s" stroke="%s" stroke-width="%d"/><text x="8" y="-8">P%d</text></g>`, i, px, py, px, py, i, x, s.Y[i], colors[i%len(colors)], stroke, strokeWidth, i)
 	}
 	text(x1, y1+plotH+20, "#bbcab9", fmt.Sprintf("x: %.4g … %.4g", s.DataXMin, s.DataXMax))
 	text(x1, y1+plotH+40, "#bbcab9", fmt.Sprintf("y: %.4g … %.4g", s.DataYMin, s.DataYMax))

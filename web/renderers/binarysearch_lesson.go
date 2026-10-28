@@ -72,7 +72,7 @@ func RenderBinarySearchLessonSVG(step trace.Step, width, height int) string {
 			fmt.Fprintf(&b, `<rect width="64" height="56" rx="10" fill="url(#binarysearch-excluded)"/><text x="32" y="140" text-anchor="middle">%s</text>`, map[bool]string{true: "excluded", false: "outside"}[s.SortedInput])
 		}
 		if cue != "" {
-			fmt.Fprintf(&b, `<text x="32" y="-8" text-anchor="middle">%s</text>`, html.EscapeString(cue))
+			fmt.Fprintf(&b, `<text x="32" y="49" text-anchor="middle" font-size="12">%s</text>`, html.EscapeString(cue))
 		}
 		b.WriteString(`</g>`)
 	}
@@ -80,7 +80,7 @@ func RenderBinarySearchLessonSVG(step trace.Step, width, height int) string {
 	marker := func(name string, index, y int) {
 		x := 64 + 76*index
 		if index < 0 {
-			x = 16
+			x = 32
 		}
 		if index >= len(s.Values) {
 			x = 32 + 76*len(s.Values)

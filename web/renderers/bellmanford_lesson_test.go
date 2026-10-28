@@ -45,3 +45,14 @@ func TestBellmanFordLessonSVG(t *testing.T) {
 		t.Fatal("cycle celebrated")
 	}
 }
+
+func TestBellmanFordNoCursorWithoutActiveEdge(t *testing.T) {
+	s := BellmanFordLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: "A"}}, Edges: []GraphEdge{{From: "A", To: "A"}}}, EdgeIndex: -1}
+	svg := RenderBellmanFordLessonSVG(trace.Step{LineID: "L18", State: s}, 320, 640)
+	if strings.Contains(svg, `data-entity="bellmanford:cursor"`) {
+		t.Fatal("inactive edge still has cursor")
+	}
+	if !strings.Contains(svg, `<text x="28.00" y="376.00" fill="#c45d75">A</text>`) {
+		t.Fatal("unlabeled vertex must show its ID")
+	}
+}

@@ -173,7 +173,7 @@ func TestBinarySearchLessonBoundaryCases(t *testing.T) {
 }
 
 func TestBinarySearchBuildValidation(t *testing.T) {
-	for _, input := range []string{`null`, `{`, `true`, `{"array":null}`, `{"arr":null}`, `{"target":null}`, `{"array":[3,1,2]}`, `{"array":[1000001]}`, `{"array":[-1000001]}`, `{"target":1000001}`, `{"target":-1000001}`, `{"array":["1"]}`} {
+	for _, input := range []string{`null`, `{`, `true`, `[null]`, `{"array":[null]}`, `{"arr":[null]}`, `{"array":null}`, `{"arr":null}`, `{"target":null}`, `{"array":[3,1,2]}`, `{"array":[1000001]}`, `{"array":[-1000001]}`, `{"target":1000001}`, `{"target":-1000001}`, `{"array":["1"]}`} {
 		if _, err := (Lesson{}).Build(json.RawMessage(input)); err == nil {
 			t.Errorf("accepted %s", input)
 		}

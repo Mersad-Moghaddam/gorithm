@@ -18,6 +18,19 @@ func TestKruskalTypedTrace(t *testing.T) {
 	}
 }
 
+func TestKruskalEarlyExitMatchesSource(t *testing.T) {
+	steps := Trace([]renderers.GraphNode{{ID: "A"}, {ID: "B"}}, []WeightedEdge{{"A", "B", 1}, {"A", "B", 2}})
+	if steps[len(steps)-2].LineID != "L8" {
+		t.Fatal("missing early-exit step")
+	}
+	for _, line := range (Lesson{}).Source() {
+		if line.ID == "L8" && line.Code == "            if len(mst) == len(nodes)-1 { break }" {
+			return
+		}
+	}
+	t.Fatal("displayed source omits early exit")
+}
+
 func TestKruskalRejectMalformedInput(t *testing.T) {
 	for _, input := range []string{`null`, `{`, `{"nodes":[{"id":"A"},{"id":"A"}],"edges":[{"from":"A","to":"A"}]}`, `{"nodes":[{"id":"A"}],"edges":[{"from":"A","to":"missing"}]}`, `{"nodes":[{"id":"A"}],"edges":[{"from":"A","to":"A","weight":10001}]}`} {
 		if _, err := (Lesson{}).Build(json.RawMessage(input)); err == nil {

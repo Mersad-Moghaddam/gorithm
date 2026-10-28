@@ -67,3 +67,13 @@ func TestQuickLessonSVG(t *testing.T) {
 		t.Fatal("boundary increment must not claim values moved", beforeSwap)
 	}
 }
+
+func TestQuickLessonPivotPlacementIncludesDisplacedValue(t *testing.T) {
+	s := QuickLessonState{ArrayState: ArrayState{Values: []int{1, 2, 3}}, IDs: []int{1, 2, 0}, Low: 0, High: 2, Boundary: 0, Scan: 2, PivotActive: true, PivotID: 2, PivotIndex: 1, PivotValue: 2}
+	for _, line := range []string{"L17", "L18"} {
+		svg := RenderQuickLessonSVG(trace.Step{LineID: line, State: s}, 320, 360)
+		if !strings.Contains(svg, "scanned ≥ pivot: [2..2]") {
+			t.Fatalf("%s: displaced value missing from partition: %s", line, svg)
+		}
+	}
+}

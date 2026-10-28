@@ -61,7 +61,7 @@ func Trace(nodes []AStarNode, edges []AStarEdge, start, goal string) []trace.Ste
 		out.Path = slices.Clone(s.Path)
 		out.Open = make([]renderers.AStarOpenEntry, pq.Len())
 		for i, it := range *pq {
-			out.Open[i] = renderers.AStarOpenEntry{Node: it.node, G: s.G[it.node], H: it.hScore, F: it.fScore, HeapIndex: i}
+			out.Open[i] = renderers.AStarOpenEntry{Node: it.node, G: it.fScore - it.hScore, H: it.hScore, F: it.fScore, HeapIndex: i}
 		}
 		vars := map[string]any{"start": start, "goal": goal, "current": s.Current, "neighbor": s.Neighbor, "found": s.Found, "cost": s.Cost, "openSetCount": pq.Len()}
 		if s.Current != "" {

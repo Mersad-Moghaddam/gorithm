@@ -19,7 +19,7 @@ func TestFloydWarshallTypedSnapshots(t *testing.T) {
 	if err := catalog.ValidateSourceLineIDs(Lesson{}, steps); err != nil {
 		t.Fatal(err)
 	}
-	want := [][]int{{0, 3, 5, 6}, {5, 0, 2, 3}, {3, 6, 0, 1}, {2, 5, 7, 0}}
+	want := [][]int64{{0, 3, 5, 6}, {5, 0, 2, 3}, {3, 6, 0, 1}, {2, 5, 7, 0}}
 	final := steps[len(steps)-1].State.(renderers.FloydWarshallLessonState)
 	if !reflect.DeepEqual(final.Distance, want) {
 		t.Fatalf("matrix %v", final.Distance)
@@ -55,6 +55,67 @@ func TestFloydWarshallTypedSnapshots(t *testing.T) {
 	}
 }
 
+func TestFloydWarshallExplicitEmptyEdges(t *testing.T) {
+	steps, err := (Lesson{}).Build(json.RawMessage(`{"nodes":["A","B"],"edges":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := steps[0]
+	if first.LineID != "L2" {
+		t.Fatalf("initial matrix points to %s, want L2", first.LineID)
+	}
+	s := first.State.(renderers.FloydWarshallLessonState)
+	if len(s.Edges) != 0 || s.Distance[0][1] != math.MaxInt64 {
+		t.Fatalf("empty graph initialized with edges: %+v", s)
+	}
+}
+
+func TestFloydWarshallBoundedNegativeCycleArithmetic(t *testing.T) {
+	nodes := make([]string, 16)
+	for i := range nodes {
+		nodes[i] = string(rune('A' + i))
+	}
+	edges := make([]WeightedEdge, 0, 120)
+	for i := range nodes {
+		for j := i + 1; j < len(nodes); j++ {
+			edges = append(edges, WeightedEdge{nodes[i], nodes[j], -10000, false})
+		}
+	}
+	input, err := json.Marshal(LessonInput{Nodes: nodes, Edges: edges})
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := (Lesson{}).Build(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := steps[len(steps)-1].State.(renderers.FloydWarshallLessonState)
+	const want int64 = -3134566563840000
+	if got := int64(last.Distance[15][15]); got != want || !last.NegativeCycle {
+		t.Fatalf("distance=%d negativeCycle=%v; want %d and true", got, last.NegativeCycle, want)
+	}
+	dist, neg := AllPairsShortestPath(nodes, edges)
+	wantAPI := want
+	if wantAPI < int64(math.MinInt) {
+		wantAPI = int64(math.MinInt)
+	}
+	if int64(dist[15][15]) != wantAPI || !neg {
+		t.Fatalf("algorithm distance=%d negativeCycle=%v", dist[15][15], neg)
+	}
+}
+
+func TestFloydWarshallAPIReturnType(t *testing.T) {
+	var api func([]string, []WeightedEdge) ([][]int, bool) = AllPairsShortestPath
+	_, _ = api(nil, nil)
+}
+
+func TestFloydWarshallSourceDescribesTraceDistances(t *testing.T) {
+	source := (Lesson{}).Source()
+	if !strings.Contains(source[0].Code, "[][]int64") || !strings.Contains(source[1].Code, "int64") {
+		t.Fatalf("source does not describe 64-bit trace: %q / %q", source[0].Code, source[1].Code)
+	}
+}
+
 func TestFloydWarshallGuardAndAlias(t *testing.T) {
 	for _, fixture := range []struct {
 		nodes []string
@@ -67,7 +128,18 @@ func TestFloydWarshallGuardAndAlias(t *testing.T) {
 		steps := Trace(fixture.nodes, fixture.edges)
 		want, neg := AllPairsShortestPath(fixture.nodes, fixture.edges)
 		last := steps[len(steps)-1].State.(renderers.FloydWarshallLessonState)
-		if !reflect.DeepEqual(last.Distance, want) || last.NegativeCycle != neg {
+		converted := make([][]int64, len(want))
+		for i := range want {
+			converted[i] = make([]int64, len(want[i]))
+			for j, v := range want[i] {
+				if v == math.MaxInt {
+					converted[i][j] = math.MaxInt64
+				} else {
+					converted[i][j] = int64(v)
+				}
+			}
+		}
+		if !reflect.DeepEqual(last.Distance, converted) || last.NegativeCycle != neg {
 			t.Fatalf("final %+v vs %v %v", last, want, neg)
 		}
 		if neg && steps[len(steps)-1].LineID != "L16" {
@@ -79,7 +151,7 @@ func TestFloydWarshallGuardAndAlias(t *testing.T) {
 				t.Fatal("infinity produced candidate")
 			}
 			if step.LineID == "L7" {
-				if s.LeftDistance == math.MaxInt || s.Candidate != s.LeftDistance+s.RightDistance || s.OldDistance != s.Distance[s.I][s.J] {
+				if s.LeftDistance == math.MaxInt64 || s.Candidate != s.LeftDistance+s.RightDistance || s.OldDistance != s.Distance[s.I][s.J] {
 					t.Fatal("wrong saved operands")
 				}
 			}

@@ -73,7 +73,7 @@ func RenderRadixsortLessonSVG(step trace.Step, width, height int) string {
 		}
 		b.WriteString(`</text>`)
 		fmt.Fprintf(&b, `<text x="0" y="22" text-anchor="middle">#%d [%d]</text>`, id, i)
-		if s.Exp > 0 && place < 0 {
+		if s.Exp > 0 && place < 0 && s.Phase != "done" {
 			b.WriteString(`<text x="0" y="42" text-anchor="middle" fill="#ffe29a">digit 0</text>`)
 		}
 		if s.Phase == "done" {
@@ -81,7 +81,7 @@ func RenderRadixsortLessonSVG(step trace.Step, width, height int) string {
 		}
 		b.WriteString(`</g>`)
 	}
-	fmt.Fprintf(&b, `<path d="M32 210 H%d" stroke="#bbcab9"/><text x="32" y="278">Counters 0–9 · %s</text>`, w-32, radixsortLessonCounterLabel(s.Phase))
+	fmt.Fprintf(&b, `<path d="M32 210 H%d" stroke="#bbcab9"/><text x="32" y="278">Counters 0–9 · %s</text>`, w-32, radixsortLessonCounterLabel(s.Phase, s.Exp))
 	for digit, c := range s.Counts {
 		x := 32 + float64(digit)*float64(w-64)/10
 		cw := float64(w-64)/10 - 8
@@ -119,9 +119,12 @@ func radixsortLessonColor(id int) string {
 	}
 	return colors[id%5]
 }
-func radixsortLessonCounterLabel(phase string) string {
+func radixsortLessonCounterLabel(phase string, exp int) string {
+	if phase == "done" && exp == 0 {
+		return "digit frequencies"
+	}
 	switch phase {
-	case "prefix", "output", "copy", "done":
+	case "prefix", "output", "copy", "pass-complete", "done":
 		return "cumulative positions (decrement after placement)"
 	default:
 		return "digit frequencies"

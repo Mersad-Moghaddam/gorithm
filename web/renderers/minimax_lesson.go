@@ -163,8 +163,39 @@ func RenderMinimaxLessonSVG(step trace.Step, width, height int) string {
 		b.WriteString(`</g>`)
 	}
 	if s.EvalValid && s.ReturnedFromID != "" {
-		p := positions[s.ActiveID]
-		fmt.Fprintf(&b, `<g data-entity="utility:%s" data-from-entity="node:%s" data-motion="linear" data-x="%.1f" data-y="%.1f" transform="translate(%.1f %.1f)"><rect x="-32" y="-15" width="64" height="30" rx="10" fill="#192923" stroke="#8bd5ff"/><text text-anchor="middle" y="5" fill="#8bd5ff">%d</text></g>`, html.EscapeString(s.ReturnedFromID), html.EscapeString(s.ReturnedFromID), p[0], p[1]+28, p[0], p[1]+28, s.Eval)
+		parent := positions[s.ActiveID]
+		p := [2]float64{parent[0] + 80, parent[1]}
+		// Find the nearest clear badge position without covering nodes or their labels.
+		for radius := 80.0; ; radius += 40 {
+			found := false
+			for _, offset := range [][2]float64{{radius, 0}, {-radius, 0}, {0, radius}, {0, -radius}} {
+				candidate := [2]float64{parent[0] + offset[0], parent[1] + offset[1]}
+				if candidate[0] < 32 || candidate[0] > float64(sceneWidth-32) || candidate[1] < 15 || candidate[1] > float64(treeBottom+20) {
+					continue
+				}
+				clear := true
+				for _, n := range s.Nodes {
+					q := positions[n.ID]
+					dx, dy := math.Abs(candidate[0]-q[0]), candidate[1]-q[1]
+					if dx < 76 && dy > -43 && dy < 43 || dx < 110 && (dy > -55 && dy < -20 || dy > 32 && dy < 80) {
+						clear = false
+						break
+					}
+				}
+				if clear {
+					p, found = candidate, true
+					break
+				}
+			}
+			if found || radius > float64(sceneWidth+sceneHeight) {
+				break
+			}
+		}
+		dx, dy := p[0]-parent[0], p[1]-parent[1]
+		start := 1 / math.Max(math.Abs(dx)/44, math.Abs(dy)/28)
+		end := 1 - 1/math.Max(math.Abs(dx)/32, math.Abs(dy)/15)
+		fmt.Fprintf(&b, `<path data-return-to="node:%s" d="M%.1f %.1fL%.1f %.1f" fill="none" stroke="#8bd5ff" stroke-width="2" stroke-dasharray="5 4"/>`, html.EscapeString(s.ActiveID), parent[0]+dx*start, parent[1]+dy*start, parent[0]+dx*end, parent[1]+dy*end)
+		fmt.Fprintf(&b, `<g data-entity="utility:%s" data-from-entity="node:%s" data-motion="linear" data-x="%.1f" data-y="%.1f" transform="translate(%.1f %.1f)"><rect x="-32" y="-15" width="64" height="30" rx="10" fill="#192923" stroke="#8bd5ff"/><text text-anchor="middle" y="5" fill="#8bd5ff">%d</text></g>`, html.EscapeString(s.ReturnedFromID), html.EscapeString(s.ReturnedFromID), p[0], p[1], p[0], p[1], s.Eval)
 	}
 	y := float64(treeBottom + 45)
 	text(24, y, "α = "+minimaxBound(s.Alpha)+"    β = "+minimaxBound(s.Beta), "#ffe29a")

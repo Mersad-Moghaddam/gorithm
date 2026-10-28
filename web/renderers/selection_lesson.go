@@ -108,7 +108,7 @@ func RenderSelectionLessonSVG(step trace.Step, width, height int) string {
 		}
 		fmt.Fprintf(&out, `<text x="0" y="%.2f" text-anchor="middle" font-size="14" font-weight="600">%d</text><text x="0" y="%.2f" text-anchor="middle" font-size="12" fill="#bbcab9">#%d</text>`, y-24, value, y-8, id)
 		if i < s.SortedPrefix {
-			fmt.Fprintf(&out, `<text x="0" y="%.2f" text-anchor="middle" font-size="16" fill="#9bf0bb">✓</text>`, math.Max(0, tip)+22)
+			fmt.Fprintf(&out, `<text x="0" y="%.2f" text-anchor="middle" font-size="16" fill="#9bf0bb">✓</text>`, math.Max(0, tip)+12)
 		}
 		out.WriteString(`</g>`)
 		fmt.Fprintf(&out, `<text x="%.2f" y="%d" text-anchor="middle" font-size="12" fill="#bbcab9">[%d]</text>`, x, height-112, i)

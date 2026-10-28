@@ -177,9 +177,20 @@ func TestToposortInputLimits(t *testing.T) {
 }
 
 func TestToposortRejectInvalidInput(t *testing.T) {
-	for _, input := range []string{`null`, `{`, `[]`, `{"nodes":[{"id":"A"},{"id":"A"}]}`, `{"edges":[{"from":"clean","to":"missing"}]}`, `{"nodes":null}`, `{"nodes":[{"id":"A","x":1000001}]}`} {
+	for _, input := range []string{`null`, `{`, `[]`, `{"nodes":[{"id":""}],"edges":[{"from":"","to":""}]}`, `{"nodes":[{"id":"A"},{"id":"A"}]}`, `{"edges":[{"from":"clean","to":"missing"}]}`, `{"nodes":null}`, `{"nodes":[{"id":"A","x":1000001}]}`} {
 		if _, err := (Lesson{}).Build([]byte(input)); err == nil {
 			t.Errorf("accepted invalid input %s", input)
 		}
+	}
+}
+
+func TestToposortExplicitEmptyEdges(t *testing.T) {
+	steps, err := (Lesson{}).Build([]byte(`{"nodes":[{"id":"A"},{"id":"B"}],"edges":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := steps[len(steps)-1].State.(renderers.ToposortLessonState)
+	if !final.Valid || !slices.Equal(final.Order, []string{"A", "B"}) || len(final.Edges) != 0 {
+		t.Fatalf("unexpected result: %+v", final)
 	}
 }

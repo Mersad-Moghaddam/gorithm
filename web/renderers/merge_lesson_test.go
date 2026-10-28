@@ -64,3 +64,11 @@ func TestMergeLessonSVG(t *testing.T) {
 		t.Fatal("copy treated as swap")
 	}
 }
+
+func TestMergeLessonFinalNegativeCheckDoesNotOverlapIndex(t *testing.T) {
+	s := MergeLessonState{ArrayState: ArrayState{Values: []int{-3}}, IDs: []int{0}, MinValue: -3}
+	svg := RenderMergeLessonSVG(trace.Step{LineID: "L9", Action: trace.ActionDone, State: s}, 320, 360)
+	if !strings.Contains(svg, `[0] ✓</text>`) {
+		t.Fatal("final check must share the index label, not overlap it")
+	}
+}

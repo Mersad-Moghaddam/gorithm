@@ -33,3 +33,14 @@ func TestKnapsackLessonSVG(t *testing.T) {
 		}
 	}
 }
+
+func TestKnapsackZeroWeightSharedSource(t *testing.T) {
+	s := KnapsackLessonState{Weights: []int{0}, Values: []int{3}, DP: [][]int{{0}, {0}}, Known: [][]bool{{true}, {false}}, Item: 1, Column: 0, Sources: [2][2]int{{0, 0}, {0, 0}}, Fits: true, Include: 3, Phase: "compare"}
+	svg := RenderKnapsackLessonSVG(trace.Step{State: s}, 320, 450)
+	if !strings.Contains(svg, "Both use the same previous-row cell") {
+		t.Fatal("shared source not explained")
+	}
+	if got := strings.Count(svg, `stroke-dasharray="4 3"`); got != 1 {
+		t.Fatalf("got %d dependency arrows, want one shared arrow", got)
+	}
+}

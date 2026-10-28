@@ -71,6 +71,30 @@ func TestFloydWarshallUnreachableAndUndirected(t *testing.T) {
 	}
 }
 
+func TestFloydWarshallSaturatesFiniteOverflow(t *testing.T) {
+	nodes := []string{"A", "B", "C", "D"}
+	for _, tc := range []struct{ weight, want int }{{math.MaxInt - 10, math.MaxInt - 1}, {math.MinInt + 10, math.MinInt}} {
+		dist, _ := AllPairsShortestPath(nodes, []WeightedEdge{{"A", "B", tc.weight, true}, {"B", "C", tc.weight, true}})
+		if dist[0][2] != tc.want || dist[0][3] != math.MaxInt {
+			t.Fatalf("weight %d: got %d and unreachable %d", tc.weight, dist[0][2], dist[0][3])
+		}
+	}
+}
+
+func TestFloydWarshallExactIntermediateDistances(t *testing.T) {
+	nodes := []string{"A", "B", "C", "D"}
+	edges := []WeightedEdge{{"A", "B", math.MaxInt - 1, true}, {"B", "C", 10, true}, {"C", "A", -math.MaxInt, true}}
+	dist, negative := AllPairsShortestPath(nodes, edges)
+	if negative || dist[0][0] != 0 || dist[1][0] != 10-math.MaxInt || dist[0][2] != math.MaxInt-1 || dist[0][3] != math.MaxInt {
+		t.Fatalf("positive cycle: negative=%v distances=%v", negative, dist)
+	}
+	// A direct MaxInt edge is finite, not the unreachable sentinel.
+	dist, negative = AllPairsShortestPath(nodes, []WeightedEdge{{"A", "B", math.MaxInt, true}, {"B", "C", -math.MaxInt, true}})
+	if negative || dist[0][1] != math.MaxInt-1 || dist[0][2] != 0 || dist[0][3] != math.MaxInt {
+		t.Fatalf("MaxInt edge: negative=%v distances=%v", negative, dist)
+	}
+}
+
 func TestFloydWarshallLessonValidation(t *testing.T) {
 	lesson := Lesson{}
 	steps, err := lesson.Build(nil)

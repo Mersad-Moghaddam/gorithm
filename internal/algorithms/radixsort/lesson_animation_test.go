@@ -71,6 +71,9 @@ func TestRadixsortLessonSnapshots(t *testing.T) {
 			}
 		}
 		if s.LineID == "L5" {
+			if st.Phase != "pass-complete" {
+				t.Fatalf("completed pass phase = %q", st.Phase)
+			}
 			passes = append(passes, st)
 		}
 		if s.LineID == "L9" {

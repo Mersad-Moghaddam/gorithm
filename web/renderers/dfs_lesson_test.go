@@ -36,3 +36,12 @@ func TestDFSSceneSettledEscapedAndMotion(t *testing.T) {
 		}
 	}
 }
+
+func TestDFSLongWideIDFitsOrderChip(t *testing.T) {
+	id := strings.Repeat("界", 64)
+	s := DFSLessonState{GraphState: GraphState{Nodes: []GraphNode{{ID: id}}}, Order: []string{id}}
+	got := RenderDFSLessonSVG(trace.Step{State: s}, 320, 640)
+	if !strings.Contains(got, `height="88"`) || strings.Count(got, strings.Repeat("界", 20)) < 3 {
+		t.Fatal("long chip text must wrap into readable lines")
+	}
+}

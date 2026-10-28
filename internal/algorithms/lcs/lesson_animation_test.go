@@ -99,3 +99,16 @@ func TestLCSBuildBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestLCSBuildExplicitEmptyStrings(t *testing.T) {
+	for _, raw := range []string{`{"s1":"","s2":""}`, `{"text":"","pattern":""}`} {
+		steps, err := (Lesson{}).Build(json.RawMessage(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := steps[0].State.(renderers.LCSLessonState)
+		if state.S1 != "" || state.S2 != "" {
+			t.Fatalf("%s: got %q, %q", raw, state.S1, state.S2)
+		}
+	}
+}

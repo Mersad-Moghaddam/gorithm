@@ -55,7 +55,17 @@ func RenderPrimLessonSVG(step trace.Step, width, height int) string {
 	if acceptedRows < 1 {
 		acceptedRows = 1
 	}
-	equationY := acceptedY + 40 + float64(acceptedRows)*48
+	loopCount := 0
+	for _, e := range s.Edges {
+		if e.From == e.To {
+			loopCount++
+		}
+	}
+	loopY := acceptedY + 40 + float64(acceptedRows)*48
+	equationY := loopY
+	if loopCount > 0 {
+		equationY += 40 + float64((loopCount+cols-1)/cols)*48
+	}
 	sceneH := math.Max(640, equationY+120)
 	var b strings.Builder
 	fmt.Fprintf(&b, `<g data-lesson="prim" data-phase="%s" data-scene-width="%.0f" data-scene-height="%.0f" data-min-width="%.0f" font-family="system-ui,sans-serif" font-size="14" fill="#eff5ed"><title>%s</title>`, html.EscapeString(step.LineID), w, sceneH, w, html.EscapeString("Prim: "+step.Explanation))
@@ -85,6 +95,9 @@ func RenderPrimLessonSVG(step trace.Step, width, height int) string {
 			continue
 		}
 		p, q := pos[a], pos[z]
+		if a == z {
+			continue // Self-loops occupy their own ledger, never the cut or MST.
+		}
 		color, dash := "#7e929e", ""
 		if cut[i] {
 			color = "#ffe29a"
@@ -106,10 +119,7 @@ func RenderPrimLessonSVG(step trace.Step, width, height int) string {
 		length := math.Hypot(dx, dy)
 		mx, my := (p[0]+q[0])/2, (p[1]+q[1])/2
 		path := ""
-		if a == z {
-			path = fmt.Sprintf("M %.2f %.2f C %.2f %.2f %.2f %.2f %.2f %.2f", p[0]-16, p[1]-16, p[0]-52, p[1]-78, p[0]+52, p[1]-78, p[0]+16, p[1]-16)
-			my = p[1] - 58
-		} else if length > 0 {
+		if length > 0 {
 			offset := float64(rank)*32 - float64(count-1)*16
 			// Canonical normal separates reversed parallel input edges too.
 			nx, ny := -dy/length, dx/length
@@ -137,6 +147,12 @@ func RenderPrimLessonSVG(step trace.Step, width, height int) string {
 	for i, n := range s.Nodes {
 		p := pos[i]
 		fmt.Fprintf(&b, `<g data-entity="prim-node:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"><title>%s</title><circle r="22" fill="%s" stroke="#eff5ed" stroke-width="2"/>`, i, p[0], p[1], p[0], p[1], html.EscapeString(n.Label), colors[i%5])
+		for _, e := range s.Edges {
+			if e.From == n.ID && e.To == n.ID {
+				b.WriteString(`<path d="M -16 -16 C -52 -78 52 -78 16 -16" fill="none" stroke="#7e929e"><title>Self-loops listed below</title></path>`)
+				break
+			}
+		}
 		label := n.Label
 		if label == "" {
 			label = n.ID
@@ -190,6 +206,18 @@ func RenderPrimLessonSVG(step trace.Step, width, height int) string {
 		}
 		chip(fmt.Sprintf("prim-selected:%d", id), alias, 24+float64(i%cols)*184, acceptedY+16+float64(i/cols)*48, fmt.Sprintf("✓ edge #%d", id))
 	}
+	if loopCount > 0 {
+		text(24, loopY, "Self-loops · never cross the cut")
+		loop := 0
+		for i, e := range s.Edges {
+			if e.From != e.To {
+				continue
+			}
+			x, y := 24+float64(loop%cols)*184, loopY+16+float64(loop/cols)*48
+			fmt.Fprintf(&b, `<g data-entity="prim-loop:%d" transform="translate(%.2f %.2f)"><title>Edge #%d: %s–%s, weight %d</title><rect width="176" height="36" rx="8" fill="#223744" stroke="#7e929e"/><path d="M 14 25 C 2 5 36 5 24 25" fill="none" stroke="#7e929e"/><text x="38" y="23">#%d · node %d: %d</text></g>`, i, x, y, i, html.EscapeString(e.From), html.EscapeString(e.To), e.Weight, i, ids[e.From], e.Weight)
+			loop++
+		}
+	}
 	if s.ActiveEdge >= 0 {
 		label := fmt.Sprintf("Probe #%d: %d", s.ActiveEdge, s.CandidateWeight)
 		if s.Discarded {
@@ -205,7 +233,9 @@ func RenderPrimLessonSVG(step trace.Step, width, height int) string {
 	if step.LineID == "L13" {
 		chip(fmt.Sprintf("prim-sum:%d", s.ActiveSerial), fmt.Sprintf("prim-probe:%d", s.ActiveSerial), 24, equationY+52, fmt.Sprintf("%d + (%d) = %d", s.TotalWeight-s.CandidateWeight, s.CandidateWeight, s.TotalWeight))
 	}
-	if step.LineID == "L18" {
+	if step.Action == trace.ActionDone && len(s.Nodes) == 0 {
+		text(24, equationY+64, "Empty graph; tree is empty")
+	} else if step.LineID == "L18" {
 		result := "Partial start-component tree; disconnected"
 		if s.Connected {
 			result = "✓ MST spanning all vertices"

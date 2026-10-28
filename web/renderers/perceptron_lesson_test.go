@@ -58,3 +58,47 @@ func TestPerceptronLessonSVG(t *testing.T) {
 		}
 	}
 }
+
+func TestPerceptronThresholdShowsPredictionBeforeError(t *testing.T) {
+	s := PerceptronLessonState{Weights: []float64{1}, BeforeWeights: []float64{1}, Products: []float64{2}, Sample: 0, Inputs: [][]float64{{2}}, Phase: "threshold", PredictionValid: true, Prediction: 1, Target: 0}
+	svg := RenderPerceptronLessonSVG(trace.Step{State: s}, 320, 620)
+	if !strings.Contains(svg, "prediction 1 · target 0") {
+		t.Error("threshold must show computed prediction")
+	}
+	if strings.Contains(svg, "error =") {
+		t.Error("error is not computed until next step")
+	}
+}
+
+func TestPerceptronIdleShowsCurrentBias(t *testing.T) {
+	s := PerceptronLessonState{Weights: []float64{1}, BeforeWeights: []float64{1}, Bias: .2, BeforeBias: .1, Sample: -1, Phase: "done"}
+	svg := RenderPerceptronLessonSVG(trace.Step{State: s}, 320, 620)
+	if !strings.Contains(svg, "Σ products + bias 0.2") {
+		t.Error("idle neuron must show current bias")
+	}
+}
+
+func TestPerceptronCoincidentSamplesShareMarkerAndKeepDetails(t *testing.T) {
+	s := PerceptronLessonState{Inputs: [][]float64{{.25, .5}, {.25, .5}, {1, 1}}, Labels: []int{0, 1, 1}, Weights: []float64{0, 0}, BeforeWeights: []float64{0, 0}, Sample: 1, XMin: 0, XMax: 1, YMin: 0, YMax: 1}
+	for _, width := range []int{320, 800} {
+		svg := RenderPerceptronLessonSVG(trace.Step{State: s}, width, 620)
+		if strings.Count(svg, `data-entity="sample:`) != 2 {
+			t.Errorf("width %d: coincident samples must share a marker", width)
+		}
+		position := `data-entity="sample:0" data-x="100.00" data-y="205.00"`
+		if width == 800 {
+			position = `data-entity="sample:0" data-x="124.00" data-y="205.00"`
+		}
+		if !strings.Contains(svg, position) {
+			t.Errorf("width %d: marker moved away from true coordinates", width)
+		}
+		if !strings.Contains(svg, `M-7 0 L0 -7 L7 0 L0 7 Z`) {
+			t.Errorf("width %d: mixed-class marker must not imply a single class", width)
+		}
+		for _, want := range []string{"Sample 0 · class 0", "Sample 1 · class 1 · active", "Sample 2 · class 1", "x0 = 0.25", "x1 = 0.5"} {
+			if !strings.Contains(svg, want) {
+				t.Errorf("width %d: missing %q", width, want)
+			}
+		}
+	}
+}

@@ -60,3 +60,11 @@ func TestSelectionLessonSVG(t *testing.T) {
 		t.Fatal("signed/zero bars lost")
 	}
 }
+
+func TestSelectionNegativeFinalCheckClearsSlotIndex(t *testing.T) {
+	s := SelectionLessonState{ArrayState: ArrayState{Values: []int{-1000000}}, IDs: []int{0}, SortedPrefix: 1, MinValue: -1000000, Pass: -1, Scan: -1, MinIndex: -1}
+	svg := RenderSelectionLessonSVG(trace.Step{State: s, Action: trace.ActionDone}, 320, 360)
+	if !strings.Contains(svg, `y="116.00" text-anchor="middle" font-size="16" fill="#9bf0bb">✓`) {
+		t.Fatalf("final check must clear slot index at y=308: %s", svg)
+	}
+}

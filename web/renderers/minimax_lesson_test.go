@@ -96,3 +96,19 @@ func TestMinimaxLessonSVGReturn(t *testing.T) {
 		t.Fatal("false infinity")
 	}
 }
+
+func TestMinimaxReturnBadgeDoesNotCoverParent(t *testing.T) {
+	s := MinimaxLessonState{Nodes: []MinimaxNodeView{{ID: "r", IsMax: true}, {ID: "c", ParentID: "r", Depth: 1, Terminal: true}}, ActiveID: "r", ReturnedFromID: "c", Eval: 3, EvalValid: true, Phase: "child-return"}
+	svg := RenderMinimaxLessonSVG(trace.Step{State: s}, 320, 640)
+	if !strings.Contains(svg, `data-from-entity="node:c" data-motion="linear" data-x="400.0" data-y="70.0"`) {
+		t.Fatal("return badge must travel from child to space adjacent to parent")
+	}
+}
+
+func TestMinimaxReturnBadgeConnectsToReceivingParent(t *testing.T) {
+	s := MinimaxLessonState{Nodes: []MinimaxNodeView{{ID: "r", IsMax: true}, {ID: "c", ParentID: "r", Depth: 1, Terminal: true}}, ActiveID: "r", ReturnedFromID: "c", Eval: 3, EvalValid: true, Phase: "child-return"}
+	svg := RenderMinimaxLessonSVG(trace.Step{State: s}, 320, 640)
+	if !strings.Contains(svg, `data-return-to="node:r"`) || !strings.Contains(svg, `M364.0 70.0L368.0 70.0`) {
+		t.Fatal("return badge lacks connector to receiving parent")
+	}
+}

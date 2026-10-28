@@ -64,3 +64,11 @@ func TestCountingsortLessonSVG(t *testing.T) {
 		t.Fatal("omitted sparse counter")
 	}
 }
+
+func TestCountingsortSingletonDoesNotClaimCountBoundary(t *testing.T) {
+	s := CountingsortLessonState{Input: []int{7}, InputIDs: []int{0}, Output: []int{7}, OutputIDs: []int{0}, OutputFilled: []bool{true}, Phase: "done"}
+	svg := RenderCountingsortLessonSVG(trace.Step{State: s, LineID: "L4"}, 320, 360)
+	if strings.Contains(svg, "Remaining insertion boundary") || strings.Contains(svg, "stable copies") {
+		t.Fatal("singleton returns input without allocating counts or copying output")
+	}
+}

@@ -120,3 +120,13 @@ func TestDijkstraZeroWeightAndDefaults(t *testing.T) {
 		t.Fatal("zero edge rejected")
 	}
 }
+
+func TestDijkstraTraceRespectsDirectedEdges(t *testing.T) {
+	nodes := []renderers.GraphNode{{ID: "A"}, {ID: "B"}}
+	edges := []renderers.GraphEdge{{From: "A", To: "B", Weight: 1, Directed: true}}
+	steps := Trace(nodes, edges, "B", "A")
+	last := steps[len(steps)-1].State.(renderers.DijkstraLessonState)
+	if last.Found || last.Distance["A"] != math.MaxInt {
+		t.Fatalf("directed edge traversed backward: %+v", last)
+	}
+}

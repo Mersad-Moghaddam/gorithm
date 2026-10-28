@@ -99,6 +99,25 @@ func TestKMPLessonEdgeBytes(t *testing.T) {
 	}
 }
 
+func TestKMPEarlyReturnSource(t *testing.T) {
+	for _, tc := range []struct{ text, pattern, fragment string }{
+		{"abc", "", "return 0"},
+		{"a", "abc", "return -1"},
+	} {
+		steps := Trace(tc.text, tc.pattern)
+		last := steps[len(steps)-1]
+		found := false
+		for _, line := range (Lesson{}).Source() {
+			if line.ID == last.LineID && strings.Contains(line.Code, tc.fragment) && strings.Contains(line.Code, "if ") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q/%q: early return highlights %s, not its guard", tc.text, tc.pattern, last.LineID)
+		}
+	}
+}
+
 func TestKMPLessonValidation(t *testing.T) {
 	for _, raw := range []string{`null`, `{`, `{"text":2}`, `{"pattern":null}`, `[]`, `["a",2]`, `{"text":"` + strings.Repeat("a", 257) + `"}`, `{"pattern":"` + strings.Repeat("b", 65) + `"}`} {
 		if _, err := (Lesson{}).Build(json.RawMessage(raw)); err == nil {

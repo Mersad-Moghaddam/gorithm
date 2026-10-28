@@ -61,6 +61,9 @@ func RenderPerceptronLessonSVG(step trace.Step, width, height int) string {
 		correctionY = math.Max(correctionY, 380+float64((len(s.Inputs)-1)/8)*28)
 	}
 	sceneH := int(correctionY + float64(d+1)*110 + 130)
+	if d == 2 {
+		sceneH += 40 + len(s.Inputs)*66
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, `<g data-lesson="perceptron" data-phase="%s" data-scene-width="%d" data-scene-height="%d" data-min-width="%d" font-family="system-ui, sans-serif" font-size="14" fill="#eff5ed"><title>%s</title>`, html.EscapeString(s.Phase), w, sceneH, w, html.EscapeString("Perceptron: "+step.Explanation))
 	text := func(x, y float64, value, color string) {
@@ -110,6 +113,21 @@ func RenderPerceptronLessonSVG(step trace.Step, width, height int) string {
 			if len(row) != 2 {
 				continue
 			}
+			duplicate := false
+			active := i == s.Sample
+			mixed := false
+			for j, other := range s.Inputs {
+				if len(other) == 2 && row[0] == other[0] && row[1] == other[1] {
+					duplicate = duplicate || j < i
+					active = active || j == s.Sample
+					if i < len(s.Labels) && j < len(s.Labels) && s.Labels[i] != s.Labels[j] {
+						mixed = true
+					}
+				}
+			}
+			if duplicate {
+				continue
+			}
 			x, y := mapX(row[0]), mapY(row[1])
 			if math.IsNaN(x) || math.IsInf(x, 0) || math.IsNaN(y) || math.IsInf(y, 0) {
 				continue
@@ -119,16 +137,16 @@ func RenderPerceptronLessonSVG(step trace.Step, width, height int) string {
 			if i < len(s.Labels) {
 				label = s.Labels[i]
 			}
-			if label == 1 {
+			if mixed {
+				b.WriteString(`<path d="M-7 0 L0 -7 L7 0 L0 7 Z" fill="#eff5ed"/>`)
+			} else if label == 1 {
 				b.WriteString(`<rect x="-6" y="-6" width="12" height="12" fill="#387faa"/>`)
 			} else {
 				b.WriteString(`<circle r="6" fill="#c45d75"/>`)
 			}
-			if i == s.Sample {
+			if active {
 				b.WriteString(`<circle r="11" fill="none" stroke="#ffe29a" stroke-width="3"/>`)
 			}
-			// Numbered points retain identity even when coordinates coincide.
-			text(10, -10, fmt.Sprintf("%d", i), "#eff5ed")
 			b.WriteString(`</g>`)
 		}
 		text(px, py+ph+20, perceptronNumber(s.XMin)+" … "+perceptronNumber(s.XMax), "#bbcab9")
@@ -176,21 +194,25 @@ func RenderPerceptronLessonSVG(step trace.Step, width, height int) string {
 		text(neuronX+16, y+40, "↳ w × x = "+value, "#8bd5ff")
 	}
 	y := neuronY + float64(d)*66 + 38
-	text(neuronX, y, "Σ products + bias "+perceptronNumber(s.BeforeBias), "#aa92e7")
+	bias := s.BeforeBias
+	if !s.PredictionValid && s.Phase != "sum" {
+		bias = s.Bias
+	}
+	text(neuronX, y, "Σ products + bias "+perceptronNumber(bias), "#aa92e7")
 	if s.PredictionValid || s.Phase == "sum" {
 		text(neuronX, y+24, "z = "+perceptronNumber(s.Linear)+"; z ≥ 0 ⇒ 1, else 0", "#ffe29a")
 	} else {
 		text(neuronX, y+24, "z: not evaluated · threshold ≥ 0", "#ffe29a")
 	}
 	prediction := "prediction: not evaluated"
-	if s.PredictionValid && s.Phase != "threshold" {
+	if s.PredictionValid {
 		prediction = fmt.Sprintf("prediction %d · target %d", s.Prediction, s.Target)
 	}
 	text(neuronX, y+48, prediction, "#eff5ed")
 	if s.Phase == "weights" || s.Phase == "bias" {
 		text(neuronX, y+72, "prediction before correction", "#8bd5ff")
 	}
-	if s.PredictionValid {
+	if s.PredictionValid && s.Phase != "threshold" {
 		text(neuronX, y+96, fmt.Sprintf("error = %d − %d = %d", s.Target, s.Prediction, s.Error), "#eff5ed")
 	}
 	text(pad, correctionY, "Correction · old + delta = current", "#ffe29a")
@@ -223,6 +245,23 @@ func RenderPerceptronLessonSVG(step trace.Step, width, height int) string {
 	fmt.Fprintf(&b, `<g data-entity="bias:0" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"><path d="M-6 0 L0 -6 L6 0 L0 6 Z" fill="#8bd5ff"/></g>`, bx, by+66, bx, by+66)
 	if s.StopReason != "" {
 		text(pad, by+80, "Stop: "+s.StopReason, "#9bf0bb")
+	}
+	if d == 2 {
+		listY := by + 120
+		text(pad, listY, "Samples · shared points use one marker", "#ffe29a")
+		for i, row := range s.Inputs {
+			if len(row) != 2 || i >= len(s.Labels) {
+				continue
+			}
+			active := ""
+			if i == s.Sample {
+				active = " · active"
+			}
+			y := listY + 30 + float64(i)*66
+			text(pad, y, fmt.Sprintf("Sample %d · class %d%s", i, s.Labels[i], active), "#eff5ed")
+			text(pad, y+22, "x0 = "+perceptronNumber(row[0]), "#bbcab9")
+			text(pad, y+44, "x1 = "+perceptronNumber(row[1]), "#bbcab9")
+		}
 	}
 	b.WriteString(`</g>`)
 	return b.String()

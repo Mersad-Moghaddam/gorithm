@@ -109,7 +109,7 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				if len(custom.Nodes) > 0 {
 					nodes = custom.Nodes
 				}
-				if len(custom.Edges) > 0 {
+				if custom.Edges != nil {
 					edges = custom.Edges
 				}
 			}

@@ -46,3 +46,18 @@ func TestLCSLessonSVG(t *testing.T) {
 		}
 	}
 }
+
+func TestLCSBacktrackDoesNotShowFillFormula(t *testing.T) {
+	s := LCSLessonState{S1: "A", S2: "A", DP: [][]int{{0, 0}, {0, 1}}, Filled: [][]bool{{true, true}, {true, true}}, Phase: "match", From: [2]int{1, 1}, To: [2]int{0, 0}, Match: true}
+	out := RenderLCSLessonSVG(trace.Step{State: s}, 320, 450)
+	if strings.Contains(out, "diagonal 0 + 1 = 1") {
+		t.Fatal("backtracking presents a table-fill formula as current operation")
+	}
+}
+
+func TestLCSEmptySceneFitsBoundaryCaption(t *testing.T) {
+	out := RenderLCSLessonSVG(trace.Step{State: LCSLessonState{Phase: "allocate"}}, 320, 450)
+	if !strings.Contains(out, `data-min-width="400"`) {
+		t.Fatal("boundary caption needs a scrollable 400-unit scene")
+	}
+}

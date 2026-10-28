@@ -77,6 +77,13 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 					return nil, fmt.Errorf("%s must not be null", key)
 				}
 			}
+			for _, key := range []string{"array", "arr"} {
+				if raw, ok := fields[key]; ok {
+					if err := rejectNullElements(raw); err != nil {
+						return nil, err
+					}
+				}
+			}
 			for _, values := range [][]int{custom.Array, custom.Arr} {
 				if err := validateBinarySearchValues(values); err != nil {
 					return nil, err
@@ -91,6 +98,9 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				target = *custom.Target
 			}
 		} else {
+			if err := rejectNullElements(input); err != nil {
+				return nil, err
+			}
 			var customArr []int
 			if err := json.Unmarshal(input, &customArr); err != nil {
 				return nil, fmt.Errorf("expected integer array: %w", err)
@@ -108,6 +118,19 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	}
 
 	return Trace(arr, target), nil
+}
+
+func rejectNullElements(raw json.RawMessage) error {
+	var values []json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return fmt.Errorf("expected integer array: %w", err)
+	}
+	for _, value := range values {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return fmt.Errorf("array values must not be null")
+		}
+	}
+	return nil
 }
 
 func validateBinarySearchValues(values []int) error {

@@ -36,3 +36,19 @@ func TestDijkstraLessonSVG(t *testing.T) {
 		}
 	}
 }
+
+func TestDijkstraCandidateDoesNotPrejudgeComparison(t *testing.T) {
+	s := DijkstraLessonState{HasCandidate: true, Candidate: 3, OldDistance: 4}
+	svg := RenderDijkstraLessonSVG(trace.Step{LineID: "L9", State: s}, 320, 640)
+	if strings.Contains(svg, "3 ≥ 4") || strings.Contains(svg, "3 &lt; 4") {
+		t.Fatal("candidate step displays comparison before it happens")
+	}
+}
+
+func TestDijkstraRootChipTextHasLineSpacing(t *testing.T) {
+	s := DijkstraLessonState{Queue: []DijkstraQueueEntry{{Node: "E", Distance: 12}}}
+	svg := RenderDijkstraLessonSVG(trace.Step{State: s}, 320, 640)
+	if !strings.Contains(svg, `y="14.00">[0] E:12</text>`) || !strings.Contains(svg, `y="32.00">root / min</text>`) {
+		t.Fatal("root chip labels need separate baselines")
+	}
+}

@@ -88,11 +88,12 @@ func RenderMergeLessonSVG(step trace.Step, width, height int) string {
 		if phase == "compare" && (i == s.I || i == s.J) {
 			fmt.Fprintf(&out, `<rect data-emphasis="compare" x="-42" y="%.2f" width="84" height="%.2f" fill="none" stroke="#ffe29a" stroke-width="3"/>`, y, h)
 		}
-		if step.Action == trace.ActionDone {
-			fmt.Fprintf(&out, `<text x="0" y="%.2f" font-size="16" fill="#9bf0bb">✓</text>`, math.Max(0, tip)+22)
-		}
 		out.WriteString(`</g>`)
-		fmt.Fprintf(&out, `<text x="%.2f" y="%.2f" text-anchor="middle" font-size="12">[%d]</text>`, xpos(i), rowBottom+20, i)
+		check := ""
+		if step.Action == trace.ActionDone {
+			check = " ✓"
+		}
+		fmt.Fprintf(&out, `<text x="%.2f" y="%.2f" text-anchor="middle" font-size="12">[%d]%s</text>`, xpos(i), rowBottom+20, i, check)
 	}
 	if step.LineID == "L23" && s.CopyIndex >= 0 && s.CopyIndex < len(s.AuxIDs) && s.Left+s.CopyIndex >= 0 && s.Left+s.CopyIndex < len(s.Values) {
 		k := s.CopyIndex

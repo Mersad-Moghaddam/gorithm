@@ -40,3 +40,22 @@ func TestGradientDescentLessonSVG(t *testing.T) {
 		t.Fatal("flat/bias slice misleading")
 	}
 }
+
+func TestGradientDescentDuplicateSamplesHighlightActiveWithoutOverlappingLabels(t *testing.T) {
+	s := GradientDescentLessonState{X: []float64{1, 1, 1}, Y: []float64{2, 2, 2}, Sample: 0, Phase: "residual", DataXMin: 0, DataXMax: 2, DataYMin: 0, DataYMax: 3, SliceWMin: -1, SliceWMax: 1, SliceLossMax: 10, HistoryLossMax: 10}
+	svg := RenderGradientDescentLessonSVG(trace.Step{State: s}, 320, 640)
+	if strings.Count(svg, `>P0</text>`) != 1 || strings.Contains(svg, `>P1</text>`) || strings.Contains(svg, `>P2</text>`) {
+		t.Fatal("only the active sample should have a plot label")
+	}
+	if strings.LastIndex(svg, `data-entity="sample:P0"`) < strings.LastIndex(svg, `data-entity="sample:P2"`) {
+		t.Fatal("active sample must be drawn on top of coincident samples")
+	}
+}
+
+func TestGradientDescentActiveLabelStaysInsidePlot(t *testing.T) {
+	s := GradientDescentLessonState{X: []float64{1}, Y: []float64{1}, Sample: 0, Phase: "residual", DataXMin: 0, DataXMax: 1, DataYMin: 0, DataYMax: 1, SliceWMin: -1, SliceWMax: 1, SliceLossMax: 1, HistoryLossMax: 1}
+	svg := RenderGradientDescentLessonSVG(trace.Step{State: s}, 320, 640)
+	if !strings.Contains(svg, `<text x="-8" y="20" text-anchor="end">P0</text>`) {
+		t.Fatal("top-right point label must sit inside the plot")
+	}
+}

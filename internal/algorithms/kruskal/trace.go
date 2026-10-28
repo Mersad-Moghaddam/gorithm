@@ -87,6 +87,7 @@ func Trace(nodes []renderers.GraphNode, edges []WeightedEdge) []trace.Step {
 		s.Edges[index].Active = true
 		add("L7", trace.ActionPush, fmt.Sprintf("Accept edge #%d. Cost becomes %d.", index, s.TotalWeight), map[string]any{"mstCount": len(s.SelectedEdges), "totalWeight": s.TotalWeight})
 		if len(s.SelectedEdges) == len(nodes)-1 {
+			add("L8", trace.ActionHighlight, "The spanning tree has V−1 edges; stop scanning.", nil)
 			break
 		}
 	}

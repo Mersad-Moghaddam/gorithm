@@ -96,6 +96,19 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 		if len(custom) > 32 {
 			return nil, fmt.Errorf("AVL supports at most 32 values")
 		}
+		var elements []json.RawMessage
+		if raw[0] == '[' {
+			_ = json.Unmarshal(raw, &elements)
+		} else {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(raw, &fields)
+			_ = json.Unmarshal(fields["values"], &elements)
+		}
+		for _, element := range elements {
+			if bytes.Equal(bytes.TrimSpace(element), []byte("null")) {
+				return nil, fmt.Errorf("AVL values must be integers")
+			}
+		}
 		for _, v := range custom {
 			if v < -1000000 || v > 1000000 {
 				return nil, fmt.Errorf("AVL values must be within ±1000000")

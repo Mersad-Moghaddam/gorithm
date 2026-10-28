@@ -22,6 +22,17 @@ func TestNQueensInputValidation(t *testing.T) {
 	}
 }
 
+func TestNQueensSourceMatchesInitializationAndCompletion(t *testing.T) {
+	lines := (Lesson{}).Source()
+	steps := Trace(4)
+	if !strings.Contains(lines[1].Code, "board[i] = -1") {
+		t.Fatal("source omits empty-board initialization")
+	}
+	if got := steps[len(steps)-1].LineID; got != "L4" {
+		t.Fatalf("completion highlights %s, want closing line L4", got)
+	}
+}
+
 func TestNQueensSnapshots(t *testing.T) {
 	for n := 1; n <= 4; n++ {
 		steps := Trace(n)

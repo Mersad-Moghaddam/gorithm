@@ -45,10 +45,11 @@ func (l Lesson) Source() []trace.SourceLine {
 		{ID: "L5", Number: 5, Code: "        if dsu.Find(edge.From) != dsu.Find(edge.To) {"},
 		{ID: "L6", Number: 6, Code: "            dsu.Union(edge.From, edge.To)"},
 		{ID: "L7", Number: 7, Code: "            mst = append(mst, edge)"},
-		{ID: "L8", Number: 8, Code: "        }"},
-		{ID: "L9", Number: 9, Code: "    }"},
-		{ID: "L10", Number: 10, Code: "    return mst"},
-		{ID: "L11", Number: 11, Code: "}"},
+		{ID: "L8", Number: 8, Code: "            if len(mst) == len(nodes)-1 { break }"},
+		{ID: "L12", Number: 9, Code: "        }"},
+		{ID: "L9", Number: 10, Code: "    }"},
+		{ID: "L10", Number: 11, Code: "    return mst"},
+		{ID: "L11", Number: 12, Code: "}"},
 	}
 }
 

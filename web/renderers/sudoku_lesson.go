@@ -44,7 +44,7 @@ func RenderSudokuLessonSVG(step trace.Step, width, height int) string {
 		sceneHeight = height
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `<g data-lesson="sudoku" data-phase="%s" data-scene-width="%d" data-scene-height="%d" data-min-width="320" font-family="system-ui, sans-serif"><title>Sudoku: %s; depth %d</title>`, html.EscapeString(s.Phase), width, sceneHeight, html.EscapeString(s.Status), s.Depth)
+	fmt.Fprintf(&b, `<g data-lesson="sudoku" data-phase="%s" data-scene-width="%d" data-scene-height="%d" data-min-width="%d" font-family="system-ui, sans-serif"><title>Sudoku: %s; depth %d</title>`, html.EscapeString(s.Phase), width, sceneHeight, width, html.EscapeString(s.Status), s.Depth)
 	heading := "Searching"
 	switch s.Status {
 	case "solved":

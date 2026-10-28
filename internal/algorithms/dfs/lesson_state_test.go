@@ -166,3 +166,14 @@ func TestDFSRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestDFSEmptyEdgesRemainEmpty(t *testing.T) {
+	steps, err := (Lesson{}).Build(json.RawMessage(`{"edges":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := steps[len(steps)-1].State.(renderers.DFSLessonState)
+	if len(final.Edges) != 0 || !reflect.DeepEqual(final.Order, []string{"A"}) {
+		t.Fatalf("empty graph edges ignored: edges=%v order=%v", final.Edges, final.Order)
+	}
+}

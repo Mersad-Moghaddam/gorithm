@@ -324,6 +324,16 @@ func Trace(values []int) []trace.Step {
 				s.Phase = "insert"
 			}
 		}
+		switch steps[i].LineID {
+		case "L18", "L19", "L20", "L22", "L23", "L24":
+		default:
+			s.Rotation, s.PivotID, s.NewRootID, s.TransferID = "", "", "", ""
+		}
+		switch steps[i].LineID {
+		case "L8", "L9", "L10", "L11", "L13", "L14", "L18", "L19", "L20", "L22", "L23", "L24":
+		default:
+			s.Case, s.RotationPart = "", 0
+		}
 		if s.ActiveID != "" {
 			byID := map[string]renderers.TreeNode{}
 			for _, n := range s.Nodes {

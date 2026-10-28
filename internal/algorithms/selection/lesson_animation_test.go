@@ -108,3 +108,11 @@ func TestSelectionBuildValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSelectionScanEndsBeforeSwap(t *testing.T) {
+	for _, step := range Trace([]int{3, 1, 2}) {
+		if step.LineID == "L10" && step.State.(renderers.SelectionLessonState).Scan != -1 {
+			t.Fatal("scan index remains visible after inner loop ends")
+		}
+	}
+}

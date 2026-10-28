@@ -43,7 +43,7 @@ func TestInsertionLessonSequence(t *testing.T) {
 }
 
 func TestInsertionLessonValidation(t *testing.T) {
-	for _, input := range []string{"[]", "null", "{", "{}", "[1.5]", "[1000001]", "[-1000001]"} {
+	for _, input := range []string{"[]", "null", "[null]", "[1,null,2]", "{", "{}", "[1.5]", "[1000001]", "[-1000001]"} {
 		if _, err := (Lesson{}).Build(json.RawMessage(input)); err == nil {
 			t.Errorf("accepted %s", input)
 		}

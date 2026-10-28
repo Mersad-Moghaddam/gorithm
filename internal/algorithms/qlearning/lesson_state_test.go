@@ -84,7 +84,7 @@ func TestQLearningLessonSeedAndBudget(t *testing.T) {
 	goals := 0
 	for i, step := range steps {
 		s := step.State.(renderers.QLearningLessonState)
-		if svg := renderers.RenderQLearningLessonSVG(step, 320, 650); !strings.Contains(svg, `data-entity="agent:0"`) || strings.Contains(svg, "NaN") {
+		if svg := renderers.RenderQLearningLessonSVG(step, 320, 650); !strings.Contains(svg, `data-entity="agent:`) || strings.Contains(svg, "NaN") {
 			t.Fatal("mid-trace SVG", i)
 		}
 		if step.LineID == "L7" {

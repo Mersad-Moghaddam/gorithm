@@ -60,7 +60,10 @@ func RenderBucketsortLessonSVG(step trace.Step, width, height int) string {
 			fmt.Fprintf(&b, `<text x="32" y="96">(%d − %d)*4/(%d − %d)</text><text x="32" y="118">Bucket %d</text>`, s.Values[s.Scan], s.Min, s.Max, s.Min, s.ActiveBucket)
 		}
 	} else {
-		b.WriteString(`<text x="32" y="52">No buckets allocated yet.</text><text x="32" y="74">Equal range: no hashing.</text>`)
+		b.WriteString(`<text x="32" y="52">No buckets allocated.</text>`)
+		if s.Phase == "range" && s.Min == s.Max {
+			b.WriteString(`<text x="32" y="74">Equal range: no hashing.</text>`)
+		}
 	}
 	if n == 0 {
 		b.WriteString(`<text x="32" y="120">Empty array</text>`)

@@ -136,6 +136,19 @@ func TestBFSAnimationSnapshots(t *testing.T) {
 	}
 }
 
+func TestBFSSourceShowsSnapshotOperations(t *testing.T) {
+	lines := map[string]string{}
+	for _, line := range (Lesson{}).Source() {
+		lines[line.ID] = line.Code
+	}
+	if !strings.Contains(lines["L7"], "queue[1:]") {
+		t.Fatal("dequeue snapshot must highlight queue removal")
+	}
+	if !strings.Contains(lines["L12"], "append(queue, neighbor)") {
+		t.Fatal("discovery snapshot must highlight enqueue")
+	}
+}
+
 func TestBFSTraversalCorrectness(t *testing.T) {
 	adj := map[string][]string{
 		"A": {"B", "C"},

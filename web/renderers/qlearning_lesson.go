@@ -137,7 +137,8 @@ func RenderQLearningLessonSVG(step trace.Step, width, height int) string {
 		}
 	}
 	x, y := position(s.State)
-	if s.Action >= 0 && s.Action < 4 {
+	showAction := s.Phase != "assign-state" && s.Phase != "episode-end" && s.Phase != "complete"
+	if showAction && s.Action >= 0 && s.Action < 4 {
 		fmt.Fprintf(&b, `<path d="M%g %g l%g %g" stroke="#ffe29a" stroke-width="4"/>`, x, y, dx[s.Action]*(cell/2-5), dy[s.Action]*(cell/2-5))
 	}
 	if s.TransitionValid && s.Phase != "assign-state" && s.Phase != "episode-end" && s.Phase != "complete" {
@@ -148,7 +149,11 @@ func RenderQLearningLessonSVG(step trace.Step, width, height int) string {
 			fmt.Fprintf(&b, `<path d="M%g %gL%g %g" stroke="#8bd5ff" stroke-width="3" marker-end="url(#qlearning-arrow)"/><circle cx="%g" cy="%g" r="16" fill="none" stroke="#8bd5ff" stroke-dasharray="4 3"/>`, x, y, nx, ny, nx, ny)
 		}
 	}
-	fmt.Fprintf(&b, `<g data-entity="agent:0" data-x="%g" data-y="%g" data-motion="linear" transform="translate(%g %g)"><circle r="11" fill="#192923" stroke="#ee8b9b" stroke-width="4"/><title>Agent at (%d,%d)</title></g>`, x, y, x, y, s.State[0], s.State[1])
+	agentID := "agent:0"
+	if s.Phase == "reset" {
+		agentID = "agent:reset"
+	}
+	fmt.Fprintf(&b, `<g data-entity="%s" data-x="%g" data-y="%g" data-motion="linear" transform="translate(%g %g)"><circle r="11" fill="#192923" stroke="#ee8b9b" stroke-width="4"/><title>Agent at (%d,%d)</title></g>`, agentID, x, y, x, y, s.State[0], s.State[1])
 	text(inset, gridY+gh+25, "#bbcab9", "current Q estimates")
 	text(inset, gridY+gh+45, "#bbcab9", "0 Up · 1 Right · 2 Down · 3 Left")
 	number := func(v float64) string { return fmt.Sprintf("%.5g", v) }
@@ -160,15 +165,20 @@ func RenderQLearningLessonSVG(step trace.Step, width, height int) string {
 		}
 		for a, v := range s.Q[idx] {
 			color := "#eff5ed"
-			if a == s.Action && label == "Current row" {
+			if showAction && a == s.Action && label == "Current row" {
 				color = "#ffe29a"
 			}
 			text(px+8, py+24+float64(a)*23, color, names[a]+": "+number(v))
 		}
 	}
 	panel(panelX, panelY, "Current row", s.State)
-	panel(panelX, panelY+140, "Next row", s.NextState)
-	text(panelX, panelY+263, "#8bd5ff", fmt.Sprintf("reward %s · old %s · new %s", number(s.Reward), number(s.OldQ), number(s.NewQ)))
+	if s.TransitionValid {
+		panel(panelX, panelY+140, "Next row", s.NextState)
+		text(panelX, panelY+263, "#8bd5ff", fmt.Sprintf("reward %s · old %s", number(s.Reward), number(s.OldQ)))
+		if s.UpdateValid {
+			text(panelX, panelY+310, "#9bf0bb", "new Q "+number(s.NewQ))
+		}
+	}
 	text(panelX, panelY+287, "#bbcab9", fmt.Sprintf("α %s · γ %s · ε %s", number(s.Alpha), number(s.Gamma), number(s.Epsilon)))
 	text(inset, equationY, "#eff5ed", "target = r + γ max Q(next, a)")
 	if s.Phase == "target" || s.UpdateValid {

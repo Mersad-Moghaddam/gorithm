@@ -168,3 +168,10 @@ func TestHeapLessonExtractedSuffix(t *testing.T) {
 		}
 	}
 }
+
+func TestHeapLessonRootLabelClearsSubtitle(t *testing.T) {
+	_, y := heapLessonPoint(0, 800)
+	if candidateBaseline := y - 31; candidateBaseline < 84 {
+		t.Fatalf("root candidate baseline %.0f too close to subtitle baseline 54", candidateBaseline)
+	}
+}

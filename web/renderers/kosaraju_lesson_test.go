@@ -3,6 +3,8 @@ package renderers
 import (
 	"encoding/xml"
 	"io"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -49,6 +51,27 @@ func TestKosarajuSceneDeterministicEscapedAndResponsive(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestKosarajuFinishCursorDoesNotOverlapNextRow(t *testing.T) {
+	nodes := []GraphNode{{ID: "A"}, {ID: "B"}, {ID: "C"}, {ID: "D"}, {ID: "E"}}
+	step := trace.Step{State: KosarajuLessonState{GraphState: GraphState{Nodes: nodes}, FinishOrder: []string{"A", "B", "C", "D", "E"}, OrderIndex: 0}}
+	got := RenderKosarajuLessonSVG(step, 320, 640)
+	findY := func(entity string) float64 {
+		t.Helper()
+		match := regexp.MustCompile(`data-entity="` + entity + `" data-x="[^"]+" data-y="([^"]+)"`).FindStringSubmatch(got)
+		if len(match) != 2 {
+			t.Fatalf("missing %s", entity)
+		}
+		y, err := strconv.ParseFloat(match[1], 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return y
+	}
+	if gap := findY("kosaraju-finish:4") - findY("kosaraju-cursor:0"); gap < 60 {
+		t.Fatalf("finish row gap %v overlaps Inspect label", gap)
 	}
 }
 

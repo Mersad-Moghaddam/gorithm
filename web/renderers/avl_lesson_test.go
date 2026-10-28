@@ -69,3 +69,11 @@ func TestAVLLessonSVG(t *testing.T) {
 		t.Fatal("unescaped label")
 	}
 }
+
+func TestAVLLongValueFitsNode(t *testing.T) {
+	step := avl.Trace([]int{-1000000})[2]
+	svg := renderers.RenderAVLLessonSVG(step, 320, 420)
+	if !strings.Contains(svg, `textLength="38" lengthAdjust="spacingAndGlyphs"`) {
+		t.Fatal("long node value can overflow its circle")
+	}
+}

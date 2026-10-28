@@ -52,6 +52,13 @@ func TestSudokuLessonSVG(t *testing.T) {
 	}
 }
 
+func TestSudokuScenePreservesTextSizeWhenScrollable(t *testing.T) {
+	svg := RenderSudokuLessonSVG(trace.Step{State: SudokuLessonState{}}, 800, 450)
+	if !strings.Contains(svg, `data-scene-width="800"`) || !strings.Contains(svg, `data-min-width="800"`) {
+		t.Fatal("scene must retain its 800px width so 14px labels remain legible")
+	}
+}
+
 func TestSudokuDigitContrast(t *testing.T) {
 	s := SudokuLessonState{Row: 0, Col: 0, Phase: "place", Status: "searching"}
 	for r := range s.Board {

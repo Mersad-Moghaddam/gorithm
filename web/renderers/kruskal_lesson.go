@@ -44,7 +44,21 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 		py = 320
 		pw = 328
 	}
-	panelH := float64(56 + len(s.Nodes)*30)
+	dense := len(s.Nodes) >= 3 || len(s.Edges) >= 2
+	for i, e := range s.Edges {
+		if e.From == e.To {
+			for _, prior := range s.Edges[:i] {
+				if prior.From == e.From && prior.To == e.To {
+					dense = true
+				}
+			}
+		}
+	}
+	rowHeight := 30
+	if dense {
+		rowHeight = 96
+	}
+	panelH := float64(56 + len(s.Nodes)*rowHeight)
 	stripY := math.Max(440, py+panelH+28)
 	cols := int((w - 48) / 144)
 	if cols < 1 {
@@ -97,7 +111,34 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 		pos[n.ID] = [2]float64{x, y}
 		index[n.ID] = i
 	}
-	for i, e := range s.Edges {
+	type edgeLabel struct {
+		id   int
+		x, y float64
+	}
+	var labels []edgeLabel
+	// Draw active edge last so other paths cannot obscure it.
+	edgeOrder := make([]int, 0, len(s.Edges))
+	for i := range s.Edges {
+		if i != s.ActiveEdge {
+			edgeOrder = append(edgeOrder, i)
+		}
+	}
+	if s.ActiveEdge >= 0 && s.ActiveEdge < len(s.Edges) {
+		edgeOrder = append(edgeOrder, s.ActiveEdge)
+	}
+	for _, i := range edgeOrder {
+		e := s.Edges[i]
+		if dense && e.From == e.To {
+			shown := i
+			for j, other := range s.Edges {
+				if other.From == e.From && other.To == e.To && (j == s.ActiveEdge || (shown != s.ActiveEdge && j < shown)) {
+					shown = j
+				}
+			}
+			if i != shown {
+				continue
+			}
+		}
 		a, okA := pos[e.From]
 		z, okZ := pos[e.To]
 		if !okA || !okZ {
@@ -122,9 +163,26 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 		mx, my := (a[0]+z[0])/2, (a[1]+z[1])/2
 		path := ""
 		if e.From == e.To {
-			path = fmt.Sprintf("M %.2f %.2f C %.2f %.2f %.2f %.2f %.2f %.2f", a[0]-16, a[1]-16, a[0]-58, a[1]-74, a[0]+58, a[1]-74, a[0]+16, a[1]-16)
+			ordinal := 0
+			for _, prior := range s.Edges[:i] {
+				if prior.From == e.From && prior.To == e.To {
+					ordinal++
+				}
+			}
+			direction := -1.0
+			if a[1]-gy < 80 {
+				direction = 1
+			}
+			spread, reach := math.Min(54, 42+float64(ordinal)*0.1), math.Min(70, 54+float64(ordinal)*0.2)
+			spread = math.Min(spread, math.Min(a[0]-gx, gx+gw-a[0]))
+			if direction < 0 {
+				reach = math.Min(reach, a[1]-gy)
+			} else {
+				reach = math.Min(reach, gy+gh-a[1])
+			}
+			path = fmt.Sprintf("M %.2f %.2f C %.2f %.2f %.2f %.2f %.2f %.2f", a[0]-16, a[1]+direction*16, a[0]-spread, a[1]+direction*reach, a[0]+spread, a[1]+direction*reach, a[0]+16, a[1]+direction*16)
 			mx = a[0]
-			my = a[1] - 56
+			my = a[1] + direction*(4+0.75*reach)
 		} else if length > 0 {
 			// Parallel edge offsets depend on original identity, never current state.
 			count, ordinal := 0, 0
@@ -136,19 +194,74 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 					count++
 				}
 			}
-			offset := (float64(ordinal) - float64(count-1)/2) * 36
 			nx, ny := -dy/length, dx/length
 			if index[e.From] > index[e.To] {
 				nx = -nx
 				ny = -ny
 			}
+			// ponytail: compress parallel curves to canvas; use an expanded graph layout if individual curves must remain distinguishable at high counts.
+			limit := math.Inf(1)
+			if nx != 0 {
+				limit = math.Min(limit, math.Min(mx-gx, gx+gw-mx)/math.Abs(nx))
+			}
+			if ny != 0 {
+				limit = math.Min(limit, math.Min(my-gy, gy+gh-my)/math.Abs(ny))
+			}
+			spacing := 36.0
+			if count > 1 {
+				spacing = math.Min(spacing, 2*limit/float64(count-1))
+			}
+			offset := (float64(ordinal) - float64(count-1)/2) * spacing
 			cx, cy := mx+nx*offset, my+ny*offset
 			path = fmt.Sprintf("M %.2f %.2f Q %.2f %.2f %.2f %.2f", a[0]+dx/length*22, a[1]+dy/length*22, cx, cy, z[0]-dx/length*22, z[1]-dy/length*22)
-			mx += nx * (offset/2 + 10)
-			my += ny * (offset/2 + 10)
+			mx = (mx + cx) / 2
+			my = (my + cy) / 2
 		}
-		fmt.Fprintf(&b, `<path data-edge-index="%d" d="%s" fill="none" stroke="%s" stroke-width="3"%s><title>%s</title></path><rect x="%.2f" y="%.2f" width="52" height="22" rx="8" fill="#111d27"/>`, i, path, color, dash, html.EscapeString(fmt.Sprintf("Edge #%d %s — %s, weight %d: %s", i, e.From, e.To, e.Weight, status)), mx-26, my-16)
-		kruskalText(&b, mx-20, my, fmt.Sprint(e.Weight))
+		fmt.Fprintf(&b, `<path data-edge-index="%d" d="%s" fill="none" stroke="%s" stroke-width="3"%s><title>%s</title></path>`, i, path, color, dash, html.EscapeString(fmt.Sprintf("Edge #%d %s — %s, weight %d: %s", i, e.From, e.To, e.Weight, status)))
+		labels = append(labels, edgeLabel{i, mx, my})
+	}
+	// Place IDs in distinct grid cells, with leader lines to their actual paths.
+	for i := range labels {
+		if labels[i].id == s.ActiveEdge {
+			labels[0], labels[i] = labels[i], labels[0]
+			break
+		}
+	}
+	var occupied [][2]float64
+	omitted := 0
+	for _, label := range labels {
+		best, distance := [2]float64{}, math.Inf(1)
+		for y := gy + 18; y <= gy+gh-18; y += 28 {
+			for x := gx + 24; x <= gx+gw-24; x += 48 {
+				free := true
+				for _, p := range pos {
+					if math.Abs(x-p[0]) < 44 && math.Abs(y-p[1]) < 36 {
+						free = false
+						break
+					}
+				}
+				for _, p := range occupied {
+					if x == p[0] && y == p[1] {
+						free = false
+						break
+					}
+				}
+				d := math.Hypot(x-label.x, y-label.y)
+				if free && d < distance {
+					best, distance = [2]float64{x, y}, d
+				}
+			}
+		}
+		if math.IsInf(distance, 1) && label.id == s.ActiveEdge {
+			// Dense node layouts may occupy every slot; keep active identity in the heading.
+			best, distance = [2]float64{gx + gw - 24, gy - 18}, 0
+		}
+		if math.IsInf(distance, 1) {
+			omitted++
+			continue
+		}
+		occupied = append(occupied, best)
+		fmt.Fprintf(&b, `<g data-edge-label="%d"><path d="M %.2f %.2f L %.2f %.2f" fill="none" stroke="#eff5ed" stroke-width="1"/><rect x="%.2f" y="%.2f" width="44" height="22" rx="6" fill="#111d27" stroke="#80938d"/><text x="%.2f" y="%.2f" text-anchor="middle" fill="#eff5ed" font-size="14">#%d</text></g>`, label.id, label.x, label.y, best[0], best[1], best[0]-22, best[1]-11, best[0], best[1]+5, label.id)
 	}
 	palette := []string{"#c45d75", "#387faa", "#8763bb", "#b67b30", "#258b80"}
 	component := map[string]int{}
@@ -170,7 +283,7 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 		if len(label) == 0 {
 			label = []rune(n.ID)
 		}
-		for line := 0; line < 2 && line*12 < len(label); line++ {
+		for line := 0; !dense && line < 2 && line*12 < len(label); line++ {
 			end := min((line+1)*12, len(label))
 			text := string(label[line*12 : end])
 			if line == 1 && end < len(label) {
@@ -182,7 +295,7 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 	fmt.Fprintf(&b, `<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="12" fill="#192923" stroke="#52634e"/>`, px, py, pw, panelH)
 	kruskalText(&b, px+12, py+20, "DSU · node / parent / rank / group")
 	for i, n := range s.Nodes {
-		y := py + 50 + float64(i*30)
+		y := py + 50 + float64(i*rowHeight)
 		parent, known := s.Parent[n.ID]
 		if !known {
 			parent = "—"
@@ -193,9 +306,18 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 			parentIndex = fmt.Sprint(j)
 		}
 		kruskalText(&b, 0, 0, fmt.Sprintf("#%d    #%s    %d     G%d", i, parentIndex, s.Rank[n.ID], component[n.ID]))
+		if dense {
+			label := []rune(n.Label)
+			if len(label) == 0 {
+				label = []rune(n.ID)
+			}
+			for line := 0; line*18 < len(label); line++ {
+				kruskalText(&b, 0, 16+float64(line*16), string(label[line*18:min((line+1)*18, len(label))]))
+			}
+		}
 		b.WriteString(`</g>`)
 		if j, ok := index[parent]; ok {
-			pointerY := py + 46 + float64(j*30)
+			pointerY := py + 46 + float64(j*rowHeight)
 			pointerX := px + pw - 58 + float64(i%4)*9
 			fmt.Fprintf(&b, `<g data-entity="kruskal-parent-pointer:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"><title>%s</title><path d="M -4 -4 L 4 0 L -4 4 Z" fill="%s"/></g>`, i, pointerX, pointerY, pointerX, pointerY, html.EscapeString(fmt.Sprintf("Node #%d parent is #%d", i, j)), palette[i%5])
 		}
@@ -203,11 +325,18 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 	// Explicit row brackets remain truthful even when a component has nonadjacent rows.
 	for i, n := range s.Nodes {
 		if g := component[n.ID]; g > 0 {
-			y := py + 34 + float64(i*30)
+			y := py + 34 + float64(i*rowHeight)
 			fmt.Fprintf(&b, `<path d="M %.0f %.0f h 5 v 24 h -5" fill="none" stroke="#8bd5ff"><title>Component G%d, node #%d</title></path>`, px+pw-12, y, g, i)
 		}
 	}
-	kruskalText(&b, 24, stripY, "Edge queue · #original index : weight")
+	queueTitle := "Edge queue · #original index : weight"
+	if dense {
+		queueTitle = "Edges · all listed; active loop shown"
+	}
+	if omitted > 0 {
+		queueTitle = fmt.Sprintf("Edges · %d IDs in queue only", omitted)
+	}
+	kruskalText(&b, 24, stripY, queueTitle)
 	for slot, edgeIndex := range s.SortedEdgeIndices {
 		if edgeIndex < 0 || edgeIndex >= len(s.Edges) {
 			continue
@@ -228,7 +357,13 @@ func RenderKruskalLessonSVG(step trace.Step, width, height int) string {
 			marker = " ✓"
 		}
 		fmt.Fprintf(&b, `<g data-entity="kruskal-edge-chip:%d" data-x="%.0f" data-y="%.0f" transform="translate(%.0f %.0f)"><rect width="136" height="36" rx="8" fill="#192923" stroke="%s" stroke-width="2"/>`, edgeIndex, x, y, x, y, color)
-		kruskalText(&b, 5, 23, fmt.Sprintf("#%d:%d%s", edgeIndex, s.Edges[edgeIndex].Weight, marker))
+		if dense {
+			e := s.Edges[edgeIndex]
+			kruskalText(&b, 5, 15, fmt.Sprintf("#%d: #%d → #%d", edgeIndex, index[e.From], index[e.To]))
+			kruskalText(&b, 5, 31, fmt.Sprintf("%d%s", e.Weight, marker))
+		} else {
+			kruskalText(&b, 5, 23, fmt.Sprintf("#%d:%d%s", edgeIndex, s.Edges[edgeIndex].Weight, marker))
+		}
 		b.WriteString(`</g>`)
 	}
 	status := "Choose edges joining different roots"

@@ -183,7 +183,7 @@ func Trace(cfg Config) []trace.Step {
 				}
 			}
 			b.IncOperations()
-			emit("L11", trace.ActionSet, "mutation", fmt.Sprintf("Mutation rate %.2f; append only available slots. Gold marks observed byte changes, not unchanged replacements.", cfg.MutationRate))
+			emit("L11", trace.ActionSet, "mutation", fmt.Sprintf("Mutation rate %v; append only available slots. Gold marks observed byte changes, not unchanged replacements.", cfg.MutationRate))
 		}
 		s.Population = append([]renderers.GeneticIndividualView(nil), s.NextPopulation...)
 		s.NextPopulation = nil

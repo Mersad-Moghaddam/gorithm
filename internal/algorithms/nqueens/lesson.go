@@ -37,7 +37,7 @@ func (l Lesson) Meta() catalog.Meta {
 func (l Lesson) Source() []trace.SourceLine {
 	return []trace.SourceLine{
 		{ID: "L1", Number: 1, Code: "func solveNQueens(n int) [][]int {"},
-		{ID: "L2", Number: 2, Code: "    board := make([]int, n)"},
+		{ID: "L2", Number: 2, Code: "    board := make([]int, n); for i := range board { board[i] = -1 }"},
 		{ID: "L3", Number: 3, Code: "    backtrack(0, board, n)"},
 		{ID: "L4", Number: 4, Code: "}"},
 		{ID: "L5", Number: 5, Code: "func backtrack(row int, board []int, n int) {"},

@@ -92,3 +92,14 @@ func TestBubbleLessonSVG(t *testing.T) {
 		}
 	}
 }
+
+func TestBubbleSwapCaptionDoesNotCollideWithMovingValues(t *testing.T) {
+	state := BubbleLessonState{ArrayState: ArrayState{Values: []int{1, 1000000}, Swapped: []int{0, 1}}, IDs: []int{1, 0}, Pass: 0, Scan: 0, UnsortedEnd: 1, MinValue: 0, MaxValue: 1000000}
+	svg := RenderBubbleLessonSVG(trace.Step{Action: trace.ActionSwap, State: state}, 320, 360)
+	if strings.Contains(svg, ">Adjacent pair [0, 1]</text>") {
+		t.Fatal("caption intersects moving maximum-value label")
+	}
+	if !strings.Contains(svg, `stroke="#ffe29a" stroke-width="3"`) || !strings.Contains(svg, `data-motion="swap-up"`) {
+		t.Fatal("swap needs pair bracket and motion")
+	}
+}

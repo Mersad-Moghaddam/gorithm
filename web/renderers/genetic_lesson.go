@@ -247,7 +247,7 @@ func RenderGeneticLessonSVG(step trace.Step, width, height int) string {
 	geneticLessonText(&b, inset, historyY+164, "c2 = p2[:cut] + p1[cut:]", "#8bd5ff")
 	status := s.StopReason
 	if status == "" {
-		status = fmt.Sprintf("Mutation rate %.2f · check = target match", s.MutationRate)
+		status = fmt.Sprintf("Mutation rate %v · check = target match", s.MutationRate)
 	}
 	geneticLessonText(&b, inset, historyY+188, status, "#ffe29a")
 	fmt.Fprint(&b, `</g>`)

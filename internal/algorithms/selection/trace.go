@@ -88,6 +88,7 @@ func Trace(initial []int) []trace.Step {
 			}
 		}
 
+		scan = -1
 		if minIdx != i {
 			arr[i], arr[minIdx] = arr[minIdx], arr[i]
 			ids[i], ids[minIdx] = ids[minIdx], ids[i]

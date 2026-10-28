@@ -48,7 +48,7 @@ func RenderTrieLessonSVG(step trace.Step, width, height int) string {
 		}
 		x := 48.0
 		if len(children[id]) == 0 {
-			x += 72 * float64(leaves)
+			x += 96 * float64(leaves)
 			leaves++
 		} else {
 			first := layout(children[id][0], depth+1)
@@ -58,7 +58,7 @@ func RenderTrieLessonSVG(step trace.Step, width, height int) string {
 			}
 			x = (first + last) / 2
 		}
-		positions[id] = [2]float64{x, 112 + 80*float64(depth)}
+		positions[id] = [2]float64{x, 112 + 96*float64(depth)}
 		return x
 	}
 	for _, n := range s.Nodes {
@@ -66,9 +66,9 @@ func RenderTrieLessonSVG(step trace.Step, width, height int) string {
 			layout(n.ID, 0)
 		}
 	}
-	w := max(800, 96+72*(leaves-1), 64+40*len(s.Runes))
-	h := max(480, 184+80*depthMax)
-	offset := float64(w-(96+72*(leaves-1))) / 2
+	w := max(800, 96+96*(leaves-1), 64+40*len(s.Runes))
+	h := max(480, 184+96*depthMax)
+	offset := float64(w-(96+96*(leaves-1))) / 2
 	for id, p := range positions {
 		p[0] += offset
 		positions[id] = p
@@ -105,7 +105,7 @@ func RenderTrieLessonSVG(step trace.Step, width, height int) string {
 		p, exists := positions[n.ParentID]
 		q := positions[n.ID]
 		if n.ParentID != "" && exists {
-			fmt.Fprintf(&b, `<g data-edge="%s" data-parent="%s"><path d="M%.1f %.1fL%.1f %.1f" stroke="#bbcab9" stroke-width="2"/><text x="%.1f" y="%.1f" fill="#eff5ed">%s</text></g>`, html.EscapeString(n.ID), html.EscapeString(n.ParentID), p[0], p[1]+20, q[0], q[1]-20, (p[0]+q[0])/2+8, (p[1]+q[1])/2, html.EscapeString(n.Label))
+			fmt.Fprintf(&b, `<g data-edge="%s" data-parent="%s"><path d="M%.1f %.1fL%.1f %.1f" stroke="#bbcab9" stroke-width="2"/></g>`, html.EscapeString(n.ID), html.EscapeString(n.ParentID), p[0], p[1]+20, q[0], q[1]-20)
 		}
 	}
 	terminals := map[string]bool{}

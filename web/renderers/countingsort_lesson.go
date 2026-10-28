@@ -47,7 +47,12 @@ func RenderCountingsortLessonSVG(step trace.Step, width, height int) string {
 	if s.Phase == "output" || s.Phase == "done" {
 		countLabel = "Remaining insertion boundary (exclusive)"
 	}
-	fmt.Fprintf(&out, `<text x="32" y="30" font-size="16" font-weight="600">Input — original identities stay visible</text><text x="32" y="232" font-size="14">%s</text><text x="32" y="%d" font-size="16" font-weight="600">Output — stable copies, ✓ filled</text>`, countLabel, outputY-34)
+	outputLabel := "Output — stable copies, ✓ filled"
+	if s.Phase == "done" && len(s.Counts) == 0 {
+		countLabel = "Counts not needed for an already sorted input"
+		outputLabel = "Result — input returned unchanged, ✓ filled"
+	}
+	fmt.Fprintf(&out, `<text x="32" y="30" font-size="16" font-weight="600">Input — original identities stay visible</text><text x="32" y="232" font-size="14">%s</text><text x="32" y="%d" font-size="16" font-weight="600">%s</text>`, countLabel, outputY-34, outputLabel)
 	// Input never changes, so this domain is identical across every snapshot.
 	high := 1
 	for _, v := range s.Input {

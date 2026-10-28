@@ -5,11 +5,25 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Mersad-Moghaddam/gorithm/internal/catalog"
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
+
+func TestGeneticMutationExplanationPreservesRate(t *testing.T) {
+	steps := Trace(Config{Target: "1111", Charset: "0", PopSize: 2, MaxGenerations: 1, MutationRate: 0.001, TournamentSize: 1})
+	for _, step := range steps {
+		if step.State.(renderers.GeneticLessonState).Phase == "mutation" {
+			if !strings.Contains(step.Explanation, "0.001") {
+				t.Fatalf("mutation explanation lost rate: %q", step.Explanation)
+			}
+			return
+		}
+	}
+	t.Fatal("missing mutation")
+}
 
 func TestGeneticLessonOperators(t *testing.T) {
 	a, b := Crossover(Individual{Genes: "1000"}, Individual{Genes: "0111"}, 2)

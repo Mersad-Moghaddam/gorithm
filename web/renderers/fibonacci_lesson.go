@@ -34,12 +34,8 @@ func RenderFibonacciLessonSVG(step trace.Step, width, height int) string {
 	if w > 1440 {
 		w = 1440
 	}
-	cellW := 64
-	for _, v := range s.Values {
-		if needed := len(strconv.Itoa(v))*9 + 16; needed > cellW {
-			cellW = needed
-		}
-	}
+	// Fixed width prevents later, longer values from moving existing cells.
+	cellW := 106 // ponytail: fits Fibonacci through F(46); revise with input limit.
 	cols := (w - 32) / (cellW + 8)
 	if cols < 1 {
 		cols = 1
@@ -73,7 +69,7 @@ func RenderFibonacciLessonSVG(step trace.Step, width, height int) string {
 		formula = fmt.Sprintf("F(%d) = F(%d) + F(%d)", s.Index, s.Sources[0], s.Sources[1])
 	}
 	if s.HasResult {
-		formula = fmt.Sprintf("Verified result: F(%d) = %d", max(0, s.N), s.Result)
+		formula = fmt.Sprintf("F(%d) = %d", max(0, s.N), s.Result)
 	}
 	fibonacciText(&b, 16, 54, formula, "#bbcab9", 14)
 	colors := []string{"#c45d75", "#387faa", "#8763bb", "#b67b30", "#258b80"}

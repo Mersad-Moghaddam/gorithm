@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -46,5 +47,27 @@ func TestFibonacciLessonSVG(t *testing.T) {
 	s.Result = 5
 	if !strings.Contains(RenderFibonacciLessonSVG(trace.Step{State: s}, 320, 450), `stroke="#9bf0bb"`) {
 		t.Fatal("missing final check")
+	}
+}
+
+func TestFibonacciCellsStayPutWhenValuesGrow(t *testing.T) {
+	s := FibonacciLessonState{N: 46, Values: make([]int, 47), Known: make([]bool, 47), Phase: "allocate"}
+	position := regexp.MustCompile(`data-entity="cell:1" data-x="\d+" data-y="\d+"`)
+	for _, width := range []int{320, 1440} {
+		before := position.FindString(RenderFibonacciLessonSVG(trace.Step{State: s}, width, 0))
+		s.Values[46], s.Known[46] = 1836311903, true
+		after := position.FindString(RenderFibonacciLessonSVG(trace.Step{State: s}, width, 0))
+		if before == "" || before != after {
+			t.Errorf("width %d: cell moved from %q to %q", width, before, after)
+		}
+		s.Values[46], s.Known[46] = 0, false
+	}
+}
+
+func TestFibonacciFinalLabelFitsNarrowScene(t *testing.T) {
+	s := FibonacciLessonState{N: 46, Values: []int{1836311903}, Known: []bool{true}, Phase: "done", HasResult: true, Result: 1836311903}
+	svg := RenderFibonacciLessonSVG(trace.Step{State: s}, 320, 0)
+	if strings.Contains(svg, "Verified result: F(46) = 1836311903") || !strings.Contains(svg, "F(46) = 1836311903") {
+		t.Fatal("maximum result label does not fit narrow scene")
 	}
 }

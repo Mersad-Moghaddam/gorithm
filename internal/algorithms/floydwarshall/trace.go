@@ -9,16 +9,16 @@ import (
 	"github.com/Mersad-Moghaddam/gorithm/web/renderers"
 )
 
-func formatDist(d int) string {
-	if d == math.MaxInt {
+func formatDist(d int64) string {
+	if d == math.MaxInt64 {
 		return "∞"
 	}
-	return strconv.Itoa(d)
+	return strconv.FormatInt(d, 10)
 }
 
 func buildTableState(
 	nodes []string,
-	dist [][]int,
+	dist [][]int64,
 	activeRow, activeCol int,
 	sourceRow1, sourceCol1 int,
 	sourceRow2, sourceCol2 int,
@@ -64,14 +64,14 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 	b := trace.NewBuilder()
 	v := len(nodes)
 
-	dist := make([][]int, v)
+	dist := make([][]int64, v)
 	for i := range dist {
-		dist[i] = make([]int, v)
+		dist[i] = make([]int64, v)
 		for j := range dist[i] {
 			if i == j {
 				dist[i][j] = 0
 			} else {
-				dist[i][j] = math.MaxInt
+				dist[i][j] = math.MaxInt64
 			}
 		}
 	}
@@ -87,11 +87,11 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 		if !uOk || !toOk {
 			continue
 		}
-		if e.Weight < dist[u][to] {
-			dist[u][to] = e.Weight
+		if int64(e.Weight) < dist[u][to] {
+			dist[u][to] = int64(e.Weight)
 		}
-		if !e.Directed && e.Weight < dist[to][u] {
-			dist[to][u] = e.Weight
+		if !e.Directed && int64(e.Weight) < dist[to][u] {
+			dist[to][u] = int64(e.Weight)
 		}
 	}
 
@@ -104,16 +104,16 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 		for i, e := range edges {
 			s.Edges[i] = renderers.GraphEdge{From: e.From, To: e.To, Weight: e.Weight, Directed: e.Directed}
 		}
-		s.Distance = make([][]int, v)
+		s.Distance = make([][]int64, v)
 		for i := range dist {
-			s.Distance[i] = append([]int{}, dist[i]...)
+			s.Distance[i] = append([]int64{}, dist[i]...)
 		}
 		s.TableState = buildTableState(nodes, dist, s.I, s.J, s.I, s.K, s.K, s.J, -1, -1)
 		return s
 	}
 
 	b.AddStep(
-		"L1",
+		"L2",
 		trace.ActionInit,
 		fmt.Sprintf("Initialize %dx%d distance matrix for %d nodes.", v, v, v),
 		snapshot(),
@@ -137,7 +137,7 @@ func Trace(nodes []string, edges []WeightedEdge) []trace.Step {
 				current.LeftDistance, current.RightDistance, current.OldDistance = dist[i][k], dist[k][j], dist[i][j]
 				current.Candidate, current.HasCandidate, current.Improved = 0, false, false
 				b.IncComparisons()
-				if dist[i][k] == math.MaxInt || dist[k][j] == math.MaxInt {
+				if dist[i][k] == math.MaxInt64 || dist[k][j] == math.MaxInt64 {
 					b.AddStep(
 						"L6",
 						trace.ActionCompare,

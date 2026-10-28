@@ -14,18 +14,18 @@ type FloydWarshallLessonState struct {
 	TableState
 	Nodes                                                   []string
 	Edges                                                   []GraphEdge
-	Distance                                                [][]int
+	Distance                                                [][]int64
 	I, J, K                                                 int
-	LeftDistance, RightDistance, OldDistance, Candidate     int
+	LeftDistance, RightDistance, OldDistance, Candidate     int64
 	HasCandidate, Improved, CheckingDiagonal, NegativeCycle bool
 	DiagonalIndex                                           int
 }
 
-func floydWarshallDistance(v int) string {
-	if v == math.MaxInt {
+func floydWarshallDistance(v int64) string {
+	if v == math.MaxInt64 {
 		return "∞"
 	}
-	return strconv.Itoa(v)
+	return strconv.FormatInt(v, 10)
 }
 
 // RenderFloydWarshallLessonSVG renders only the selected stored matrix and operands.
@@ -46,6 +46,20 @@ func RenderFloydWarshallLessonSVG(step trace.Step, width, height int) string {
 		routeX = 48
 		routeY = y0 + n*cellH + 100
 	}
+	// Negative cycles can grow distances throughout playback; reserve width up front.
+	for _, edge := range s.Edges {
+		if edge.Weight < 0 {
+			cellW = 19*9 + 48
+			break
+		}
+	}
+	for _, row := range s.Distance {
+		for _, value := range row {
+			if needed := len(floydWarshallDistance(value))*9 + 48; needed > cellW {
+				cellW = needed
+			}
+		}
+	}
 	matrixRight := x0 + n*cellW
 	if !mobile && matrixRight+56 > routeX {
 		routeX = matrixRight + 56
@@ -57,19 +71,19 @@ func RenderFloydWarshallLessonSVG(step trace.Step, width, height int) string {
 	} else if routeX+396 > sceneW {
 		sceneW = routeX + 396
 	}
-	selectorY := 360
+	selectorY := routeY + 250
 	if y0+n*cellH+48 > selectorY {
 		selectorY = y0 + n*cellH + 48
 	}
 	if mobile {
-		selectorY = routeY + 160
+		selectorY = routeY + 250
 	}
 	chipCols := (sceneW - 48) / 80
 	if chipCols < 1 {
 		chipCols = 1
 	}
 	equationY := selectorY + ((n+chipCols-1)/chipCols)*48 + 56
-	sceneH := equationY + 136
+	sceneH := equationY + 230
 	if sceneH < 640 {
 		sceneH = 640
 	}
@@ -125,9 +139,9 @@ func RenderFloydWarshallLessonSVG(step trace.Step, width, height int) string {
 		}
 		floydWarshallText(&b, routeX, routeY+78, "Distance routes, not direct input edges")
 		fmt.Fprintf(&b, `<path d="M%d %dQ%d %d %d %d" fill="none" stroke="#bbcab9" stroke-dasharray="5 4"/>`, routeX, routeY+52, routeX+gap, routeY+125, routeX+2*gap, routeY+52)
-		floydWarshallText(&b, routeX, routeY-28, "left: "+floydWarshallDistance(s.LeftDistance))
-		floydWarshallText(&b, routeX+gap+8, routeY-28, "right: "+floydWarshallDistance(s.RightDistance))
-		floydWarshallText(&b, routeX+gap-50, routeY+112, "old: "+floydWarshallDistance(s.OldDistance))
+		floydWarshallText(&b, routeX, routeY+128, "left: "+floydWarshallDistance(s.LeftDistance))
+		floydWarshallText(&b, routeX, routeY+150, "right: "+floydWarshallDistance(s.RightDistance))
+		floydWarshallText(&b, routeX, routeY+172, "old: "+floydWarshallDistance(s.OldDistance))
 	}
 	for i, name := range s.Nodes {
 		x, y := 24+(i%chipCols)*80, selectorY+(i/chipCols)*48
@@ -142,7 +156,7 @@ func RenderFloydWarshallLessonSVG(step trace.Step, width, height int) string {
 		floydWarshallText(&b, 24, equationY, fmt.Sprintf("d[%d][%d] = min(%s, %s + %s) = %s", s.I, s.J, floydWarshallDistance(s.OldDistance), floydWarshallDistance(s.LeftDistance), floydWarshallDistance(s.RightDistance), floydWarshallDistance(min(s.OldDistance, s.Candidate))))
 		// Operand copies alias source positions; commit token returns to the destination.
 		if s.Improved {
-			fmt.Fprintf(&b, `<g data-entity="floydwarshall:commit" data-from-entity="floydwarshall:operand:left" data-x="%d" data-y="%d" transform="translate(%d %d)"><circle r="17" fill="#172735" stroke="#9bf0bb"/><text y="5" text-anchor="middle">%s</text><title>Commit candidate to destination</title></g>`, x0+s.J*cellW+cellW/2, y0+s.I*cellH+cellH/2, x0+s.J*cellW+cellW/2, y0+s.I*cellH+cellH/2, floydWarshallDistance(s.Candidate))
+			fmt.Fprintf(&b, `<g data-entity="floydwarshall:commit" data-from-entity="floydwarshall:operand:left" data-x="%d" data-y="%d" transform="translate(%d %d)"><circle r="12" fill="#172735" stroke="#9bf0bb"/><text data-commit-marker="check" y="5" text-anchor="middle">✓</text><title>Commit candidate %s to destination</title></g>`, x0+s.J*cellW+cellW-16, y0+s.I*cellH+14, x0+s.J*cellW+cellW-16, y0+s.I*cellH+14, floydWarshallDistance(s.Candidate))
 		} else {
 			for p, role := range []string{"left", "right"} {
 				r, c, value := s.I, s.K, s.LeftDistance
@@ -151,8 +165,8 @@ func RenderFloydWarshallLessonSVG(step trace.Step, width, height int) string {
 					c = s.J
 					value = s.RightDistance
 				}
-				x := 24 + p*140
-				fmt.Fprintf(&b, `<g data-entity="floydwarshall:operand:%s" data-from-entity="floydwarshall:cell:%d:%d" data-x="%d" data-y="%d" transform="translate(%d %d)"><text y="5">%s = %s</text></g>`, role, r, c, x, equationY+50, x, equationY+50, role, floydWarshallDistance(value))
+				x, y := 24, equationY+80+p*22
+				fmt.Fprintf(&b, `<g data-operand-layout="stacked" data-entity="floydwarshall:operand:%s" data-from-entity="floydwarshall:cell:%d:%d" data-x="%d" data-y="%d" transform="translate(%d %d)"><text y="5">%s = %s</text></g>`, role, r, c, x, y, x, y, role, floydWarshallDistance(value))
 			}
 		}
 	} else if step.LineID == "L6" {
@@ -166,7 +180,7 @@ func RenderFloydWarshallLessonSVG(step trace.Step, width, height int) string {
 	} else if s.CheckingDiagonal {
 		status = "Check diagonal d[i][i] for a negative cycle."
 	}
-	floydWarshallText(&b, 24, equationY+86, status)
+	floydWarshallText(&b, 24, equationY+166, status)
 	b.WriteString(`</g>`)
 	return b.String()
 }

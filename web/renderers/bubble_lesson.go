@@ -116,7 +116,7 @@ func RenderBubbleLessonSVG(step trace.Step, width, height int) string {
 	}
 	if state.Scan >= 0 && state.Scan+1 < n && (step.Action == trace.ActionCompare || step.Action == trace.ActionSwap) {
 		x1 := 32 + (float64(state.Scan)+0.5)*pitch
-		fmt.Fprintf(&out, `<path d="M%.2f %dv8h%.2fv-8" fill="none" stroke="#ffe29a" stroke-width="3"/><text x="%.2f" y="64" font-size="14" text-anchor="middle">Adjacent pair [%d, %d]</text>`, x1, height-92, pitch, x1+pitch/2, state.Scan, state.Scan+1)
+		fmt.Fprintf(&out, `<path d="M%.2f %dv8h%.2fv-8" fill="none" stroke="#ffe29a" stroke-width="3"/>`, x1, height-92, pitch)
 	}
 	if state.UnsortedEnd < n-1 {
 		boundary := 32 + float64(max(0, state.UnsortedEnd+1))*pitch

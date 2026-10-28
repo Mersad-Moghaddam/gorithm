@@ -56,3 +56,11 @@ func TestBucketsortLessonSVG(t *testing.T) {
 		t.Fatal("empty state")
 	}
 }
+
+func TestBucketsortUnallocatedBucketsDoNotClaimEqualRange(t *testing.T) {
+	s := BucketsortLessonState{ArrayState: ArrayState{Values: []int{1, 9}}, Min: 1, Max: 9, Phase: "init"}
+	svg := RenderBucketsortLessonSVG(trace.Step{State: s}, 320, 360)
+	if strings.Contains(svg, "Equal range: no hashing") {
+		t.Fatal("unequal input falsely described as equal range")
+	}
+}

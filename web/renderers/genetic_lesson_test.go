@@ -9,6 +9,14 @@ import (
 	"github.com/Mersad-Moghaddam/gorithm/internal/trace"
 )
 
+func TestGeneticLessonShowsExactMutationRate(t *testing.T) {
+	s := GeneticLessonState{Target: "1", MutationRate: 0.001}
+	svg := RenderGeneticLessonSVG(trace.Step{State: s}, 320, 0)
+	if !strings.Contains(svg, "Mutation rate 0.001") {
+		t.Fatal("mutation rate rounded in scene")
+	}
+}
+
 func TestGeneticLessonSVG(t *testing.T) {
 	s := GeneticLessonState{Target: "<&\"'>", Phase: "mutation", Cut: 2, MutationRate: 1, Population: []GeneticIndividualView{{ID: "g0-i0", Genes: "1000", Fitness: 3}, {ID: "g0-i1", Genes: "0111", Fitness: 1}}, Parents: [2]GeneticIndividualView{{ID: "g0-i0", Genes: "1000"}, {ID: "g0-i1", Genes: "0111"}}, Crossed: [2]GeneticIndividualView{{ID: "g1-i1", Genes: "1011"}, {ID: "g1-i2", Genes: "0100"}}, Mutated: [2]GeneticIndividualView{{ID: "g1-i1", Genes: "1010", Fitness: 4}, {ID: "g1-i2", Genes: "0100", Fitness: 1}}, ChangedLoci: [2][]int{{3}, nil}, BestFitnessHistory: []int{3, 4}}
 	for _, w := range []int{-1, 320, 390, 768, 1440} {

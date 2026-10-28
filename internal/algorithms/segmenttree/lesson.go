@@ -79,6 +79,21 @@ type buildInput struct {
 	Update *updateOp `json:"update"`
 }
 
+func integerArray(raw json.RawMessage) ([]int, error) {
+	var values []*int
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil, err
+	}
+	out := make([]int, len(values))
+	for i, value := range values {
+		if value == nil {
+			return nil, fmt.Errorf("array elements must be integers")
+		}
+		out[i] = *value
+	}
+	return out, nil
+}
+
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{1, 3, 5, 7, 9, 11}
 	ql, qr := 1, 4
@@ -90,7 +105,8 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 			return nil, fmt.Errorf("segment tree input must be an array or object")
 		}
 		if input[0] == '[' {
-			if err := json.Unmarshal(input, &arr); err != nil {
+			var err error
+			if arr, err = integerArray(input); err != nil {
 				return nil, fmt.Errorf("invalid array: %w", err)
 			}
 			ql, qr = 0, len(arr)-1
@@ -103,14 +119,15 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 				if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 					return nil, fmt.Errorf("arr must not be null")
 				}
-				if err := json.Unmarshal(raw, &arr); err != nil {
+				var err error
+				if arr, err = integerArray(raw); err != nil {
 					return nil, fmt.Errorf("invalid arr: %w", err)
 				}
 				ql, qr = 0, len(arr)-1
 			}
 			if raw, ok := fields["query"]; ok {
-				var query []int
-				if err := json.Unmarshal(raw, &query); err != nil || len(query) != 2 {
+				query, err := integerArray(raw)
+				if err != nil || len(query) != 2 {
 					return nil, fmt.Errorf("query requires two integer bounds")
 				}
 				ql, qr = query[0], query[1]

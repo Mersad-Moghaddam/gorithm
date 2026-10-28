@@ -31,14 +31,6 @@ func RenderToposortLessonSVG(step trace.Step, width, height int) string {
 	laneW := 432
 	orderX := 480
 	ledgerY := 448
-	if width < 600 {
-		w = 360
-		graphY = 64
-		graphH = 240
-		laneY = 344
-		laneW = 328
-		orderX = 16
-	}
 	cols := laneW / 104
 	if cols < 1 {
 		cols = 1
@@ -47,12 +39,7 @@ func RenderToposortLessonSVG(step trace.Step, width, height int) string {
 	queueH := 40 + rows(len(s.Queue))*52
 	orderH := 40 + rows(len(s.Order))*52
 	orderY := laneY
-	if w == 360 {
-		orderY = laneY + queueH + 16
-		ledgerY = orderY + orderH + 24
-	} else {
-		ledgerY = max(448, laneY+max(queueH, orderH)+24)
-	}
+	ledgerY = max(448, laneY+max(queueH, orderH)+24)
 	sceneH := ledgerY + 58 + len(s.Nodes)*30 + 100
 	var b strings.Builder
 	fmt.Fprintf(&b, `<g data-lesson="toposort" data-phase="%s" data-scene-width="%d" data-scene-height="%d" data-min-width="%d" font-family="system-ui, sans-serif" font-size="14" fill="#eff5ed"><title>Topological sort: ready tasks and remaining prerequisites</title><defs><marker id="toposort-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#bbcab9"/></marker></defs>`, html.EscapeString(step.LineID), w, sceneH, w)
@@ -236,9 +223,6 @@ func RenderToposortLessonSVG(step trace.Step, width, height int) string {
 		}
 	}
 	x := 24
-	if w == 360 {
-		x = 16
-	}
 	lane("Ready FIFO", "queue", s.Queue, x, laneY, queueH)
 	lane("Output order", "order", s.Order, orderX, orderY, orderH)
 	if i, exists := index[s.Current]; exists {

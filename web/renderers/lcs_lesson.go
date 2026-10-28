@@ -36,7 +36,7 @@ func RenderLCSLessonSVG(step trace.Step, width, height int) string {
 	// ponytail: fixed 48px byte cells use stage-local scrolling; no matrix zoom layer.
 	cols := len(s.S2) + 1
 	rows := len(s.S1) + 1
-	sceneW := max(320, 112+48*max(cols, len(s.S1)))
+	sceneW := max(400, 112+48*max(cols, len(s.S1)))
 	sceneW = max(sceneW, 48+48*len(s.Matches))
 	sceneW = max(sceneW, min(max(width, 0), 1440))
 	sceneH := max(400, 368+48*rows)
@@ -48,7 +48,9 @@ func RenderLCSLessonSVG(step trace.Step, width, height int) string {
 	}
 	text(16, 24, "LCS · byte comparison · "+s.Phase)
 	formula := "Boundary prefixes = 0; blank = uncomputed"
-	if s.From[0] > 0 && s.From[1] > 0 && s.From[0] < len(s.DP) && s.From[1] < len(s.DP[s.From[0]]) {
+	if s.Phase == "backtrack" || s.Phase == "match" || s.Phase == "up" || s.Phase == "left" {
+		formula = "Backtrack through computed prefixes"
+	} else if (s.Phase == "compare" || s.Phase == "write") && s.From[0] > 0 && s.From[1] > 0 && s.From[0] < len(s.DP) && s.From[1] < len(s.DP[s.From[0]]) {
 		i, j := s.From[0], s.From[1]
 		if s.Match {
 			formula = fmt.Sprintf("diagonal %d + 1 = %d", s.DP[i-1][j-1], s.DP[i-1][j-1]+1)

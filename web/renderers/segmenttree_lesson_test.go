@@ -115,3 +115,47 @@ func TestSegmentTreeLessonFallbackAndEscaping(t *testing.T) {
 		t.Fatal("mutated state")
 	}
 }
+
+func TestSegmentTreeLongValuesDoNotOverlap(t *testing.T) {
+	steps := segmenttree.Trace([]int{-1000000, -1000000, -1000000, -1000000}, 0, 3, 0, -1000000)
+	svg := renderers.RenderSegmentTreeLessonSVG(steps[len(steps)-1], 320, 420)
+	decoder := xml.NewDecoder(strings.NewReader("<svg>" + svg + "</svg>"))
+	type box struct{ x, y, width float64 }
+	var boxes []box
+	var current *box
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch el := token.(type) {
+		case xml.StartElement:
+			attrs := map[string]string{}
+			for _, a := range el.Attr {
+				attrs[a.Name.Local] = a.Value
+			}
+			if el.Name.Local == "g" && strings.HasPrefix(attrs["data-entity"], "tree:") {
+				x, _ := strconv.ParseFloat(attrs["data-x"], 64)
+				y, _ := strconv.ParseFloat(attrs["data-y"], 64)
+				current = &box{x: x, y: y}
+			} else if el.Name.Local == "rect" && current != nil {
+				current.width, _ = strconv.ParseFloat(attrs["width"], 64)
+				boxes = append(boxes, *current)
+				current = nil
+			}
+		}
+	}
+	for i, a := range boxes {
+		for _, b := range boxes[i+1:] {
+			if a.y == b.y && (a.x-b.x)*(a.x-b.x) < (a.width/2+b.width/2+16)*(a.width/2+b.width/2+16) {
+				t.Fatalf("same-level nodes overlap or lack spacing: %+v %+v", a, b)
+			}
+		}
+	}
+	if !strings.Contains(svg, `width="100" height="44"`) {
+		t.Fatal("array cells too narrow for signed values")
+	}
+}

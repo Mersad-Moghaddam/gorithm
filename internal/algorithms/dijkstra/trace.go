@@ -27,7 +27,7 @@ func findNodeIndex(nodes []renderers.GraphNode, id string) int {
 	return -1
 }
 
-// Trace preserves the lesson's undirected incident-edge traversal and target early exit.
+// Trace follows edge direction and stops when the target is settled.
 func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start, target string) []trace.Step {
 	b := trace.NewBuilder()
 	s := renderers.DijkstraLessonState{GraphState: renderers.GraphState{Nodes: append([]renderers.GraphNode(nil), nodes...), Edges: append([]renderers.GraphEdge(nil), edges...)}, Start: start, Target: target, EdgeIndex: -1, PoppedSerial: -1, Distance: map[string]int{}, Previous: map[string]string{}, Settled: map[string]bool{}}
@@ -119,7 +119,7 @@ func Trace(nodes []renderers.GraphNode, edges []renderers.GraphEdge, start, targ
 			v := ""
 			if e.From == u {
 				v = e.To
-			} else if e.To == u {
+			} else if !e.Directed && e.To == u {
 				v = e.From
 			} else {
 				continue

@@ -119,3 +119,25 @@ func TestAStarHeapAndGuards(t *testing.T) {
 		}
 	}
 }
+
+func TestAStarHeapEntriesKeepQueuedScoresDuringDecreaseKey(t *testing.T) {
+	nodes := []AStarNode{{ID: "S"}, {ID: "A"}, {ID: "B"}, {ID: "G"}}
+	edges := []AStarEdge{{From: "S", To: "A", Weight: 10}, {From: "S", To: "B", Weight: 1}, {From: "B", To: "A", Weight: 1}, {From: "A", To: "G", Weight: 1}}
+	checked := false
+	for _, step := range Trace(nodes, edges, "S", "G") {
+		s := step.State.(renderers.AStarLessonState)
+		if step.LineID == "L13" && s.Neighbor == "A" && s.G["A"] == 2 {
+			for _, entry := range s.Open {
+				if entry.Node == "A" {
+					checked = true
+					if entry.G != 10 || entry.F != entry.G+entry.H {
+						t.Fatalf("heap entry mixes updated g with old priority: %+v", entry)
+					}
+				}
+			}
+		}
+	}
+	if !checked {
+		t.Fatal("missing decrease-key snapshot")
+	}
+}

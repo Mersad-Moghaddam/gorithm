@@ -48,7 +48,10 @@ func RenderKMPLessonSVG(step trace.Step, width, height int) string {
 		return `<g data-lesson="kmp" data-phase="empty" data-scene-width="960" data-scene-height="420"><title>KMP byte offsets</title><text x="32" y="48" fill="#eff5ed" font-size="14">KMP byte offsets: input exceeds display bounds</text></g>`
 	}
 	w := max(960, 64+48*extent)
-	h := max(420, min(height, 32768))
+	original := []rune("Text: " + strconv.QuoteToGraphic(s.Text) + "   Pattern: " + strconv.QuoteToGraphic(s.Pattern))
+	rowWidth := max(1, (w-64)/9)
+	rows := (len(original) + rowWidth - 1) / rowWidth
+	h := max(420, min(height, 32768), 410+18*(rows-1))
 	var b strings.Builder
 	fmt.Fprintf(&b, `<g data-lesson="kmp" data-phase="%s" data-scene-width="%d" data-scene-height="%d" data-min-width="%d" font-family="ui-monospace, monospace" font-size="14" fill="#eff5ed"><title>KMP byte offsets: %s</title>`, html.EscapeString(s.Phase), w, h, w, html.EscapeString(step.Explanation))
 	label := func(x, y int, text, color string) {
@@ -56,10 +59,9 @@ func RenderKMPLessonSVG(step trace.Step, width, height int) string {
 	}
 	label(32, 28, "KMP · byte offsets · "+s.Phase, "#eff5ed")
 	// Original strings use wrapped, escaped text so byte cells never masquerade as runes.
-	original := []rune("Text: " + s.Text + "   Pattern: " + s.Pattern)
-	for start, row := 0, 0; start < len(original); start, row = start+max(1, (w-64)/9), row+1 {
-		end := min(len(original), start+max(1, (w-64)/9))
-		label(32, 372+row*18, string(original[start:end]), "#bbcab9")
+	for start, row := 0, 0; start < len(original); start, row = start+rowWidth, row+1 {
+		end := min(len(original), start+rowWidth)
+		label(32, 395+row*18, string(original[start:end]), "#bbcab9")
 	}
 	palette := []string{"#c45d75", "#387faa", "#8763bb", "#b67b30", "#258b80"}
 	cell := func(role string, index, x, y int, value string, active, matched bool) {
@@ -94,14 +96,14 @@ func RenderKMPLessonSVG(step trace.Step, width, height int) string {
 	}
 	if s.Phase == "lps" && s.LPSIndex >= 0 && s.LPSIndex < len(s.Pattern) {
 		prefix := s.PrefixLength
-		label(32, 248, fmt.Sprintf("computeLPS · prefix length = %d", prefix), "#ffe29a")
+		label(32, 365, fmt.Sprintf("computeLPS · prefix length = %d", prefix), "#ffe29a")
 		if prefix > 0 {
 			prefix = min(prefix, s.LPSIndex+1)
 			fmt.Fprintf(&b, `<path d="M32 286v-6h%dv6 M%d 286v-6h%dv6" fill="none" stroke="#ffe29a" stroke-width="2"/>`, 48*prefix-4, 32+48*(s.LPSIndex-prefix+1), 48*prefix-4)
 		}
 	}
 	if s.FallbackFrom > 0 && s.FallbackTo >= 0 && s.LPSIndex >= 0 && s.LPSIndex < len(s.Pattern) && s.Phase == "fallback" {
-		label(32, 248, fmt.Sprintf("j = lps[%d] = %d · i stays %d", s.FallbackFrom-1, s.FallbackTo, s.I), "#8bd5ff")
+		label(32, 365, fmt.Sprintf("j = lps[%d] = %d · i stays %d", s.FallbackFrom-1, s.FallbackTo, s.I), "#8bd5ff")
 		oldX := 32 + 48*(s.I-s.FallbackFrom+s.FallbackFrom-1) + 22
 		lookupX := 32 + 48*s.LPSIndex + 22
 		newX := 32 + 48*(shift+s.J) + 22
@@ -114,10 +116,10 @@ func RenderKMPLessonSVG(step trace.Step, width, height int) string {
 		label(32+48*(shift+j), 176, "j ↓", "#ffe29a")
 	}
 	if s.Phase == "compare" {
-		label(32, 248, "Compare current bytes", "#ffe29a")
+		label(32, 365, "Compare current bytes", "#ffe29a")
 	}
 	if s.Phase == "mismatch" {
-		label(32, 248, "≠ mismatch · reuse LPS or advance text", "#ff9b9b")
+		label(32, 365, "≠ mismatch · reuse LPS or advance text", "#ff9b9b")
 	}
 	if s.ResultKnown {
 		result := fmt.Sprintf("Found · byte offset %d", s.MatchIndex)
@@ -127,7 +129,7 @@ func RenderKMPLessonSVG(step trace.Step, width, height int) string {
 		if len(s.Pattern) == 0 {
 			result = "Empty pattern · returns 0 · no byte comparisons"
 		}
-		label(32, 248, result, "#9bf0bb")
+		label(32, 365, result, "#9bf0bb")
 	}
 	b.WriteString(`</g>`)
 	return b.String()

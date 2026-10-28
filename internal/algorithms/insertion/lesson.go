@@ -47,19 +47,23 @@ func (l Lesson) Source() []trace.SourceLine {
 func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 	arr := []int{12, 11, 13, 5, 6}
 	if len(input) > 0 {
-		var custom []int
+		var custom []*int
 		if err := json.Unmarshal(input, &custom); err != nil {
 			return nil, fmt.Errorf("insertion input must be an array of integers: %w", err)
 		}
 		if len(custom) < 1 || len(custom) > 64 {
 			return nil, fmt.Errorf("insertion input needs 1–64 integers")
 		}
-		for _, value := range custom {
-			if value < -1000000 || value > 1000000 {
+		arr = make([]int, len(custom))
+		for i, value := range custom {
+			if value == nil {
+				return nil, fmt.Errorf("insertion input must be an array of integers")
+			}
+			if *value < -1000000 || *value > 1000000 {
 				return nil, fmt.Errorf("insertion values must be within [-1000000,1000000]")
 			}
+			arr[i] = *value
 		}
-		arr = custom
 	}
 	return Trace(arr), nil
 }

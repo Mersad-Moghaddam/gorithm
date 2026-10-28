@@ -72,7 +72,7 @@ func (tr *tracer) emit(line, phase string, action trace.ActionType, explanation 
 		byID[n.ID] = i
 	}
 	w := 800
-	if x := 64 * (len(s.Nodes) + 1); x > w {
+	if x := renderers.BSTNodeSpacing * (len(s.Nodes) + 1); x > w {
 		w = x
 	}
 	rank := 0
@@ -83,7 +83,7 @@ func (tr *tracer) emit(line, phase string, action trace.ActionType, explanation 
 		}
 		i := byID[id]
 		place(s.LeftIDs[i])
-		s.Nodes[i].X = float64(64*(rank+1) + (w-64*(len(s.Nodes)+1))/2)
+		s.Nodes[i].X = float64(renderers.BSTNodeSpacing*(rank+1) + (w-renderers.BSTNodeSpacing*(len(s.Nodes)+1))/2)
 		rank++
 		place(s.RightIDs[i])
 	}

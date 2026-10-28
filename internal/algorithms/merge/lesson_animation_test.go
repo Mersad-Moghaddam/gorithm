@@ -48,6 +48,41 @@ func TestMergeLessonCursorHalves(t *testing.T) {
 	}
 }
 
+func TestMergeCopySnapshotsMatchHighlightedSource(t *testing.T) {
+	source := map[string]string{}
+	for _, line := range (Lesson{}).Source() {
+		source[line.ID] = strings.TrimSpace(line.Code)
+	}
+	want := map[string]string{"L15": "aux[k] = arr[i]", "L17": "aux[k] = arr[j]", "L21": "aux[k] = arr[i]", "L22": "aux[k] = arr[j]"}
+	seen := map[string]bool{}
+	for _, input := range [][]int{{1, 2}, {2, 1}, {1, 1}} {
+		for _, step := range Trace(input) {
+			code, ok := want[step.LineID]
+			if !ok {
+				continue
+			}
+			seen[step.LineID] = true
+			if source[step.LineID] != code {
+				t.Errorf("%s highlights %q, want %q", step.LineID, source[step.LineID], code)
+			}
+			s := step.State.(renderers.MergeLessonState)
+			if !s.AuxFilled[s.K] || s.AuxIDs[s.K] != s.IDs[s.Current] || s.Aux[s.K] != s.Values[s.Current] {
+				t.Errorf("%s: snapshot does not contain selected copy", step.LineID)
+			}
+			key := fmt.Sprintf("aux:%d:%d", s.K, s.IDs[s.Current])
+			entity := mergeSceneEntities(t, renderers.RenderMergeLessonSVG(step, 320, 360))[key]
+			if entity["data-from-entity"] != fmt.Sprintf("main:%d:%d", s.Current, s.IDs[s.Current]) {
+				t.Errorf("%s: missing copy motion source", step.LineID)
+			}
+		}
+	}
+	for line := range want {
+		if !seen[line] {
+			t.Errorf("fixture did not exercise %s", line)
+		}
+	}
+}
+
 func TestMergeLessonCopyArrival(t *testing.T) {
 	for _, input := range [][]int{{1,2},{1,1},{2,1}} {
 		steps:=Trace(input); writes:=0

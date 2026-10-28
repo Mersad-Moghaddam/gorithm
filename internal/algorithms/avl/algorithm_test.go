@@ -388,7 +388,7 @@ func TestAVLLessonSnapshotsAndDefaults(t *testing.T) {
 }
 
 func TestAVLLessonInputBoundaries(t *testing.T) {
-	for _, input := range []string{`null`, `{"values":null}`, `{"values":[1000001]}`, `[true]`, `{`, `{"values":[-1000001]}`} {
+	for _, input := range []string{`null`, `[null]`, `{"values":[null]}`, `{"values":null}`, `{"values":[1000001]}`, `[true]`, `{`, `{"values":[-1000001]}`} {
 		if _, err := (Lesson{}).Build([]byte(input)); err == nil {
 			t.Errorf("accepted %s", input)
 		}
@@ -411,5 +411,15 @@ func TestAVLLessonInputBoundaries(t *testing.T) {
 	}
 	if _, err := (Lesson{}).Build([]byte(raw[:len(raw)-1] + `,0]`)); err == nil {
 		t.Fatal("accepted 33 values")
+	}
+}
+
+func TestAVLRotationMetadataEndsAfterRotation(t *testing.T) {
+	steps := Trace([]int{50, 30, 70, 20, 40, 10})
+	for i, step := range steps {
+		s := step.State.(renderers.AVLLessonState)
+		if (step.LineID == "L6" || step.LineID == "L7" || step.LineID == "L16") && s.Rotation != "" {
+			t.Fatalf("frame %d (%s) retains rotation %q", i, step.LineID, s.Rotation)
+		}
 	}
 }

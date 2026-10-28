@@ -43,15 +43,14 @@ func RenderKMeansLessonSVG(step trace.Step, width, height int) string {
 		inset = 16
 	}
 	plotX, plotY, plotW, plotH := inset+24, 64.0, w-inset*2-48, 300.0
-	cardX, cardY, cardW := inset, 410.0, w-2*inset
+	keyY := 410.0
+	cardX, cardY, cardW := inset, keyY+float64(len(s.Points)+len(s.Centroids))*24+28, w-2*inset
 	if !mobile {
 		plotW = w - 2*inset - 360
-		cardX = plotX + plotW + 36
-		cardY = 64
-		cardW = w - cardX - inset
 	}
-	cardHeight := float64(len(s.Centroids)) * 92
-	equationY := math.Max(410, cardY+cardHeight+24)
+	cardHeight := float64(len(s.Centroids)) * 146
+	pointY := math.Max(410, cardY+cardHeight+24)
+	equationY := pointY + 30 + float64(len(s.Points))*68
 	sceneH := equationY + 136
 	var b strings.Builder
 	fmt.Fprintf(&b, `<g data-lesson="kmeans" data-phase="%s" data-scene-width="%.0f" data-scene-height="%.0f" data-min-width="%.0f" font-family="sans-serif" font-size="14" fill="#eff5ed"><title>%s</title><defs><marker id="kmeans-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#8bd5ff"/></marker></defs>`, html.EscapeString(s.Phase), w, sceneH, w, html.EscapeString("K-means: "+s.Phase+" "+s.StopReason))
@@ -59,7 +58,8 @@ func RenderKMeansLessonSVG(step trace.Step, width, height int) string {
 		fmt.Fprintf(&b, `<text x="%.2f" y="%.2f" fill="%s">%s</text>`, x, y, color, html.EscapeString(value))
 	}
 	text(inset, 26, "#ffe29a", fmt.Sprintf("Iteration %d · %s", s.Iteration, s.Phase))
-	text(inset, 48, "#bbcab9", fmt.Sprintf("k requested %d · effective %d", s.RequestedK, len(s.Centroids)))
+	effectiveK := min(s.RequestedK, len(s.Points))
+	text(inset, 48, "#bbcab9", fmt.Sprintf("k requested %d · effective %d", s.RequestedK, effectiveK))
 	finite := func(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 	xmin, xmax, ymin, ymax := s.XMin, s.XMax, s.YMin, s.YMax
 	if !finite(xmin) || !finite(xmax) || xmax <= xmin {
@@ -79,6 +79,17 @@ func RenderKMeansLessonSVG(step trace.Step, width, height int) string {
 		return plotX + plotW/2 + (p[0]-(xmin/2+xmax/2))*scale, plotY + plotH/2 - (p[1]-(ymin/2+ymax/2))*scale
 	}
 	fmt.Fprintf(&b, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" rx="12" fill="#192923" stroke="#52634e"/>`, plotX-24, plotY-8, plotW+48, plotH+48)
+	for _, group := range []struct {
+		kind   string
+		points [][2]float64
+		offset int
+	}{{"point", s.Points, 0}, {"centroid", s.Centroids, len(s.Points)}} {
+		for i, p := range group.points {
+			x, y := pos(p)
+			rowY := keyY + float64(group.offset+i)*24
+			fmt.Fprintf(&b, `<path data-marker-link="%s:%d" d="M%.2f %.2fL%.2f %.2f" fill="none" stroke="#bbcab9" opacity=".45"/>`, group.kind, i, x, y, inset+8, rowY-5)
+		}
+	}
 	for i, p := range s.Points {
 		x, y := pos(p)
 		if i < len(s.Assignments) {
@@ -106,11 +117,11 @@ func RenderKMeansLessonSVG(step trace.Step, width, height int) string {
 		if i < len(s.Assignments) {
 			cluster = s.Assignments[i]
 		}
-		fmt.Fprintf(&b, `<g data-entity="point:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"><circle r="6" fill="%s" stroke="#eff5ed"/>`, i, x, y, x, y, kmeansLessonColor(cluster))
+		fmt.Fprintf(&b, `<g data-entity="point:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)"><title>point %d (%s, %s)</title><circle r="6" fill="%s" stroke="#eff5ed"/>`, i, x, y, x, y, i, kmeansLessonNumber(p[0]), kmeansLessonNumber(p[1]), kmeansLessonColor(cluster))
 		if i == s.ActivePoint {
 			b.WriteString(`<circle r="11" fill="none" stroke="#ffe29a" stroke-width="3" data-emphasis="compare"/>`)
 		}
-		fmt.Fprintf(&b, `<text x="8" y="-10">P%d</text></g>`, i)
+		b.WriteString(`</g>`)
 	}
 	for j, c := range s.Centroids {
 		x, y := pos(c)
@@ -118,24 +129,51 @@ func RenderKMeansLessonSVG(step trace.Step, width, height int) string {
 			ox, oy := pos(s.PreviousCentroids[j])
 			fmt.Fprintf(&b, `<path d="M%.2f %.2fL%.2f %.2f" stroke="#8bd5ff" marker-end="url(#kmeans-arrow)"/><path d="M%.2f %.2fl8 -8l8 8l-8 8Z" fill="none" stroke="#8bd5ff" stroke-dasharray="3 3"/>`, ox, oy, x, y, ox-8, oy)
 		}
-		fmt.Fprintf(&b, `<g data-entity="centroid:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)" data-motion="linear"><path d="M0 -10L10 0L0 10L-10 0Z M-14 0H14 M0 -14V14" fill="%s" stroke="#eff5ed" stroke-width="2"/><text x="12" y="20">C%d</text></g>`, j, x, y, x, y, kmeansLessonColor(j), j)
-		cy := cardY + float64(j)*92
-		fmt.Fprintf(&b, `<rect x="%.2f" y="%.2f" width="%.2f" height="84" rx="8" fill="#22372c" stroke="%s"/>`, cardX, cy, cardW, kmeansLessonColor(j))
-		text(cardX+8, cy+19, "#eff5ed", fmt.Sprintf("C%d = (%s, %s)", j, kmeansLessonNumber(c[0]), kmeansLessonNumber(c[1])))
+		fmt.Fprintf(&b, `<g data-entity="centroid:%d" data-x="%.2f" data-y="%.2f" transform="translate(%.2f %.2f)" data-motion="linear"><title>centroid %d (%s, %s)</title><path d="M0 -10L10 0L0 10L-10 0Z M-14 0H14 M0 -14V14" fill="%s" stroke="#eff5ed" stroke-width="2"/></g>`, j, x, y, x, y, j, kmeansLessonNumber(c[0]), kmeansLessonNumber(c[1]), kmeansLessonColor(j))
+		cy := cardY + float64(j)*146
+		fmt.Fprintf(&b, `<rect x="%.2f" y="%.2f" width="%.2f" height="138" rx="8" fill="#22372c" stroke="%s"/>`, cardX, cy, cardW, kmeansLessonColor(j))
+		text(cardX+8, cy+19, "#eff5ed", fmt.Sprintf("C%d", j))
+		text(cardX+8, cy+39, "#eff5ed", "x: "+kmeansLessonNumber(c[0]))
+		text(cardX+8, cy+59, "#eff5ed", "y: "+kmeansLessonNumber(c[1]))
 		if j < len(s.Counts) && j < len(s.Sums) {
 			n := s.Counts[j]
-			text(cardX+8, cy+41, "#8bd5ff", fmt.Sprintf("sum (%s, %s) / %d", kmeansLessonNumber(s.Sums[j][0]), kmeansLessonNumber(s.Sums[j][1]), n))
 			if n == 0 {
-				text(cardX+8, cy+65, "#ffe29a", "retained: no members")
+				text(cardX+8, cy+79, "#8bd5ff", "count 0; no mean")
+				text(cardX+8, cy+99, "#ffe29a", "retained: no members")
 			} else {
-				text(cardX+8, cy+65, "#bbcab9", "mean of assigned points")
+				text(cardX+8, cy+79, "#8bd5ff", "sum x: "+kmeansLessonNumber(s.Sums[j][0]))
+				text(cardX+8, cy+99, "#8bd5ff", "sum y: "+kmeansLessonNumber(s.Sums[j][1]))
+				text(cardX+8, cy+119, "#bbcab9", fmt.Sprintf("count: %d · mean = sum / count", n))
 			}
 		} else if j < len(s.DistanceSquared) {
-			text(cardX+8, cy+43, "#8bd5ff", fmt.Sprintf("d²(P%d,C%d) = %s", s.ActivePoint, j, kmeansLessonNumber(s.DistanceSquared[j])))
+			text(cardX+8, cy+79, "#8bd5ff", fmt.Sprintf("d²(P%d,C%d):", s.ActivePoint, j))
+			text(cardX+8, cy+99, "#8bd5ff", kmeansLessonNumber(s.DistanceSquared[j]))
 			if j == s.Closest {
-				text(cardX+8, cy+66, "#ffe29a", "nearest; first on ties")
+				text(cardX+8, cy+119, "#ffe29a", "nearest; first on ties")
 			}
 		}
+	}
+	for _, group := range []struct {
+		kind, prefix  string
+		count, offset int
+	}{{"point", "P", len(s.Points), 0}, {"centroid", "C", len(s.Centroids), len(s.Points)}} {
+		for i := 0; i < group.count; i++ {
+			y := keyY + float64(group.offset+i)*24
+			fmt.Fprintf(&b, `<g data-marker-key="%s:%d"><rect x="%.2f" y="%.2f" width="64" height="20" rx="4" fill="#192923"/><text x="%.2f" y="%.2f">%s%d</text></g>`, group.kind, i, inset, y-16, inset+12, y, group.prefix, i)
+		}
+	}
+	text(inset, pointY, "#ffe29a", "Points · assigned cluster")
+	for i, p := range s.Points {
+		cluster := "unassigned"
+		if i < len(s.Assignments) && s.Assignments[i] >= 0 {
+			cluster = fmt.Sprintf("C%d", s.Assignments[i])
+		}
+		y := pointY + 24 + float64(i)*68
+		fmt.Fprintf(&b, `<g data-point-row="%d">`, i)
+		text(inset, y, "#eff5ed", fmt.Sprintf("P%d · %s", i, cluster))
+		text(inset, y+20, "#bbcab9", "x: "+kmeansLessonNumber(p[0]))
+		text(inset, y+40, "#bbcab9", "y: "+kmeansLessonNumber(p[1]))
+		b.WriteString(`</g>`)
 	}
 	text(inset, equationY, "#ffe29a", "d²(P,C) = (Px − Cx)²")
 	text(inset, equationY+22, "#ffe29a", "                 + (Py − Cy)²")

@@ -103,10 +103,14 @@ func (l Lesson) Build(input json.RawMessage) ([]trace.Step, error) {
 			if err := json.Unmarshal(input, &custom); err != nil {
 				return nil, err
 			}
-			if custom.S1 != "" || custom.S2 != "" {
+			_, hasS1 := fields["s1"]
+			_, hasS2 := fields["s2"]
+			_, hasText := fields["text"]
+			_, hasPattern := fields["pattern"]
+			if custom.S1 != "" || custom.S2 != "" || ((hasS1 || hasS2) && custom.Text == "" && custom.Pattern == "") {
 				s1 = custom.S1
 				s2 = custom.S2
-			} else if custom.Text != "" || custom.Pattern != "" {
+			} else if hasText || hasPattern {
 				s1 = custom.Text
 				s2 = custom.Pattern
 			}

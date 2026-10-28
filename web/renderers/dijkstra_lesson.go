@@ -239,9 +239,9 @@ func RenderDijkstraLessonSVG(step trace.Step, width, height int) string {
 		if len(node) > 5 {
 			node = append(node[:4], '…')
 		}
-		text(6, 16, fmt.Sprintf("[%d] %s:%s", i, string(node), dijkstraValue(q.Distance)))
+		text(6, 14, fmt.Sprintf("[%d] %s:%s", i, string(node), dijkstraValue(q.Distance)))
 		if i == 0 {
-			text(6, 31, "root / min")
+			text(6, 32, "root / min")
 		}
 		b.WriteString(`</g>`)
 	}
@@ -267,11 +267,15 @@ func RenderDijkstraLessonSVG(step trace.Step, width, height int) string {
 	}
 	if s.HasCandidate {
 		text(24, eqY, "old d[v] = "+dijkstraValue(s.OldDistance))
-		relation := " ≥ "
-		if s.Improved {
-			relation = " < "
+		candidate := "candidate = " + dijkstraValue(s.Candidate)
+		if step.LineID != "L9" {
+			relation := " ≥ "
+			if s.Improved {
+				relation = " < "
+			}
+			candidate += relation + dijkstraValue(s.OldDistance)
 		}
-		text(24, eqY+26, "candidate = "+dijkstraValue(s.Candidate)+relation+dijkstraValue(s.OldDistance))
+		text(24, eqY+26, candidate)
 		if s.EdgeIndex >= 0 && s.EdgeIndex < len(s.Edges) {
 			pos := [2]float64{24, eqY + 52}
 			if step.LineID == "L8" {
